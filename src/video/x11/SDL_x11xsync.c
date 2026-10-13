@@ -104,7 +104,7 @@ void X11_TermResizeSync(SDL_Window *window)
     Atom counter_prop = data->videodata->atoms._NET_WM_SYNC_REQUEST_COUNTER;
     XSyncCounter counter = data->resize_counter;
 
-    if (!data->xwindow_destroyed) {
+    if (!data->window->native_window_destroyed) {
         X11_XDeleteProperty(display, data->xwindow, counter_prop);
     }
     if (counter != None) {

@@ -35,6 +35,7 @@
 #include "SDL_x11pen.h"
 #include "SDL_x11touch.h"
 #include "SDL_x11video.h"
+#include "SDL_x11keyboard.h"
 #include "SDL_x11xfixes.h"
 #include "SDL_x11xinput2.h"
 #include "SDL_x11messagebox.h"
@@ -55,6 +56,7 @@ static void X11_VideoQuit(SDL_VideoDevice *_this);
 static void X11_DeleteDevice(SDL_VideoDevice *device)
 {
     SDL_VideoData *data = device->internal;
+    X11_QuitErrorHandler();
     if (device->vulkan_config.loader_handle) {
         device->Vulkan_UnloadLibrary(device);
     }
@@ -139,6 +141,15 @@ static SDL_VideoDevice *X11_CreateDevice(void)
     data->display = x11_display;
     data->request_display = X11_XOpenDisplay(display);
     if (!data->request_display) {
+        X11_XCloseDisplay(data->display);
+        SDL_free(device->internal);
+        SDL_free(device);
+        SDL_X11_UnloadSymbols();
+        return NULL;
+    }
+
+    if (!X11_InitErrorHandler()) {
+        X11_XCloseDisplay(data->request_display);
         X11_XCloseDisplay(data->display);
         SDL_free(device->internal);
         SDL_free(device);
@@ -324,6 +335,7 @@ static void X11_CheckWindowManager(SDL_VideoDevice *_this)
 #endif
 
     // Set up a handler to gracefully catch errors
+    X11_LockErrorHandler();
     X11_XSync(display, False);
     handler = X11_XSetErrorHandler(X11_CheckWindowManagerErrorHandler);
 
@@ -353,6 +365,7 @@ static void X11_CheckWindowManager(SDL_VideoDevice *_this)
     // Reset the error handler, we're done checking
     X11_XSync(display, False);
     X11_XSetErrorHandler(handler);
+    X11_UnlockErrorHandler();
 
     if (!wm_window) {
 #ifdef DEBUG_WINDOW_MANAGER

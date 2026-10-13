@@ -23,6 +23,7 @@
 #ifdef SDL_VIDEO_DRIVER_X11
 
 #include "SDL_x11video.h"
+#include "SDL_x11keyboard.h"
 #include "SDL_x11framebuffer.h"
 #include "SDL_x11xsync.h"
 
@@ -93,10 +94,12 @@ bool X11_CreateWindowFramebuffer(SDL_VideoDevice *_this, SDL_Window *window, SDL
             shminfo->readOnly = False;
             if (shminfo->shmaddr != (char *)-1) {
                 shm_error = False;
+                X11_LockErrorHandler();
                 X_handler = X11_XSetErrorHandler(shm_errhandler);
                 X11_XShmAttach(display, shminfo);
                 X11_XSync(display, False);
                 X11_XSetErrorHandler(X_handler);
+                X11_UnlockErrorHandler();
                 if (shm_error) {
                     shmdt(shminfo->shmaddr);
                 }

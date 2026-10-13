@@ -5664,6 +5664,10 @@ bool SDL_GL_SwapWindow(SDL_Window *window)
         return SDL_SetError("The specified window has not been made current");
     }
 
+    if (window->native_window_destroyed) {
+        return SDL_SetError("Window has been destroyed");
+    }
+
     return _this->GL_SwapWindow(_this, window);
 }
 

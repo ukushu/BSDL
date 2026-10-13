@@ -27,6 +27,7 @@
 #ifdef SDL_VIDEO_DRIVER_X11
 
 #include "SDL_x11video.h"
+#include "SDL_x11keyboard.h"
 
 #include <limits.h>
 #include <stdio.h>
@@ -387,12 +388,14 @@ read_settings (XSettingsClient *client)
 
   if (client->manager_window)
     {
+      X11_LockErrorHandler();
       old_handler = X11_XSetErrorHandler (ignore_errors);
       result = X11_XGetWindowProperty (client->display, client->manager_window,
                                        client->xsettings_atom, 0, LONG_MAX,
                                        False, client->xsettings_atom,
                                        &type, &format, &n_items, &bytes_after, &data);
       X11_XSetErrorHandler (old_handler);
+      X11_UnlockErrorHandler();
 
       if (result == Success && type != None)
         {

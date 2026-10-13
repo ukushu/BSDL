@@ -25,6 +25,7 @@
 
 #include "../../SDL_list.h"
 #include "SDL_x11video.h"
+#include "SDL_x11keyboard.h"
 #ifdef SDL_USE_LIBDBUS
 #include "../../core/linux/SDL_system_theme.h"
 #endif
@@ -259,10 +260,12 @@ static void X11Toolkit_InitWindowPixmap(SDL_ToolkitWindowX11 *data) {
                 }
 
                 g_shm_error = False;
+                X11_LockErrorHandler();
                 g_old_error_handler = X11_XSetErrorHandler(X11Toolkit_SharedMemoryErrorHandler);
                 X11_XShmAttach(data->display, &data->shm_info);
                 X11_XSync(data->display, False);
                 X11_XSetErrorHandler(g_old_error_handler);
+                X11_UnlockErrorHandler();
                 if (g_shm_error) {
                     XDestroyImage(data->image);
                     shmdt(data->shm_info.shmaddr);

@@ -23,6 +23,7 @@
 #ifdef SDL_VIDEO_DRIVER_X11
 
 #include "SDL_x11video.h"
+#include "SDL_x11keyboard.h"
 #include "SDL_x11settings.h"
 #include "edid.h"
 #include "../../events/SDL_displayevents_c.h"
@@ -1237,12 +1238,14 @@ bool X11_SetDisplayMode(SDL_VideoDevice *_this, SDL_VideoDisplay *sdl_display, S
            for now we cheat and just catch the X11 error and carry on, which
            is likely to cause subtle issues but is better than outright
            crashing */
+        X11_LockErrorHandler();
         X11_XSync(display, False);
         PreXRRSetScreenSizeErrorHandler = X11_XSetErrorHandler(SDL_XRRSetScreenSizeErrHandler);
         X11_XRRSetScreenSize(display, RootWindow(display, data->screen),
                              mode->w, mode->h, mm_width, mm_height);
         X11_XSync(display, False);
         X11_XSetErrorHandler(PreXRRSetScreenSizeErrorHandler);
+        X11_UnlockErrorHandler();
 
         status = X11_XRRSetCrtcConfig(display, res, output_info->crtc, CurrentTime,
                                       crtc->x, crtc->y, modedata->xrandr_mode, crtc->rotation,

@@ -27,6 +27,7 @@
 #include "software/SDL_render_sw_c.h"
 #include "../events/SDL_windowevents_c.h"
 #include "../video/SDL_pixels_c.h"
+#include "../video/SDL_sysvideo.h"
 #include "../video/SDL_video_c.h"
 
 #ifdef SDL_PLATFORM_ANDROID
@@ -307,6 +308,11 @@ static bool FlushRenderCommands(SDL_Renderer *renderer)
         return true;
     }
 
+    if (renderer->window && !renderer->target && renderer->window->native_window_destroyed) {
+        result = SDL_SetError("Renderer's window has been destroyed, can't present");
+        goto discard_commands;
+    }
+
     DebugLogRenderCommands(renderer->render_commands);
 
 #if DONT_DRAW_WHILE_HIDDEN
@@ -317,6 +323,7 @@ static bool FlushRenderCommands(SDL_Renderer *renderer)
 #endif
     result = renderer->RunCommandQueue(renderer, renderer->render_commands, renderer->vertex_data, renderer->vertex_data_used);
 
+discard_commands:
     // Move the whole render command queue to the unused pool so we can reuse them next time.
     if (renderer->render_commands_tail) {
         renderer->render_commands_tail->next = renderer->render_commands_pool;
@@ -5696,11 +5703,17 @@ bool SDL_RenderPresent(SDL_Renderer *renderer)
         }
     }
 
+    if (renderer->window && renderer->window->native_window_destroyed) {
+        return FlushRenderCommands(renderer) ? SDL_SetError("Renderer's window has been destroyed, can't present") : false;
+    }
+
     if (renderer->transparent_window) {
         SDL_RenderApplyWindowShape(renderer);
     }
 
-    FlushRenderCommands(renderer); // time to send everything to the GPU!
+    if (!FlushRenderCommands(renderer)) {
+        return false;
+    }
 
 #if DONT_DRAW_WHILE_HIDDEN
     // Don't present while we're hidden
@@ -5710,6 +5723,9 @@ bool SDL_RenderPresent(SDL_Renderer *renderer)
 #endif
     if (!renderer->RenderPresent(renderer)) {
         presented = false;
+        if (renderer->window && renderer->window->native_window_destroyed) {
+            return false;
+        }
     }
 
     if (renderer->simulate_vsync ||

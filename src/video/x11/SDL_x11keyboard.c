@@ -42,7 +42,21 @@
 #include <locale.h>
 #endif
 
-static SDL_Mutex *destroyed_x11_window_mutex;
+static SDL_Mutex *x11_error_trap_mutex;
+
+bool X11_InitErrorHandler(void)
+{
+    x11_error_trap_mutex = SDL_CreateMutex();
+    return x11_error_trap_mutex != NULL;
+}
+
+void X11_QuitErrorHandler(void)
+{
+    if (x11_error_trap_mutex) {
+        SDL_DestroyMutex(x11_error_trap_mutex);
+    }
+    x11_error_trap_mutex = NULL;
+}
 
 static SDL_ScancodeTable scancode_set[] = {
     SDL_SCANCODE_TABLE_DARWIN,
@@ -210,11 +224,6 @@ bool X11_InitKeyboard(SDL_VideoDevice *_this)
     int best_distance;
     int best_index;
     int distance;
-
-    destroyed_x11_window_mutex = SDL_CreateMutex();
-    if (!destroyed_x11_window_mutex) {
-        return SDL_OutOfMemory();
-    }
 
 #ifdef SDL_VIDEO_DRIVER_X11_HAS_XKBLIB
     int xkb_major = XkbMajorVersion;
@@ -593,9 +602,6 @@ void X11_QuitKeyboard(SDL_VideoDevice *_this)
         X11_XUnregisterIMInstantiateCallback(data->display, NULL, NULL, NULL, im_instantiate_handler, (XPointer)data);
     }
 #endif // X_HAVE_UTF8_STRING
-    SDL_DestroyMutex(destroyed_x11_window_mutex);
-    destroyed_x11_window_mutex = NULL;
-
 #ifdef SDL_VIDEO_DRIVER_X11_HAS_XKBLIB
     if (data->keyboard.xkb_enabled) {
         for (int i = 0; i < XkbNumKbdGroups; ++i) {
@@ -860,10 +866,24 @@ void X11_CreateInputContext(SDL_WindowData *data)
 
 
 static XErrorHandler previous_x11_error_handler;
-static Display *destroyed_x11_display;
-static Window destroyed_x11_window;
-static bool destroyed_x11_window_error;
-static SDL_SpinLock destroyed_x11_window_lock;
+static Display *trapped_x11_display;
+static Window trapped_x11_window;
+static int trapped_x11_error_code;
+static unsigned long trapped_x11_first_serial;
+static unsigned long trapped_x11_end_serial;
+static XErrorEvent trapped_x11_error;
+static bool trapped_x11_error_received;
+static SDL_SpinLock x11_error_trap_lock;
+
+void X11_LockErrorHandler(void)
+{
+    SDL_LockMutex(x11_error_trap_mutex);
+}
+
+void X11_UnlockErrorHandler(void)
+{
+    SDL_UnlockMutex(x11_error_trap_mutex);
+}
 
 static int X11_DefaultErrorHandler(Display *display, XErrorEvent *event)
 {
@@ -874,20 +894,25 @@ static int X11_DefaultErrorHandler(Display *display, XErrorEvent *event)
     exit(1);
 }
 
-static int X11_CatchDestroyedWindowError(Display *display, XErrorEvent *event)
+static int X11_ErrorTrapHandler(Display *display, XErrorEvent *event)
 {
     XErrorHandler previous_error_handler;
-    bool destroyed_window_error;
+    bool trapped_error;
 
-    SDL_LockSpinlock(&destroyed_x11_window_lock);
-    destroyed_window_error = display == destroyed_x11_display && event->error_code == BadWindow && event->resourceid == destroyed_x11_window;
-    if (destroyed_window_error) {
-        destroyed_x11_window_error = true;
+    SDL_LockSpinlock(&x11_error_trap_lock);
+    trapped_error = display == trapped_x11_display &&
+                    (((event->serial >= trapped_x11_first_serial && event->serial < trapped_x11_end_serial) &&
+                      (!trapped_x11_error_code || event->error_code == trapped_x11_error_code) &&
+                      (trapped_x11_window == None || event->resourceid == trapped_x11_window)) ||
+                     (trapped_x11_window != None && event->error_code == BadWindow && event->resourceid == trapped_x11_window));
+    if (trapped_error) {
+        trapped_x11_error = *event;
+        trapped_x11_error_received = true;
     }
     previous_error_handler = previous_x11_error_handler;
-    SDL_UnlockSpinlock(&destroyed_x11_window_lock);
+    SDL_UnlockSpinlock(&x11_error_trap_lock);
 
-    if (destroyed_window_error) {
+    if (trapped_error) {
         return 0;
     }
     if (previous_error_handler) {
@@ -896,37 +921,54 @@ static int X11_CatchDestroyedWindowError(Display *display, XErrorEvent *event)
     return X11_DefaultErrorHandler(display, event);
 }
 
-XErrorHandler X11_BeginWindowErrorTrap(Display *display, Window window)
+XErrorHandler X11_BeginErrorTrap(Display *display, Window window, int error_code)
 {
     XErrorHandler previous_error_handler;
 
-    SDL_LockMutex(destroyed_x11_window_mutex);
-    SDL_LockSpinlock(&destroyed_x11_window_lock);
-    destroyed_x11_display = display;
-    destroyed_x11_window = window;
-    destroyed_x11_window_error = false;
-    previous_error_handler = X11_XSetErrorHandler(X11_CatchDestroyedWindowError);
+    X11_LockErrorHandler();
+    X11_XLockDisplay(display);
+    SDL_LockSpinlock(&x11_error_trap_lock);
+    trapped_x11_display = display;
+    trapped_x11_window = window;
+    trapped_x11_error_code = error_code;
+    trapped_x11_first_serial = NextRequest(display);
+    trapped_x11_end_serial = ~0UL;
+    trapped_x11_error_received = false;
+    previous_error_handler = X11_XSetErrorHandler(X11_ErrorTrapHandler);
+    if (previous_error_handler == X11_ErrorTrapHandler) {
+        previous_error_handler = previous_x11_error_handler;
+    }
     previous_x11_error_handler = previous_error_handler ? previous_error_handler : X11_DefaultErrorHandler;
-    SDL_UnlockSpinlock(&destroyed_x11_window_lock);
+    SDL_UnlockSpinlock(&x11_error_trap_lock);
     return previous_error_handler;
 }
 
-bool X11_EndWindowErrorTrap(XErrorHandler previous_error_handler)
+bool X11_EndErrorTrap(XErrorHandler previous_error_handler, XErrorEvent *error)
 {
     XErrorHandler current_error_handler;
-    bool destroyed_window_error;
+    Display *display = trapped_x11_display;
+    bool error_received;
 
-    SDL_LockSpinlock(&destroyed_x11_window_lock);
+    SDL_LockSpinlock(&x11_error_trap_lock);
+    trapped_x11_end_serial = NextRequest(display);
+    SDL_UnlockSpinlock(&x11_error_trap_lock);
+    X11_XSync(display, False);
+    SDL_LockSpinlock(&x11_error_trap_lock);
     current_error_handler = X11_XSetErrorHandler(previous_error_handler);
-    if (current_error_handler != X11_CatchDestroyedWindowError) {
+    if (current_error_handler != X11_ErrorTrapHandler) {
         X11_XSetErrorHandler(current_error_handler);
     }
-    destroyed_window_error = destroyed_x11_window_error;
-    destroyed_x11_display = NULL;
-    destroyed_x11_window = None;
-    SDL_UnlockSpinlock(&destroyed_x11_window_lock);
-    SDL_UnlockMutex(destroyed_x11_window_mutex);
-    return destroyed_window_error;
+    error_received = trapped_x11_error_received;
+    if (error_received && error) {
+        *error = trapped_x11_error;
+    }
+    trapped_x11_display = NULL;
+    trapped_x11_window = None;
+    trapped_x11_error_code = 0;
+    SDL_UnlockSpinlock(&x11_error_trap_lock);
+    X11_XUnlockDisplay(display);
+    X11_UnlockErrorHandler();
+    return error_received;
 }
 bool X11_FilterEvent(SDL_WindowData *data, XEvent *event)
 {
@@ -937,12 +979,11 @@ bool X11_FilterEvent(SDL_WindowData *data, XEvent *event)
         bool destroyed_window_error;
         bool filtered;
 
-        old_error_handler = X11_BeginWindowErrorTrap(display, data->xwindow);
+        old_error_handler = X11_BeginErrorTrap(display, data->xwindow, BadWindow);
         filtered = X11_XFilterEvent(event, None);
-        X11_XSync(display, False);
-        destroyed_window_error = X11_EndWindowErrorTrap(old_error_handler);
+        destroyed_window_error = X11_EndErrorTrap(old_error_handler, NULL);
         if (destroyed_window_error) {
-            data->xwindow_destroyed = true;
+            data->window->native_window_destroyed = true;
             return true;
         }
         return filtered;

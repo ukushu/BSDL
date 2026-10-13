@@ -146,10 +146,13 @@ SDL_EGLSurface X11_GLES_GetEGLSurface(SDL_VideoDevice *_this, SDL_Window *window
 
 bool X11_GLES_SwapWindow(SDL_VideoDevice *_this, SDL_Window *window)
 {
-    const bool ret = SDL_EGL_SwapBuffers(_this, window->internal->egl_surface);                       \
+    SDL_WindowData *data = window->internal;
+    bool ret = SDL_EGL_SwapBuffers(_this, data->egl_surface);
 
 #ifdef SDL_VIDEO_DRIVER_X11_XSYNC
-    X11_HandlePresent(window);
+    if (!window->native_window_destroyed) {
+        X11_HandlePresent(window);
+    }
 #endif /* SDL_VIDEO_DRIVER_X11_XSYNC */
 
     return ret;
@@ -158,4 +161,3 @@ bool X11_GLES_SwapWindow(SDL_VideoDevice *_this, SDL_Window *window)
 SDL_EGL_MakeCurrent_impl(X11)
 
 #endif // SDL_VIDEO_DRIVER_X11 && SDL_VIDEO_OPENGL_EGL
-

@@ -740,28 +740,21 @@ XVisualInfo *X11_GL_GetVisual(SDL_VideoDevice *_this, Display *display, int scre
     return vinfo;
 }
 
-static int (*handler)(Display *, XErrorEvent *) = NULL;
-static const char *errorHandlerOperation = NULL;
-static int errorBase = 0;
-static int errorCode = 0;
-static int X11_GL_ErrorHandler(Display *d, XErrorEvent *e)
+static void X11_GL_SetError(Display *display, const char *operation, int error_base, XErrorEvent *event)
 {
     char *x11_error = NULL;
     char x11_error_locale[256];
 
-    errorCode = e->error_code;
-    if (X11_XGetErrorText(d, errorCode, x11_error_locale, sizeof(x11_error_locale)) == Success) {
+    if (X11_XGetErrorText(display, event->error_code, x11_error_locale, sizeof(x11_error_locale)) == Success) {
         x11_error = SDL_iconv_string("UTF-8", "", x11_error_locale, SDL_strlen(x11_error_locale) + 1);
     }
 
     if (x11_error) {
-        SDL_SetError("Could not %s: %s", errorHandlerOperation, x11_error);
+        SDL_SetError("Could not %s: %s", operation, x11_error);
         SDL_free(x11_error);
     } else {
-        SDL_SetError("Could not %s: %i (Base %i)", errorHandlerOperation, errorCode, errorBase);
+        SDL_SetError("Could not %s: %i (Base %i)", operation, event->error_code, error_base);
     }
-
-    return 0;
 }
 
 bool X11_GL_UseEGL(SDL_VideoDevice *_this)
@@ -787,6 +780,9 @@ SDL_GLContext X11_GL_CreateContext(SDL_VideoDevice *_this, SDL_Window *window)
     int n;
     SDL_GLContext context = NULL;
     GLXContext share_context;
+    XErrorEvent x11_error;
+    XErrorHandler previous_error_handler;
+    bool x11_error_received;
     const int transparent = (window->flags & SDL_WINDOW_TRANSPARENT) ? true : false;
 
     if (_this->gl_config.share_with_current_context) {
@@ -795,12 +791,7 @@ SDL_GLContext X11_GL_CreateContext(SDL_VideoDevice *_this, SDL_Window *window)
         share_context = NULL;
     }
 
-    // We do this to create a clean separation between X and GLX errors.
-    X11_XSync(display, False);
-    errorHandlerOperation = "create GL context";
-    errorBase = _this->gl_data->errorBase;
-    errorCode = Success;
-    handler = X11_XSetErrorHandler(X11_GL_ErrorHandler);
+    previous_error_handler = X11_BeginErrorTrap(display, None, 0);
     X11_XGetWindowAttributes(display, data->xwindow, &xattr);
     v.screen = screen;
     v.visualid = X11_XVisualIDFromVisual(xattr.visual);
@@ -913,11 +904,12 @@ SDL_GLContext X11_GL_CreateContext(SDL_VideoDevice *_this, SDL_Window *window)
         }
         X11_XFree(vinfo);
     }
-    X11_XSync(display, False);
-    X11_XSetErrorHandler(handler);
+    x11_error_received = X11_EndErrorTrap(previous_error_handler, &x11_error);
 
     if (!context) {
-        if (errorCode == Success) {
+        if (x11_error_received) {
+            X11_GL_SetError(display, "create GL context", _this->gl_data->errorBase, &x11_error);
+        } else {
             SDL_SetError("Could not create GL context");
         }
         return NULL;
@@ -937,23 +929,22 @@ bool X11_GL_MakeCurrent(SDL_VideoDevice *_this, SDL_Window *window, SDL_GLContex
     Window drawable =
         (context ? window->internal->xwindow : None);
     GLXContext glx_context = (GLXContext)context;
+    XErrorEvent x11_error;
+    XErrorHandler previous_error_handler;
+    bool x11_error_received;
     int rc;
 
     if (!_this->gl_data) {
         return SDL_SetError("OpenGL not initialized");
     }
 
-    // We do this to create a clean separation between X and GLX errors.
-    X11_XSync(display, False);
-    errorHandlerOperation = "make GL context current";
-    errorBase = _this->gl_data->errorBase;
-    errorCode = Success;
-    handler = X11_XSetErrorHandler(X11_GL_ErrorHandler);
+    previous_error_handler = X11_BeginErrorTrap(display, None, 0);
     rc = _this->gl_data->glXMakeCurrent(display, drawable, glx_context);
-    X11_XSetErrorHandler(handler);
+    x11_error_received = X11_EndErrorTrap(previous_error_handler, &x11_error);
 
-    if (errorCode != Success) { // uhoh, an X error was thrown!
-        return false;              // the error handler called SDL_SetError() already.
+    if (x11_error_received) {
+        X11_GL_SetError(display, "make GL context current", _this->gl_data->errorBase, &x11_error);
+        return false;
     } else if (!rc) {           // glXMakeCurrent() failed without throwing an X error
         return SDL_SetError("Unable to make GL context current");
     }

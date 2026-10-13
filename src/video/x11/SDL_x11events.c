@@ -793,20 +793,6 @@ static void X11_UpdateUserTime(SDL_WindowData *data, const unsigned long latest)
     }
 }
 
-static unsigned char x11_last_error;
-static int BadWindowErrorHandler(Display *d, XErrorEvent *e)
-{
-    x11_last_error = e->error_code;
-
-    // Ignore BadWindow in cases where it's not fatal.
-    if (e->error_code != BadWindow) {
-        char err_msg[128];
-        X11_XGetErrorText(d, e->error_code, err_msg, sizeof(err_msg));
-        SDL_LogError(SDL_LOG_CATEGORY_VIDEO, "X failed request: %hhu (%s), major opcode: %hhu", e->error_code, err_msg, e->request_code);
-    }
-    return 0;
-}
-
 static void X11_HandleClipboardEvent(SDL_VideoDevice *_this, const XEvent *xevent)
 {
     int i;
@@ -841,8 +827,7 @@ static void X11_HandleClipboardEvent(SDL_VideoDevice *_this, const XEvent *xeven
         /* If the requesting window was already destroyed, XChangeProperty can generate a BadWindow
          * error. Register an error handler to catch this, and prevent it from being fatal.
          */
-        x11_last_error = 0;
-        XErrorHandler prev_handler = X11_XSetErrorHandler(BadWindowErrorHandler);
+        XErrorHandler prev_handler = X11_BeginErrorTrap(display, req->requestor, BadWindow);
 
         if (req->selection == XA_PRIMARY) {
             clipboard = &videodata->primary_selection;
@@ -900,9 +885,7 @@ static void X11_HandleClipboardEvent(SDL_VideoDevice *_this, const XEvent *xeven
             }
         }
         X11_XSendEvent(display, req->requestor, False, 0, &sevent);
-        X11_XSync(display, False);
-
-        X11_XSetErrorHandler(prev_handler);
+        X11_EndErrorTrap(prev_handler, NULL);
     } break;
 
     case SelectionNotify:
@@ -1292,13 +1275,13 @@ void X11_EmitConfigureNotifyEvents(SDL_WindowData *data, XConfigureEvent *xevent
 static SDL_WindowFlags X11_GetNetWMStateForEvent(SDL_VideoDevice *_this, SDL_WindowData *data, Window xwindow)
 {
     Display *display = data->videodata->display;
-    XErrorHandler previous_error_handler = X11_BeginWindowErrorTrap(display, xwindow);
+    XErrorHandler previous_error_handler = X11_BeginErrorTrap(display, xwindow, BadWindow);
     SDL_WindowFlags flags = X11_GetNetWMState(_this, data->window, xwindow);
     bool destroyed_window_error;
 
-    destroyed_window_error = X11_EndWindowErrorTrap(previous_error_handler);
+    destroyed_window_error = X11_EndErrorTrap(previous_error_handler, NULL);
     if (destroyed_window_error) {
-        data->xwindow_destroyed = true;
+        data->window->native_window_destroyed = true;
         return 0;
     }
     return flags;
@@ -1317,7 +1300,7 @@ static void X11_DispatchEvent(SDL_VideoDevice *_this, XEvent *xevent)
 
     if (xevent->type != GenericEvent) {
         data = X11_FindWindow(videodata, xevent->xany.window);
-        if (data && data->xwindow_destroyed && xevent->type != DestroyNotify) {
+        if (data && data->window->native_window_destroyed && xevent->type != DestroyNotify) {
             return;
         }
     }
@@ -1522,7 +1505,7 @@ static void X11_DispatchEvent(SDL_VideoDevice *_this, XEvent *xevent)
 
     case DestroyNotify:
         if (data) {
-            data->xwindow_destroyed = true;
+            data->window->native_window_destroyed = true;
             data->pending_focus = PENDING_FOCUS_NONE;
             if (SDL_GetKeyboardFocus() == data->window) {
                 SDL_SetKeyboardFocus(NULL);
@@ -1737,8 +1720,7 @@ static void X11_DispatchEvent(SDL_VideoDevice *_this, XEvent *xevent)
              * XTranslateCoordinates can generate a BadWindow error if called during a racy
              * reparenting operation, so a non-fatal error handler is required.
              */
-            x11_last_error = 0;
-            XErrorHandler prev_handler = X11_XSetErrorHandler(BadWindowErrorHandler);
+            XErrorHandler prev_handler = X11_BeginErrorTrap(data->videodata->display, None, BadWindow);
 
             X11_XQueryTree(data->videodata->display, xevent->xconfigure.window, &Root, &Parent, &Children, &NumChildren);
             X11_XTranslateCoordinates(xevent->xconfigure.display,
@@ -1747,12 +1729,10 @@ static void X11_DispatchEvent(SDL_VideoDevice *_this, XEvent *xevent)
                                       &xevent->xconfigure.x, &xevent->xconfigure.y,
                                       &ChildReturn);
 
-            // Make sure the error callback was called if XTranslateCoordinates() failed.
-            X11_XSync(display, False);
-            X11_XSetErrorHandler(prev_handler);
+            const bool bad_window = X11_EndErrorTrap(prev_handler, NULL);
 
             // If XTranslateCoordinates failed due to a BadWindow error, nothing more to do here.
-            if (x11_last_error == BadWindow) {
+            if (bad_window) {
                 break;
             }
         }
@@ -1763,7 +1743,7 @@ static void X11_DispatchEvent(SDL_VideoDevice *_this, XEvent *xevent)
          * PropertyNotify arrives for consistency.
          */
         const SDL_WindowFlags changed = X11_GetNetWMStateForEvent(_this, data, xevent->xproperty.window) ^ data->window->flags;
-        if (data->xwindow_destroyed) {
+        if (data->window->native_window_destroyed) {
             break;
         }
         if (changed & (SDL_WINDOW_FULLSCREEN | SDL_WINDOW_MAXIMIZED)) {
@@ -2072,7 +2052,7 @@ static void X11_DispatchEvent(SDL_VideoDevice *_this, XEvent *xevent)
              * because they use the NETWM protocol to notify us of changes.
              */
             const SDL_WindowFlags flags = X11_GetNetWMStateForEvent(_this, data, xevent->xproperty.window);
-            if (data->xwindow_destroyed) {
+            if (data->window->native_window_destroyed) {
                 break;
             }
             const SDL_WindowFlags changed = flags ^ data->window->flags;
@@ -2321,7 +2301,7 @@ static void X11_HandleFocusChanges(SDL_VideoDevice *_this)
             SDL_WindowData *data = videodata->windowlist[i];
             if (data && data->pending_focus != PENDING_FOCUS_NONE) {
                 Uint64 now = SDL_GetTicks();
-                if (data->xwindow_destroyed) {
+                if (data->window->native_window_destroyed) {
                     data->pending_focus = PENDING_FOCUS_NONE;
                 } else if (now >= data->pending_focus_time) {
                     if (data->pending_focus == PENDING_FOCUS_IN) {
@@ -2380,7 +2360,7 @@ static void X11_PumpEventQueue(SDL_VideoDevice *_this)
             if (events[i].type == DestroyNotify) {
                 SDL_WindowData *data = X11_FindWindow(videodata, events[i].xdestroywindow.window);
                 if (data) {
-                    data->xwindow_destroyed = true;
+                    data->window->native_window_destroyed = true;
                 }
             }
         }

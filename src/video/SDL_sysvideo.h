@@ -107,6 +107,7 @@ struct SDL_Window
     bool update_fullscreen_on_display_changed;
     bool constrain_popup;
     bool is_destroying;
+    bool native_window_destroyed;
     bool is_dropping; // drag/drop in progress, expecting SDL_SendDropComplete().
 
     int safe_inset_left;

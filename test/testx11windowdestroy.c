@@ -55,6 +55,32 @@ typedef struct
     Atom value;
 } DestroyWindowData;
 
+static bool ClearPresentAndPump(SDL_Renderer *renderer)
+{
+    bool result = SDL_RenderClear(renderer) && SDL_RenderPresent(renderer);
+    SDL_PumpEvents();
+    return result;
+}
+
+static bool RenderTargetAfterDestroy(SDL_Renderer *renderer)
+{
+    SDL_Texture *target = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_TARGET, 8, 8);
+    bool result = true;
+
+    if (target) {
+        if (SDL_SetRenderTarget(renderer, target)) {
+            result = SDL_RenderClear(renderer) && SDL_FlushRenderer(renderer);
+            if (!SDL_SetRenderTarget(renderer, NULL)) {
+                result = false;
+            }
+        } else {
+            result = false;
+        }
+        SDL_DestroyTexture(target);
+    }
+    return result;
+}
+
 static bool SDLCALL X11EventHook(void *userdata, XEvent *event)
 {
     (void)userdata;
@@ -144,7 +170,7 @@ static bool DestroyWindowBeforeNotify(SDL_Window *window)
     return true;
 }
 
-static bool DestroyWindowExternally(SDL_Window *window, SDL_Window *survivor)
+static bool DestroyWindowExternally(SDL_Window *window, SDL_Window *survivor, SDL_Renderer *renderer)
 {
     DestroyWindowData destroy_data;
     SDL_Event event;
@@ -152,6 +178,8 @@ static bool DestroyWindowExternally(SDL_Window *window, SDL_Window *survivor)
     SDL_Thread *thread;
     int status;
     bool close_requested = false;
+    bool present_rejected_after_destroy = false;
+    bool texture_rendered_after_destroy = false;
     Uint64 deadline;
 
     destroy_data.window = (Window)SDL_GetNumberProperty(SDL_GetWindowProperties(window), SDL_PROP_WINDOW_X11_WINDOW_NUMBER, 0);
@@ -183,6 +211,7 @@ static bool DestroyWindowExternally(SDL_Window *window, SDL_Window *survivor)
         return false;
     }
     XSync(native_display, False);
+    XMapWindow(native_display, expected_bad_window_resource);
     thread = SDL_CreateThread(DestroyWindowThread, "X11DestroyWindow", &destroy_data);
     if (!thread) {
         return false;
@@ -190,6 +219,7 @@ static bool DestroyWindowExternally(SDL_Window *window, SDL_Window *survivor)
 
     deadline = SDL_GetTicksNS() + 5000000000ULL;
     while (!close_requested && SDL_GetTicksNS() < deadline) {
+        (void)ClearPresentAndPump(renderer);
         if (!SDL_WaitEventTimeout(&event, 1000)) {
             continue;
         }
@@ -198,10 +228,16 @@ static bool DestroyWindowExternally(SDL_Window *window, SDL_Window *survivor)
         }
     }
     SDL_WaitThread(thread, &status);
-    if (!close_requested || !ordering.sibling_event || !ordering.pending_event || !ordering.destroy_event || ordering.sibling_event >= ordering.pending_event || ordering.pending_event >= ordering.destroy_event || status != 0) {
-        SDL_Log("external destroy: close=%d, sibling event order=%d, pending event order=%d, destroy event order=%d, thread status=%d", close_requested, ordering.sibling_event, ordering.pending_event, ordering.destroy_event, status);
+    if (close_requested) {
+        texture_rendered_after_destroy = RenderTargetAfterDestroy(renderer);
     }
-    return close_requested && ordering.sibling_event && ordering.pending_event && ordering.destroy_event && ordering.sibling_event < ordering.pending_event && ordering.pending_event < ordering.destroy_event && status == 0;
+    if (close_requested && SDL_RenderClear(renderer)) {
+        present_rejected_after_destroy = !SDL_RenderPresent(renderer);
+    }
+    if (!close_requested || !ordering.sibling_event || !ordering.pending_event || !ordering.destroy_event || ordering.sibling_event >= ordering.pending_event || ordering.pending_event >= ordering.destroy_event || !present_rejected_after_destroy || !texture_rendered_after_destroy || status != 0) {
+        SDL_Log("external destroy: close=%d, target render=%d, rejected present=%d, sibling event order=%d, pending event order=%d, destroy event order=%d, thread status=%d", close_requested, texture_rendered_after_destroy, present_rejected_after_destroy, ordering.sibling_event, ordering.pending_event, ordering.destroy_event, status);
+    }
+    return close_requested && ordering.sibling_event && ordering.pending_event && ordering.destroy_event && ordering.sibling_event < ordering.pending_event && ordering.pending_event < ordering.destroy_event && present_rejected_after_destroy && texture_rendered_after_destroy && status == 0;
 }
 
 int main(int argc, char **argv)
@@ -215,6 +251,10 @@ int main(int argc, char **argv)
     SDL_Window *default_window;
     SDL_Window *immediate_window;
     SDL_Window *survivor_window;
+    SDL_Renderer *renderer;
+    SDL_Renderer *default_renderer;
+    SDL_Renderer *immediate_renderer;
+    SDL_Renderer *survivor_renderer;
     bool handler_restored;
     bool default_handler_restored;
     bool immediate_destroy_ok;
@@ -233,8 +273,13 @@ int main(int argc, char **argv)
         return 77;
     }
 
-    window = SDL_CreateWindow("X11 external destroy test", 100, 100, 0);
-    if (!window) {
+    if (!SDL_CreateWindowAndRenderer("X11 external destroy test", 100, 100, 0, &window, &renderer)) {
+        SDL_Quit();
+        return 1;
+    }
+    if (!ClearPresentAndPump(renderer)) {
+        SDL_DestroyRenderer(renderer);
+        SDL_DestroyWindow(window);
         SDL_Quit();
         return 1;
     }
@@ -254,7 +299,9 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    survivor_window = SDL_CreateWindow("X11 surviving window test", 100, 100, 0);
+    if (!SDL_CreateWindowAndRenderer("X11 surviving window test", 100, 100, 0, &survivor_window, &survivor_renderer)) {
+        survivor_window = NULL;
+    }
     if (!survivor_window || !SDL_ShowWindow(survivor_window)) {
         SDL_DestroyWindow(survivor_window);
         SDL_DestroyWindow(window);
@@ -269,6 +316,15 @@ int main(int argc, char **argv)
         }
     }
     while (SDL_PollEvent(&event)) {
+    }
+    if (!ClearPresentAndPump(survivor_renderer)) {
+        SDL_DestroyRenderer(survivor_renderer);
+        SDL_DestroyWindow(survivor_window);
+        SDL_DestroyRenderer(renderer);
+        SDL_DestroyWindow(window);
+        SDL_Quit();
+        XSetErrorHandler(previous_error_handler);
+        return 1;
     }
     if (!survivor_shown) {
         SDL_DestroyWindow(survivor_window);
@@ -288,7 +344,7 @@ int main(int argc, char **argv)
     XSetErrorHandler(NULL);
     default_error_handler = XSetErrorHandler(X11_TestErrorHandler);
 
-    close_requested = DestroyWindowExternally(window, survivor_window);
+    close_requested = DestroyWindowExternally(window, survivor_window, renderer);
 
     SDL_SetAtomicInt(&error_thread_data.ready, 0);
     error_thread = SDL_CreateThread(X11ErrorThread, "X11ErrorRacer", &error_thread_data);
@@ -313,8 +369,14 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    immediate_window = SDL_CreateWindow("X11 destroy before notify test", 100, 100, 0);
-    if (!immediate_window) {
+    if (!SDL_CreateWindowAndRenderer("X11 destroy before notify test", 100, 100, 0, &immediate_window, &immediate_renderer)) {
+        SDL_Quit();
+        XSetErrorHandler(previous_error_handler);
+        return 1;
+    }
+    if (!ClearPresentAndPump(immediate_renderer)) {
+        SDL_DestroyRenderer(immediate_renderer);
+        SDL_DestroyWindow(immediate_window);
         SDL_Quit();
         XSetErrorHandler(previous_error_handler);
         return 1;
@@ -324,8 +386,16 @@ int main(int argc, char **argv)
     immediate_handler_restored = XSetErrorHandler(X11_TestErrorHandler) == default_error_handler;
     SDL_PumpEvents();
 
-    default_window = SDL_CreateWindow("X11 external destroy default handler test", 100, 100, 0);
-    if (!default_window) {
+    if (!SDL_CreateWindowAndRenderer("X11 external destroy default handler test", 100, 100, 0, &default_window, &default_renderer)) {
+        SDL_Quit();
+        XSetErrorHandler(previous_error_handler);
+        return 1;
+    }
+    if (!ClearPresentAndPump(default_renderer)) {
+        SDL_DestroyRenderer(default_renderer);
+        SDL_DestroyWindow(default_window);
+        SDL_DestroyRenderer(survivor_renderer);
+        SDL_DestroyWindow(survivor_window);
         SDL_Quit();
         XSetErrorHandler(previous_error_handler);
         return 1;
@@ -338,7 +408,7 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    default_close_requested = DestroyWindowExternally(default_window, survivor_window);
+    default_close_requested = DestroyWindowExternally(default_window, survivor_window, default_renderer);
     SDL_SetX11EventHook(NULL, NULL);
 
     if (!SDL_SetWindowTitle(survivor_window, "X11 surviving window test") || !SDL_GetWindowID(survivor_window)) {
@@ -358,9 +428,10 @@ int main(int argc, char **argv)
     SDL_Quit();
     XSetErrorHandler(previous_error_handler);
 
-    if (!close_requested || expected_bad_window != 1 || unexpected_errors != 0 || SDL_GetAtomicInt(&racer_errors) != 1000 || !handler_restored || !immediate_destroy_ok || !immediate_handler_restored || !default_close_requested || !default_handler_restored || error_thread_status != 0) {
-        SDL_Log("close=%d, expected BadWindow=%d, unexpected errors=%d, error=%u, restored handler=%d, immediate destroy=%d, immediate handler restored=%d, default close=%d, default restored handler=%d, display=%p (native=%p), resource=0x%lx, serial=%lu, request=%u.%u",
-                close_requested, expected_bad_window, unexpected_errors, (unsigned int)unexpected_error.error_code, handler_restored,
+    if (!close_requested || expected_bad_window != 3 || unexpected_errors != 0 || SDL_GetAtomicInt(&racer_errors) != 1000 || !handler_restored || !immediate_destroy_ok || !immediate_handler_restored || !default_close_requested || !default_handler_restored || error_thread_status != 0) {
+        SDL_Log("close=%d, expected BadWindow=%d, unexpected errors=%d, racer errors=%d, error thread status=%d, error=%u, restored handler=%d, immediate destroy=%d, immediate handler restored=%d, default close=%d, default restored handler=%d, display=%p (native=%p), resource=0x%lx, serial=%lu, request=%u.%u",
+                close_requested, expected_bad_window, unexpected_errors, SDL_GetAtomicInt(&racer_errors), error_thread_status,
+                (unsigned int)unexpected_error.error_code, handler_restored,
                 immediate_destroy_ok, immediate_handler_restored, default_close_requested, default_handler_restored,
                 (void *)unexpected_display, (void *)native_display,
                 unexpected_error.resourceid, unexpected_error.serial,

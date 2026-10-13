@@ -111,13 +111,13 @@ static bool X11_IsWindowMapped(SDL_VideoDevice *_this, SDL_Window *window)
     XWindowAttributes attr;
 
     if (window->is_destroying) {
-        XErrorHandler previous_error_handler = X11_BeginWindowErrorTrap(videodata->display, data->xwindow);
+        XErrorHandler previous_error_handler = X11_BeginErrorTrap(videodata->display, data->xwindow, BadWindow);
         bool destroyed_window_error;
 
         X11_XGetWindowAttributes(videodata->display, data->xwindow, &attr);
-        destroyed_window_error = X11_EndWindowErrorTrap(previous_error_handler);
+        destroyed_window_error = X11_EndErrorTrap(previous_error_handler, NULL);
         if (destroyed_window_error) {
-            data->xwindow_destroyed = true;
+            data->window->native_window_destroyed = true;
             return false;
         }
     } else {
@@ -976,6 +976,7 @@ static void X11_ExternalResizeMoveSync(SDL_Window *window)
     const bool send_move = !!(data->pending_operation & X11_PENDING_OP_MOVE);
     const bool send_resize = !!(data->pending_operation & X11_PENDING_OP_RESIZE);
 
+    X11_LockErrorHandler();
     X11_XSync(display, False);
     X11_XQueryTree(display, data->xwindow, &root, &parent, &children, &childCount);
     prev_handler = X11_XSetErrorHandler(X11_CatchAnyError);
@@ -1029,6 +1030,7 @@ static void X11_ExternalResizeMoveSync(SDL_Window *window)
 
     X11_XSetErrorHandler(prev_handler);
     caught_x11_error = false;
+    X11_UnlockErrorHandler();
 }
 
 /* Wait a brief time, or not, to see if the window manager decided to move/resize the window.
@@ -1042,6 +1044,7 @@ static bool X11_SyncWindowTimeout(SDL_VideoDevice *_this, SDL_Window *window, Ui
     bool force_exit = false;
     bool result = true;
 
+    X11_LockErrorHandler();
     X11_XSync(display, False);
     prev_handler = X11_XSetErrorHandler(X11_CatchAnyError);
 
@@ -1051,7 +1054,9 @@ static bool X11_SyncWindowTimeout(SDL_VideoDevice *_this, SDL_Window *window, Ui
 
     while (true) {
         X11_XSync(display, False);
+        X11_UnlockErrorHandler();
         X11_PumpEvents(_this);
+        X11_LockErrorHandler();
 
         if ((data->pending_operation & X11_PENDING_OP_MOVE) && (window->x == data->expected.x + data->border_left && window->y == data->expected.y + data->border_top)) {
             data->pending_operation &= ~X11_PENDING_OP_MOVE;
@@ -1091,13 +1096,16 @@ static bool X11_SyncWindowTimeout(SDL_VideoDevice *_this, SDL_Window *window, Ui
     data->pending_operation = X11_PENDING_OP_NONE;
 
     if (!caught_x11_error) {
+        X11_UnlockErrorHandler();
         X11_PumpEvents(_this);
+        X11_LockErrorHandler();
     } else {
         result = false;
     }
 
     X11_XSetErrorHandler(prev_handler);
     caught_x11_error = false;
+    X11_UnlockErrorHandler();
 
     return result;
 }
@@ -1126,6 +1134,7 @@ bool X11_SetWindowIcon(SDL_VideoDevice *_this, SDL_Window *window, SDL_Surface *
             return false;
         }
 
+        X11_LockErrorHandler();
         X11_XSync(display, False);
         prevHandler = X11_XSetErrorHandler(X11_CatchAnyError);
 
@@ -1155,6 +1164,9 @@ bool X11_SetWindowIcon(SDL_VideoDevice *_this, SDL_Window *window, SDL_Surface *
     if (prevHandler) {
         X11_XSetErrorHandler(prevHandler);
         caught_x11_error = false;
+    }
+    if (icon) {
+        X11_UnlockErrorHandler();
     }
 
     return result;
@@ -1651,7 +1663,7 @@ void X11_HideWindow(SDL_VideoDevice *_this, SDL_Window *window)
     Display *display = data->videodata->display;
     XEvent event;
 
-    if (data->xwindow_destroyed) {
+    if (data->window->native_window_destroyed) {
         return;
     }
 
@@ -1659,7 +1671,7 @@ void X11_HideWindow(SDL_VideoDevice *_this, SDL_Window *window)
      * must not block while waiting for an UnmapNotify event that will never arrive.
      */
     const bool is_mapped = X11_IsWindowMapped(_this, window);
-    if (data->xwindow_destroyed) {
+    if (data->window->native_window_destroyed) {
         return;
     }
     X11_XWithdrawWindow(display, data->xwindow, screen);
@@ -1859,7 +1871,7 @@ static SDL_FullscreenResult X11_SetWindowFullscreenViaWM(SDL_VideoDevice *_this,
     Atom _NET_WM_STATE = data->videodata->atoms._NET_WM_STATE;
     Atom _NET_WM_STATE_FULLSCREEN = data->videodata->atoms._NET_WM_STATE_FULLSCREEN;
 
-    if (data->xwindow_destroyed) {
+    if (data->window->native_window_destroyed) {
         return SDL_FULLSCREEN_SUCCEEDED;
     }
 
@@ -2147,7 +2159,7 @@ bool X11_SetWindowMouseGrab(SDL_VideoDevice *_this, SDL_Window *window, bool gra
     data->mouse_grabbed = false;
     data->pending_grab = false;
 
-    if (data->xwindow_destroyed) {
+    if (data->window->native_window_destroyed) {
         return true;
     }
 
@@ -2220,7 +2232,7 @@ bool X11_SetWindowKeyboardGrab(SDL_VideoDevice *_this, SDL_Window *window, bool 
         return SDL_SetError("Invalid window data");
     }
 
-    if (data->xwindow_destroyed) {
+    if (data->window->native_window_destroyed) {
         return true;
     }
 
@@ -2295,20 +2307,19 @@ void X11_DestroyWindow(SDL_VideoDevice *_this, SDL_Window *window)
             }
         }
 
-        previous_error_handler = X11_BeginWindowErrorTrap(display, data->xwindow);
+        previous_error_handler = X11_BeginErrorTrap(display, data->xwindow, BadWindow);
         X11_DestroyInputContext(data);
 
 #ifdef SDL_VIDEO_DRIVER_X11_XSYNC
         X11_TermResizeSync(window);
 #endif /* SDL_VIDEO_DRIVER_X11_XSYNC */
 
-        if (!data->xwindow_destroyed && !(window->flags & SDL_WINDOW_EXTERNAL)) {
+        if (!data->window->native_window_destroyed && !(window->flags & SDL_WINDOW_EXTERNAL)) {
             X11_XDestroyWindow(display, data->xwindow);
         }
-        X11_XSync(display, False);
-        destroyed_window_error = X11_EndWindowErrorTrap(previous_error_handler);
+        destroyed_window_error = X11_EndErrorTrap(previous_error_handler, NULL);
         if (destroyed_window_error) {
-            data->xwindow_destroyed = true;
+            data->window->native_window_destroyed = true;
         }
 
 #ifdef SDL_VIDEO_DRIVER_X11_XFIXES
