@@ -118,6 +118,7 @@ struct SDL_WindowData
     bool toggle_borders;
     bool fullscreen_borders_forced_on;
     bool was_shown;
+    bool xwindow_destroyed;
     bool emit_size_move_after_property_notify;
     SDL_HitTestResult hit_test_result;
     bool pending_grab;

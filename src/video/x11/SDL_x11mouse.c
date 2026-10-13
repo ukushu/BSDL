@@ -379,7 +379,7 @@ static bool X11_ShowCursor(SDL_Cursor *cursor)
 
         for (window = video->windows; window; window = window->next) {
             SDL_WindowData *data = window->internal;
-            if (data) {
+            if (data && !data->xwindow_destroyed) {
                 if (x11_cursor != None) {
                     X11_XDefineCursor(display, data->xwindow, x11_cursor);
                 } else {

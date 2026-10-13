@@ -29,6 +29,7 @@
 #include <limits.h> // For INT_MAX
 
 #include "SDL_x11video.h"
+#include "SDL_x11keyboard.h"
 #include "SDL_x11pen.h"
 #include "SDL_x11touch.h"
 #include "SDL_x11xinput2.h"
@@ -1288,21 +1289,43 @@ void X11_EmitConfigureNotifyEvents(SDL_WindowData *data, XConfigureEvent *xevent
     SDL_copyp(&data->last_xconfigure, xevent);
 }
 
+static SDL_WindowFlags X11_GetNetWMStateForEvent(SDL_VideoDevice *_this, SDL_WindowData *data, Window xwindow)
+{
+    Display *display = data->videodata->display;
+    XErrorHandler previous_error_handler = X11_BeginWindowErrorTrap(display, xwindow);
+    SDL_WindowFlags flags = X11_GetNetWMState(_this, data->window, xwindow);
+    bool destroyed_window_error;
+
+    destroyed_window_error = X11_EndWindowErrorTrap(previous_error_handler);
+    if (destroyed_window_error) {
+        data->xwindow_destroyed = true;
+        return 0;
+    }
+    return flags;
+}
+
 static void X11_DispatchEvent(SDL_VideoDevice *_this, XEvent *xevent)
 {
     SDL_VideoData *videodata = _this->internal;
     Display *display;
-    SDL_WindowData *data;
+    SDL_WindowData *data = NULL;
     XClientMessageEvent m;
     int i;
 
     SDL_assert(videodata != NULL);
     display = videodata->display;
 
+    if (xevent->type != GenericEvent) {
+        data = X11_FindWindow(videodata, xevent->xany.window);
+        if (data && data->xwindow_destroyed && xevent->type != DestroyNotify) {
+            return;
+        }
+    }
+
     // filter events catches XIM events and sends them to the correct handler
     // Key press/release events are filtered in X11_HandleKeyEvent()
-    if (xevent->type != KeyPress && xevent->type != KeyRelease) {
-        if (X11_XFilterEvent(xevent, None)) {
+    if (xevent->type != KeyPress && xevent->type != KeyRelease && !(data && xevent->type == DestroyNotify)) {
+        if (X11_FilterEvent(data, xevent)) {
 #ifdef DEBUG_XEVENTS
             SDL_Log("Filtered event type = %d display = %p window = 0x%lx",
                    xevent->type, xevent->xany.display, xevent->xany.window);
@@ -1496,6 +1519,20 @@ static void X11_DispatchEvent(SDL_VideoDevice *_this, XEvent *xevent)
     }
 
     switch (xevent->type) {
+
+    case DestroyNotify:
+        if (data) {
+            data->xwindow_destroyed = true;
+            data->pending_focus = PENDING_FOCUS_NONE;
+            if (SDL_GetKeyboardFocus() == data->window) {
+                SDL_SetKeyboardFocus(NULL);
+            }
+            if (SDL_GetMouseFocus() == data->window) {
+                SDL_SetMouseFocus(NULL);
+            }
+            SDL_SendWindowEvent(data->window, SDL_EVENT_WINDOW_CLOSE_REQUESTED, 0, 0);
+        }
+        break;
 
         // Gaining mouse coverage?
     case EnterNotify:
@@ -1725,7 +1762,10 @@ static void X11_DispatchEvent(SDL_VideoDevice *_this, XEvent *xevent)
          * expected by SDL and its clients. Defer emitting the size/move events until the corresponding
          * PropertyNotify arrives for consistency.
          */
-        const SDL_WindowFlags changed = X11_GetNetWMState(_this, data->window, xevent->xproperty.window) ^ data->window->flags;
+        const SDL_WindowFlags changed = X11_GetNetWMStateForEvent(_this, data, xevent->xproperty.window) ^ data->window->flags;
+        if (data->xwindow_destroyed) {
+            break;
+        }
         if (changed & (SDL_WINDOW_FULLSCREEN | SDL_WINDOW_MAXIMIZED)) {
             SDL_copyp(&data->pending_xconfigure, &xevent->xconfigure);
             data->emit_size_move_after_property_notify = true;
@@ -2031,7 +2071,10 @@ static void X11_DispatchEvent(SDL_VideoDevice *_this, XEvent *xevent)
              * without ever mapping / unmapping them, so we handle that here,
              * because they use the NETWM protocol to notify us of changes.
              */
-            const SDL_WindowFlags flags = X11_GetNetWMState(_this, data->window, xevent->xproperty.window);
+            const SDL_WindowFlags flags = X11_GetNetWMStateForEvent(_this, data, xevent->xproperty.window);
+            if (data->xwindow_destroyed) {
+                break;
+            }
             const SDL_WindowFlags changed = flags ^ data->window->flags;
 
             if ((changed & SDL_WINDOW_HIDDEN) && !(flags & SDL_WINDOW_HIDDEN)) {
@@ -2278,7 +2321,9 @@ static void X11_HandleFocusChanges(SDL_VideoDevice *_this)
             SDL_WindowData *data = videodata->windowlist[i];
             if (data && data->pending_focus != PENDING_FOCUS_NONE) {
                 Uint64 now = SDL_GetTicks();
-                if (now >= data->pending_focus_time) {
+                if (data->xwindow_destroyed) {
+                    data->pending_focus = PENDING_FOCUS_NONE;
+                } else if (now >= data->pending_focus_time) {
                     if (data->pending_focus == PENDING_FOCUS_IN) {
                         X11_DispatchFocusIn(_this, data);
                     } else {
@@ -2305,12 +2350,57 @@ static bool X11_PollEvent(Display *display, XEvent *event)
     return true;
 }
 
+static void X11_PumpEventQueue(SDL_VideoDevice *_this)
+{
+    SDL_VideoData *videodata = _this->internal;
+    Display *display = videodata->display;
+    int queued;
+
+    while ((queued = X11_XEventsQueued(display, QueuedAfterReading)) > 0) {
+        XEvent stack_events[16];
+        XEvent *events = stack_events;
+        if (queued > SDL_arraysize(stack_events)) {
+            size_t allocation_size;
+            if (!SDL_size_mul_check_overflow((size_t)queued, sizeof(*events), &allocation_size)) {
+                allocation_size = 0;
+            }
+            events = allocation_size ? SDL_malloc(allocation_size) : NULL;
+        }
+        if (!events) {
+            return;
+        }
+
+        for (int i = 0; i < queued; ++i) {
+            if (!X11_PollEvent(display, &events[i])) {
+                queued = i;
+                break;
+            }
+        }
+        for (int i = 0; i < queued; ++i) {
+            if (events[i].type == DestroyNotify) {
+                SDL_WindowData *data = X11_FindWindow(videodata, events[i].xdestroywindow.window);
+                if (data) {
+                    data->xwindow_destroyed = true;
+                }
+            }
+        }
+        for (int i = 0; i < queued; ++i) {
+            X11_DispatchEvent(_this, &events[i]);
+        }
+        if (events != stack_events) {
+            SDL_free(events);
+        }
+    }
+}
+
 void X11_SendWakeupEvent(SDL_VideoDevice *_this, SDL_Window *window)
 {
     SDL_VideoData *data = _this->internal;
     Display *req_display = data->request_display;
-    Window xwindow = window->internal->xwindow;
+    Window xwindow = data->clipboard_window;
     XClientMessageEvent event;
+
+    (void)window;
 
     SDL_zero(event);
     event.type = ClientMessage;
@@ -2365,14 +2455,14 @@ int X11_WaitEventTimeout(SDL_VideoDevice *_this, Sint64 timeoutNS)
         }
     }
 
-    X11_DispatchEvent(_this, &xevent);
+    X11_XPutBackEvent(display, &xevent);
+    X11_PumpEventQueue(_this);
     return 1;
 }
 
 void X11_PumpEvents(SDL_VideoDevice *_this)
 {
     SDL_VideoData *data = _this->internal;
-    XEvent xevent;
     int i;
 
     /* Check if a display had the mode changed and is waiting for a window to asynchronously become
@@ -2411,12 +2501,8 @@ void X11_PumpEvents(SDL_VideoDevice *_this)
         }
     }
 
-    SDL_zero(xevent);
-
     // Keep processing pending events
-    while (X11_PollEvent(data->display, &xevent)) {
-        X11_DispatchEvent(_this, &xevent);
-    }
+    X11_PumpEventQueue(_this);
 
     // FIXME: Only need to do this when there are pending focus changes
     X11_HandleFocusChanges(_this);

@@ -981,7 +981,7 @@ void X11_Xinput2GrabTouch(SDL_VideoDevice *_this, SDL_Window *window)
     XIGrabModifiers mods;
     XIEventMask eventmask;
 
-    if (!xinput2_multitouch_supported) {
+    if (!xinput2_multitouch_supported || data->xwindow_destroyed) {
         return;
     }
 
@@ -1009,7 +1009,7 @@ void X11_Xinput2UngrabTouch(SDL_VideoDevice *_this, SDL_Window *window)
 
     XIGrabModifiers mods;
 
-    if (!xinput2_multitouch_supported) {
+    if (!xinput2_multitouch_supported || data->xwindow_destroyed) {
         return;
     }
 

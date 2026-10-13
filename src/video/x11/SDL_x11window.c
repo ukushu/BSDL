@@ -30,6 +30,7 @@
 #include "../../core/unix/SDL_appid.h"
 
 #include "SDL_x11video.h"
+#include "SDL_x11keyboard.h"
 #include "SDL_x11mouse.h"
 #include "SDL_x11xinput2.h"
 #include "SDL_x11xfixes.h"
@@ -109,7 +110,19 @@ static bool X11_IsWindowMapped(SDL_VideoDevice *_this, SDL_Window *window)
     SDL_VideoData *videodata = _this->internal;
     XWindowAttributes attr;
 
-    X11_XGetWindowAttributes(videodata->display, data->xwindow, &attr);
+    if (window->is_destroying) {
+        XErrorHandler previous_error_handler = X11_BeginWindowErrorTrap(videodata->display, data->xwindow);
+        bool destroyed_window_error;
+
+        X11_XGetWindowAttributes(videodata->display, data->xwindow, &attr);
+        destroyed_window_error = X11_EndWindowErrorTrap(previous_error_handler);
+        if (destroyed_window_error) {
+            data->xwindow_destroyed = true;
+            return false;
+        }
+    } else {
+        X11_XGetWindowAttributes(videodata->display, data->xwindow, &attr);
+    }
     if (attr.map_state != IsUnmapped) {
         return true;
     } else {
@@ -1638,10 +1651,17 @@ void X11_HideWindow(SDL_VideoDevice *_this, SDL_Window *window)
     Display *display = data->videodata->display;
     XEvent event;
 
+    if (data->xwindow_destroyed) {
+        return;
+    }
+
     /* Some window managers will mark minimized or offscreen windows as unmapped, so we
      * must not block while waiting for an UnmapNotify event that will never arrive.
      */
     const bool is_mapped = X11_IsWindowMapped(_this, window);
+    if (data->xwindow_destroyed) {
+        return;
+    }
     X11_XWithdrawWindow(display, data->xwindow, screen);
     if (is_mapped && !(window->flags & SDL_WINDOW_EXTERNAL) && X11_IsDisplayOk(display)) {
         // Blocking wait for "UnmapNotify" event.
@@ -1838,6 +1858,10 @@ static SDL_FullscreenResult X11_SetWindowFullscreenViaWM(SDL_VideoDevice *_this,
     Display *display = data->videodata->display;
     Atom _NET_WM_STATE = data->videodata->atoms._NET_WM_STATE;
     Atom _NET_WM_STATE_FULLSCREEN = data->videodata->atoms._NET_WM_STATE_FULLSCREEN;
+
+    if (data->xwindow_destroyed) {
+        return SDL_FULLSCREEN_SUCCEEDED;
+    }
 
     if (!data->was_shown && fullscreen == SDL_FULLSCREEN_OP_LEAVE) {
         return SDL_FULLSCREEN_SUCCEEDED;
@@ -2123,6 +2147,10 @@ bool X11_SetWindowMouseGrab(SDL_VideoDevice *_this, SDL_Window *window, bool gra
     data->mouse_grabbed = false;
     data->pending_grab = false;
 
+    if (data->xwindow_destroyed) {
+        return true;
+    }
+
     display = data->videodata->display;
 
     if (grabbed) {
@@ -2192,6 +2220,10 @@ bool X11_SetWindowKeyboardGrab(SDL_VideoDevice *_this, SDL_Window *window, bool 
         return SDL_SetError("Invalid window data");
     }
 
+    if (data->xwindow_destroyed) {
+        return true;
+    }
+
     display = data->videodata->display;
 
     if (grabbed) {
@@ -2248,6 +2280,8 @@ void X11_DestroyWindow(SDL_VideoDevice *_this, SDL_Window *window)
         Display *display = videodata->display;
         int numwindows = videodata->numwindows;
         SDL_WindowData **windowlist = videodata->windowlist;
+        XErrorHandler previous_error_handler;
+        bool destroyed_window_error;
         int i;
 
         if (windowlist) {
@@ -2261,17 +2295,21 @@ void X11_DestroyWindow(SDL_VideoDevice *_this, SDL_Window *window)
             }
         }
 
+        previous_error_handler = X11_BeginWindowErrorTrap(display, data->xwindow);
         X11_DestroyInputContext(data);
 
 #ifdef SDL_VIDEO_DRIVER_X11_XSYNC
         X11_TermResizeSync(window);
 #endif /* SDL_VIDEO_DRIVER_X11_XSYNC */
 
-        if (!(window->flags & SDL_WINDOW_EXTERNAL)) {
+        if (!data->xwindow_destroyed && !(window->flags & SDL_WINDOW_EXTERNAL)) {
             X11_XDestroyWindow(display, data->xwindow);
-            X11_XFlush(display);
         }
-        SDL_free(data);
+        X11_XSync(display, False);
+        destroyed_window_error = X11_EndWindowErrorTrap(previous_error_handler);
+        if (destroyed_window_error) {
+            data->xwindow_destroyed = true;
+        }
 
 #ifdef SDL_VIDEO_DRIVER_X11_XFIXES
         // If the pointer barriers are active for this, deactivate it.
@@ -2279,6 +2317,10 @@ void X11_DestroyWindow(SDL_VideoDevice *_this, SDL_Window *window)
             X11_DestroyPointerBarrier(_this, window);
         }
 #endif // SDL_VIDEO_DRIVER_X11_XFIXES
+
+        X11_XFlush(display);
+
+        SDL_free(data);
     }
     window->internal = NULL;
 }

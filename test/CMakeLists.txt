@@ -409,6 +409,11 @@ elseif(HAVE_X11 OR HAVE_WAYLAND)
     endif ()
 endif()
 
+if(HAVE_X11)
+    add_sdl_test_executable(testx11windowdestroy NONINTERACTIVE NONINTERACTIVE_TIMEOUT 20 SOURCES testx11windowdestroy.c NAME83 x11dest)
+    target_link_libraries(testx11windowdestroy PRIVATE X11::X11)
+endif()
+
 add_sdl_test_executable(testasyncio MAIN_CALLBACKS NEEDS_RESOURCES TESTUTILS SOURCES testasyncio.c NAME83 asyncio)
 add_sdl_test_executable(testaudio MAIN_CALLBACKS NEEDS_RESOURCES TESTUTILS SOURCES testaudio.c NAME83 audio)
 add_sdl_test_executable(testcolorspace SOURCES testcolorspace.c NAME83 colorspc)
@@ -726,6 +731,10 @@ endfunction()
 foreach(TARGET ${SDL_TEST_EXECUTABLES})
     add_sdl_test(${TARGET} ${TARGET} INSTALL)
 endforeach()
+
+if(TARGET testx11windowdestroy)
+    set_tests_properties(testx11windowdestroy PROPERTIES SKIP_RETURN_CODE 77)
+endif()
 
 if(NOT EMSCRIPTEN)
     add_sdl_test(testautomation-no-simd testautomation)
