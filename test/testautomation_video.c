@@ -318,6 +318,31 @@ static int SDLCALL video_createWindowVariousFlags(void *arg)
     return TEST_COMPLETED;
 }
 
+static int SDLCALL video_rejectsModalWithoutParent(void *arg)
+{
+    SDL_PropertiesID props = SDL_CreateProperties();
+    SDL_Window *window;
+
+    if (!SDLTest_AssertCheck(props != 0, "Create window properties: %s", SDL_GetError())) {
+        return TEST_ABORTED;
+    }
+    if (!SDLTest_AssertCheck(SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_MODAL_BOOLEAN, true),
+                             "Set modal property: %s", SDL_GetError())) {
+        SDL_DestroyProperties(props);
+        return TEST_ABORTED;
+    }
+    window = SDL_CreateWindowWithProperties(props);
+    SDLTest_AssertCheck(window == NULL, "Modal window without a parent is rejected");
+    SDLTest_AssertCheck(SDL_strcmp(SDL_GetError(), "Modal windows must specify a parent window") == 0,
+                        "Modal window error is preserved: %s", SDL_GetError());
+
+    if (window) {
+        SDL_DestroyWindow(window);
+    }
+    SDL_DestroyProperties(props);
+    return TEST_COMPLETED;
+}
+
 /**
  * Tests the functionality of the SDL_GetWindowFlags function
  */
@@ -2629,6 +2654,10 @@ static const SDLTest_TestCaseReference videoTestCreateWindowVariousFlags = {
     video_createWindowVariousFlags, "video_createWindowVariousFlags", "Create windows using various flags", TEST_ENABLED
 };
 
+static const SDLTest_TestCaseReference videoTestRejectsModalWithoutParent = {
+    video_rejectsModalWithoutParent, "video_rejectsModalWithoutParent", "Reject modal windows without a parent", TEST_ENABLED
+};
+
 static const SDLTest_TestCaseReference videoTestGetWindowFlags = {
     video_getWindowFlags, "video_getWindowFlags", "Get window flags set during SDL_CreateWindow", TEST_ENABLED
 };
@@ -2713,6 +2742,7 @@ static const SDLTest_TestCaseReference *videoTests[] = {
     &videoTestEnableDisableScreensaver,
     &videoTestCreateWindowVariousSizes,
     &videoTestCreateWindowVariousFlags,
+    &videoTestRejectsModalWithoutParent,
     &videoTestGetWindowFlags,
     &videoTestGetFullscreenDisplayModes,
     &videoTestGetClosestDisplayModeCurrentResolution,

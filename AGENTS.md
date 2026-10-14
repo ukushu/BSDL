@@ -1,11 +1,6 @@
-Generative AI, including large language models (LLMs), should not be used in
-any way when contributing to SDL.
+# Repository rules
 
-We want our code to be art. We want to interact with real humans. Please don't
-submit AI-generated comments or code in bug reports or pull requests. We
-understand some people consider AI to be a useful tool, but we want to connect
-with you, not your computer.
-
-Any pull request to this project will ask you to confirm that you are the
-author and that you are contributing your changes under the zlib license.
+- nervs.pp.ua: If you have DNS issue of access to Ori Card - you able to take token from terminal using "deus oriToken"
+- Local project Codex skills are forbidden in this repository. Never create, add, or restore a `SKILL.md`, skill directory, or skill manifest under the project tree.
+- Ori database skills are global only: use `OriDbReadSkill` for read operations and `OriDbWriteSkill` for write operations.
 

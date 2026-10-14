@@ -2360,6 +2360,49 @@ static int SDLCALL render_testSoftware(void *arg)
     return TEST_COMPLETED;
 }
 
+static int SDLCALL render_testDriverFallback(void *arg)
+{
+    SDL_Window *test_window;
+    SDL_Renderer *test_renderer;
+    bool has_software = false;
+
+    for (int i = 0; i < SDL_GetNumRenderDrivers(); ++i) {
+        if (SDL_strcmp(SDL_GetRenderDriver(i), SDL_SOFTWARE_RENDERER) == 0) {
+            has_software = true;
+            break;
+        }
+    }
+    if (!has_software) {
+        return TEST_SKIPPED;
+    }
+
+    test_window = SDL_CreateWindow("render_testDriverFallback", 64, 64, SDL_WINDOW_HIDDEN);
+    if (!SDLTest_AssertCheck(test_window != NULL, "Create fallback test window: %s", SDL_GetError())) {
+        return TEST_ABORTED;
+    }
+
+    test_renderer = SDL_CreateRenderer(test_window, "no-such-renderer");
+    SDLTest_AssertCheck(test_renderer == NULL, "Unknown render driver is rejected");
+    SDLTest_AssertCheck(SDL_strcmp(SDL_GetError(), "no-such-renderer not available") == 0,
+                        "Unknown driver error is preserved: %s", SDL_GetError());
+    if (test_renderer) {
+        SDL_DestroyRenderer(test_renderer);
+    }
+
+    test_renderer = SDL_CreateRenderer(test_window, "no-such-renderer,software");
+    SDLTest_AssertCheck(test_renderer != NULL, "Software renderer is selected after an unknown driver: %s", SDL_GetError());
+    if (test_renderer) {
+        SDLTest_AssertCheck(SDL_strcmp(SDL_GetRendererName(test_renderer), SDL_SOFTWARE_RENDERER) == 0,
+                            "Selected renderer is software");
+    }
+
+    if (test_renderer) {
+        SDL_DestroyRenderer(test_renderer);
+    }
+    SDL_DestroyWindow(test_window);
+    return TEST_COMPLETED;
+}
+
 /* ================= Test References ================== */
 
 /* Render test cases */
@@ -2443,6 +2486,10 @@ static const SDLTest_TestCaseReference renderTestSoftware = {
     render_testSoftware, "render_testSoftware", "Tests software renderer support", TEST_ENABLED
 };
 
+static const SDLTest_TestCaseReference renderTestDriverFallback = {
+    render_testDriverFallback, "render_testDriverFallback", "Tests render driver fallback and error", TEST_ENABLED
+};
+
 /* Sequence of Render test cases */
 static const SDLTest_TestCaseReference *renderTests[] = {
     &renderTestGetNumRenderDrivers,
@@ -2465,6 +2512,7 @@ static const SDLTest_TestCaseReference *renderTests[] = {
     &renderTestColorspaceLinear,
     &renderTestColorspaceSRGB,
     &renderTestSoftware,
+    &renderTestDriverFallback,
     NULL
 };
 

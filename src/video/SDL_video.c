@@ -2409,6 +2409,29 @@ static SDL_WindowFlags SDL_GetWindowFlagProperties(SDL_PropertiesID props)
     return flags;
 }
 
+static bool SDL_ValidateWindowType(SDL_VideoDevice *_this, SDL_Window *parent, SDL_WindowFlags *flags)
+{
+    if ((*flags & SDL_WINDOW_MODAL) && !SDL_ObjectValid(parent, SDL_OBJECT_TYPE_WINDOW)) {
+        return SDL_SetError("Modal windows must specify a parent window");
+    }
+
+    if ((*flags & (SDL_WINDOW_TOOLTIP | SDL_WINDOW_POPUP_MENU)) != 0) {
+        if (!(_this->device_caps & VIDEO_DEVICE_CAPS_HAS_POPUP_WINDOW_SUPPORT)) {
+            return SDL_Unsupported();
+        }
+        if (!SDL_ObjectValid(parent, SDL_OBJECT_TYPE_WINDOW)) {
+            return SDL_SetError("Tooltip and popup menu windows must specify a parent window");
+        }
+        *flags &= ~(SDL_WINDOW_MINIMIZED | SDL_WINDOW_MAXIMIZED | SDL_WINDOW_FULLSCREEN | SDL_WINDOW_BORDERLESS);
+    }
+
+    SDL_WindowFlags type_flags = *flags & (SDL_WINDOW_UTILITY | SDL_WINDOW_TOOLTIP | SDL_WINDOW_POPUP_MENU | SDL_WINDOW_MODAL);
+    if (type_flags & (type_flags - 1)) {
+        return SDL_SetError("Conflicting window type flags specified: 0x%.8x", (unsigned int)type_flags);
+    }
+    return true;
+}
+
 SDL_Window *SDL_CreateWindowWithProperties(SDL_PropertiesID props)
 {
     SDL_Window *window;
@@ -2419,7 +2442,7 @@ SDL_Window *SDL_CreateWindowWithProperties(SDL_PropertiesID props)
     int h = (int)SDL_GetNumberProperty(props, SDL_PROP_WINDOW_CREATE_HEIGHT_NUMBER, 0);
     SDL_Window *parent = (SDL_Window *)SDL_GetPointerProperty(props, SDL_PROP_WINDOW_CREATE_PARENT_POINTER, NULL);
     SDL_WindowFlags flags = SDL_GetWindowFlagProperties(props);
-    SDL_WindowFlags type_flags, graphics_flags;
+    SDL_WindowFlags graphics_flags;
     SDL_DisplayID displayID = 0;
     bool undefined_x = false;
     bool undefined_y = false;
@@ -2437,31 +2460,7 @@ SDL_Window *SDL_CreateWindowWithProperties(SDL_PropertiesID props)
         }
     }
 
-    if ((flags & SDL_WINDOW_MODAL) && !SDL_ObjectValid(parent, SDL_OBJECT_TYPE_WINDOW)) {
-        SDL_SetError("Modal windows must specify a parent window");
-        return NULL;
-    }
-
-    if ((flags & (SDL_WINDOW_TOOLTIP | SDL_WINDOW_POPUP_MENU)) != 0) {
-        if (!(_this->device_caps & VIDEO_DEVICE_CAPS_HAS_POPUP_WINDOW_SUPPORT)) {
-            SDL_Unsupported();
-            return NULL;
-        }
-
-        // Tooltip and popup menu window must specify a parent window
-        if (!SDL_ObjectValid(parent, SDL_OBJECT_TYPE_WINDOW)) {
-            SDL_SetError("Tooltip and popup menu windows must specify a parent window");
-            return NULL;
-        }
-
-        // Remove invalid flags
-        flags &= ~(SDL_WINDOW_MINIMIZED | SDL_WINDOW_MAXIMIZED | SDL_WINDOW_FULLSCREEN | SDL_WINDOW_BORDERLESS);
-    }
-
-    // Ensure no more than one of these flags is set
-    type_flags = flags & (SDL_WINDOW_UTILITY | SDL_WINDOW_TOOLTIP | SDL_WINDOW_POPUP_MENU | SDL_WINDOW_MODAL);
-    if (type_flags & (type_flags - 1)) {
-        SDL_SetError("Conflicting window type flags specified: 0x%.8x", (unsigned int)type_flags);
+    if (!SDL_ValidateWindowType(_this, parent, &flags)) {
         return NULL;
     }
 
