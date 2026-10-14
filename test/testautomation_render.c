@@ -2401,6 +2401,16 @@ static int SDLCALL render_testSoftwareTextureFallback(void *arg)
         SDLTest_AssertCheck(SDL_GetNumberProperty(SDL_GetTextureProperties(texture), SDL_PROP_TEXTURE_FORMAT_NUMBER, SDL_PIXELFORMAT_UNKNOWN) == SDL_PIXELFORMAT_RGB24,
                             "Fallback texture keeps its requested format");
         SDLTest_AssertCheck(SDL_UpdateTexture(texture, NULL, pixels, 6), "Update RGB24 fallback texture: %s", SDL_GetError());
+        SDLTest_AssertCheck(SDL_SetRenderDrawColor(software, 0, 0, 0, 255), "Set fallback clear color: %s", SDL_GetError());
+        SDLTest_AssertCheck(SDL_RenderClear(software), "Clear fallback target: %s", SDL_GetError());
+        SDLTest_AssertCheck(SDL_RenderTexture(software, texture, NULL, NULL), "Render fallback texture: %s", SDL_GetError());
+        SDL_RenderPresent(software);
+        {
+            Uint8 r, g, b, a;
+            SDLTest_AssertCheck(SDL_ReadSurfacePixel(surface, 0, 0, &r, &g, &b, &a), "Read fallback pixel: %s", SDL_GetError());
+            SDLTest_AssertCheck(r == 0xFF && g == 0 && b == 0 && a == 0xFF,
+                                "Fallback upload produces expected pixel, got %u,%u,%u,%u", r, g, b, a);
+        }
         SDL_DestroyTexture(texture);
     }
 
@@ -2441,6 +2451,16 @@ static int SDLCALL render_testSoftwareYUVTextureUpdates(void *arg)
     }
     SDLTest_AssertCheck(SDL_UpdateYUVTexture(texture, NULL, y, 4, u, 2, v, 2),
                         "Update IYUV fallback texture: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_RenderClear(software), "Clear IYUV target: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_RenderTexture(software, texture, NULL, NULL), "Render IYUV fallback texture: %s", SDL_GetError());
+    SDL_RenderPresent(software);
+    {
+        Uint8 r0, g0, b0, a0, r3, g3, b3, a3;
+        SDL_ReadSurfacePixel(surface, 0, 0, &r0, &g0, &b0, &a0);
+        SDL_ReadSurfacePixel(surface, 3, 0, &r3, &g3, &b3, &a3);
+        SDLTest_AssertCheck(r0 < 10 && g0 < 10 && b0 < 10 && r3 > 15 && g3 > 15 && b3 > 15,
+                            "IYUV output reflects luminance, got %u,%u,%u and %u,%u,%u", r0, g0, b0, r3, g3, b3);
+    }
     SDL_DestroyTexture(texture);
 
     texture = SDL_CreateTexture(software, SDL_PIXELFORMAT_NV12, SDL_TEXTUREACCESS_STATIC, 4, 4);
@@ -2451,6 +2471,16 @@ static int SDLCALL render_testSoftwareYUVTextureUpdates(void *arg)
     }
     SDLTest_AssertCheck(SDL_UpdateNVTexture(texture, NULL, y, 4, uv, 4),
                         "Update NV12 fallback texture: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_RenderClear(software), "Clear NV12 target: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_RenderTexture(software, texture, NULL, NULL), "Render NV12 fallback texture: %s", SDL_GetError());
+    SDL_RenderPresent(software);
+    {
+        Uint8 r0, g0, b0, a0, r3, g3, b3, a3;
+        SDL_ReadSurfacePixel(surface, 0, 0, &r0, &g0, &b0, &a0);
+        SDL_ReadSurfacePixel(surface, 3, 0, &r3, &g3, &b3, &a3);
+        SDLTest_AssertCheck(r0 < 10 && g0 < 10 && b0 < 10 && r3 > 15 && g3 > 15 && b3 > 15,
+                            "NV12 output reflects luminance, got %u,%u,%u and %u,%u,%u", r0, g0, b0, r3, g3, b3);
+    }
     SDL_DestroyTexture(texture);
     SDL_DestroyRenderer(software);
     SDL_DestroySurface(surface);
