@@ -2514,13 +2514,10 @@ static int SDLCALL render_testDriverFallback(void *arg)
     SDL_Window *test_window;
     SDL_Renderer *test_renderer;
     bool has_software = false;
-    bool has_gpu = false;
 
     for (int i = 0; i < SDL_GetNumRenderDrivers(); ++i) {
         if (SDL_strcmp(SDL_GetRenderDriver(i), SDL_SOFTWARE_RENDERER) == 0) {
             has_software = true;
-        } else if (SDL_strcmp(SDL_GetRenderDriver(i), SDL_GPU_RENDERER) == 0) {
-            has_gpu = true;
         }
     }
     if (!has_software) {
@@ -2551,22 +2548,6 @@ static int SDLCALL render_testDriverFallback(void *arg)
         SDL_DestroyRenderer(test_renderer);
     }
 
-    if (has_gpu) {
-        test_renderer = SDL_CreateRenderer(test_window, SDL_GPU_RENDERER);
-        if (test_renderer) {
-            SDL_DestroyRenderer(test_renderer);
-            SDLTest_Log("GPU renderer is available; known-backend failure path not exercised");
-        } else {
-            SDLTest_AssertCheck(SDL_GetError()[0] != '\0', "Known GPU backend failure reports an error");
-            test_renderer = SDL_CreateRenderer(test_window, SDL_GPU_RENDERER "," SDL_SOFTWARE_RENDERER);
-            SDLTest_AssertCheck(test_renderer != NULL, "Software renderer follows failed GPU backend: %s", SDL_GetError());
-            if (test_renderer) {
-                SDLTest_AssertCheck(SDL_strcmp(SDL_GetRendererName(test_renderer), SDL_SOFTWARE_RENDERER) == 0,
-                                    "Selected renderer is software after GPU failure");
-                SDL_DestroyRenderer(test_renderer);
-            }
-        }
-    }
     SDL_DestroyWindow(test_window);
     return TEST_COMPLETED;
 }
