@@ -1700,50 +1700,34 @@ static bool SDL_CreateTextureFallback(SDL_Texture *texture)
     return true;
 }
 
-SDL_Texture *SDL_CreateTextureWithProperties(SDL_Renderer *renderer, SDL_PropertiesID props)
+static bool SDL_ValidateTextureCreateParams(SDL_Renderer *renderer, SDL_PixelFormat format, SDL_TextureAccess access, int w, int h)
 {
-    SDL_Texture *texture;
-    SDL_PixelFormat format = (SDL_PixelFormat)SDL_GetNumberProperty(props, SDL_PROP_TEXTURE_CREATE_FORMAT_NUMBER, SDL_PIXELFORMAT_UNKNOWN);
-    SDL_TextureAccess access = (SDL_TextureAccess)SDL_GetNumberProperty(props, SDL_PROP_TEXTURE_CREATE_ACCESS_NUMBER, SDL_TEXTUREACCESS_STATIC);
-    int w = (int)SDL_GetNumberProperty(props, SDL_PROP_TEXTURE_CREATE_WIDTH_NUMBER, 0);
-    int h = (int)SDL_GetNumberProperty(props, SDL_PROP_TEXTURE_CREATE_HEIGHT_NUMBER, 0);
-    SDL_Palette *palette = (SDL_Palette *)SDL_GetPointerProperty(props, SDL_PROP_TEXTURE_CREATE_PALETTE_POINTER, NULL);
-    SDL_Colorspace default_colorspace;
-
-    CHECK_RENDERER_MAGIC(renderer, NULL);
-
-    if (!format) {
-        format = renderer->texture_formats[0];
-    }
-
     CHECK_PARAM(SDL_BYTESPERPIXEL(format) == 0) {
         SDL_SetError("Invalid texture format");
-        return NULL;
+        return false;
     }
     CHECK_PARAM(SDL_ISPIXELFORMAT_INDEXED(format) && access == SDL_TEXTUREACCESS_TARGET) {
         SDL_SetError("Palettized textures can't be render targets");
-        return NULL;
+        return false;
     }
     CHECK_PARAM(SDL_ISPIXELFORMAT_FOURCC(format) && access == SDL_TEXTUREACCESS_TARGET) {
         SDL_SetError("%s textures can't be render targets", SDL_GetPixelFormatName(format));
-        return NULL;
+        return false;
     }
     CHECK_PARAM(w <= 0 || h <= 0) {
         SDL_SetError("Texture dimensions can't be 0");
-        return NULL;
+        return false;
     }
     int max_texture_size = (int)SDL_GetNumberProperty(SDL_GetRendererProperties(renderer), SDL_PROP_RENDERER_MAX_TEXTURE_SIZE_NUMBER, 0);
     CHECK_PARAM(max_texture_size && (w > max_texture_size || h > max_texture_size)) {
         SDL_SetError("Texture dimensions are limited to %dx%d", max_texture_size, max_texture_size);
-        return NULL;
+        return false;
     }
+    return true;
+}
 
-    default_colorspace = SDL_GetDefaultColorspaceForFormat(format);
-
-    texture = (SDL_Texture *)SDL_calloc(1, sizeof(*texture));
-    if (!texture) {
-        return NULL;
-    }
+static void SDL_InitializeTextureFields(SDL_Texture *texture, SDL_Renderer *renderer, SDL_PropertiesID props, SDL_PixelFormat format, SDL_TextureAccess access, int w, int h, SDL_Colorspace default_colorspace)
+{
     texture->refcount = 1;
     SDL_SetObjectValid(texture, SDL_OBJECT_TYPE_TEXTURE, true);
     texture->colorspace = (SDL_Colorspace)SDL_GetNumberProperty(props, SDL_PROP_TEXTURE_CREATE_COLORSPACE_NUMBER, default_colorspace);
@@ -1768,6 +1752,35 @@ SDL_Texture *SDL_CreateTextureWithProperties(SDL_Renderer *renderer, SDL_Propert
     texture->view.current_scale.x = 1.0f;
     texture->view.current_scale.y = 1.0f;
     texture->renderer = renderer;
+}
+
+SDL_Texture *SDL_CreateTextureWithProperties(SDL_Renderer *renderer, SDL_PropertiesID props)
+{
+    SDL_Texture *texture;
+    SDL_PixelFormat format = (SDL_PixelFormat)SDL_GetNumberProperty(props, SDL_PROP_TEXTURE_CREATE_FORMAT_NUMBER, SDL_PIXELFORMAT_UNKNOWN);
+    SDL_TextureAccess access = (SDL_TextureAccess)SDL_GetNumberProperty(props, SDL_PROP_TEXTURE_CREATE_ACCESS_NUMBER, SDL_TEXTUREACCESS_STATIC);
+    int w = (int)SDL_GetNumberProperty(props, SDL_PROP_TEXTURE_CREATE_WIDTH_NUMBER, 0);
+    int h = (int)SDL_GetNumberProperty(props, SDL_PROP_TEXTURE_CREATE_HEIGHT_NUMBER, 0);
+    SDL_Palette *palette = (SDL_Palette *)SDL_GetPointerProperty(props, SDL_PROP_TEXTURE_CREATE_PALETTE_POINTER, NULL);
+    SDL_Colorspace default_colorspace;
+
+    CHECK_RENDERER_MAGIC(renderer, NULL);
+
+    if (!format) {
+        format = renderer->texture_formats[0];
+    }
+
+    if (!SDL_ValidateTextureCreateParams(renderer, format, access, w, h)) {
+        return NULL;
+    }
+
+    default_colorspace = SDL_GetDefaultColorspaceForFormat(format);
+
+    texture = (SDL_Texture *)SDL_calloc(1, sizeof(*texture));
+    if (!texture) {
+        return NULL;
+    }
+    SDL_InitializeTextureFields(texture, renderer, props, format, access, w, h, default_colorspace);
     texture->next = renderer->textures;
     if (renderer->textures) {
         renderer->textures->prev = texture;
@@ -4672,7 +4685,13 @@ bool SDL_RenderTextureTiled(SDL_Renderer *renderer, SDL_Texture *texture, const 
     }
 }
 
-bool SDL_RenderTexture9Grid(SDL_Renderer *renderer, SDL_Texture *texture, const SDL_FRect *srcrect, float left_width, float right_width, float top_height, float bottom_height, float scale, const SDL_FRect *dstrect)
+static bool SDL_RenderTexture9GridSegment(SDL_Renderer *renderer, SDL_Texture *texture, const SDL_FRect *srcrect, const SDL_FRect *dstrect, bool tiled, float tileScale)
+{
+    return tiled ? SDL_RenderTextureTiled(renderer, texture, srcrect, tileScale, dstrect)
+                 : SDL_RenderTexture(renderer, texture, srcrect, dstrect);
+}
+
+static bool SDL_RenderTexture9GridInternal(SDL_Renderer *renderer, SDL_Texture *texture, const SDL_FRect *srcrect, float left_width, float right_width, float top_height, float bottom_height, float scale, const SDL_FRect *dstrect, bool tiled, float tileScale)
 {
     SDL_FRect full_src, full_dst;
     SDL_FRect curr_src, curr_dst;
@@ -4722,7 +4741,7 @@ bool SDL_RenderTexture9Grid(SDL_Renderer *renderer, SDL_Texture *texture, const 
     curr_dst.y = dstrect->y + dst_top_height;
     curr_dst.w = dstrect->w - dst_left_width - dst_right_width;
     curr_dst.h = dstrect->h - dst_top_height - dst_bottom_height;
-    if (!SDL_RenderTexture(renderer, texture, &curr_src, &curr_dst)) {
+    if (!SDL_RenderTexture9GridSegment(renderer, texture, &curr_src, &curr_dst, tiled, tileScale)) {
         return false;
     }
 
@@ -4771,7 +4790,7 @@ bool SDL_RenderTexture9Grid(SDL_Renderer *renderer, SDL_Texture *texture, const 
     curr_src.h = srcrect->h - top_height - bottom_height;
     curr_dst.y = dstrect->y + dst_top_height;
     curr_dst.h = dstrect->h - dst_top_height - dst_bottom_height;
-    if (!SDL_RenderTexture(renderer, texture, &curr_src, &curr_dst)) {
+    if (!SDL_RenderTexture9GridSegment(renderer, texture, &curr_src, &curr_dst, tiled, tileScale)) {
         return false;
     }
 
@@ -4780,7 +4799,7 @@ bool SDL_RenderTexture9Grid(SDL_Renderer *renderer, SDL_Texture *texture, const 
     curr_src.w = right_width;
     curr_dst.x = dstrect->x + dstrect->w - dst_right_width;
     curr_dst.w = dst_right_width;
-    if (!SDL_RenderTexture(renderer, texture, &curr_src, &curr_dst)) {
+    if (!SDL_RenderTexture9GridSegment(renderer, texture, &curr_src, &curr_dst, tiled, tileScale)) {
         return false;
     }
 
@@ -4793,7 +4812,7 @@ bool SDL_RenderTexture9Grid(SDL_Renderer *renderer, SDL_Texture *texture, const 
     curr_dst.y = dstrect->y;
     curr_dst.w = dstrect->w - dst_left_width - dst_right_width;
     curr_dst.h = dst_top_height;
-    if (!SDL_RenderTexture(renderer, texture, &curr_src, &curr_dst)) {
+    if (!SDL_RenderTexture9GridSegment(renderer, texture, &curr_src, &curr_dst, tiled, tileScale)) {
         return false;
     }
 
@@ -4802,148 +4821,21 @@ bool SDL_RenderTexture9Grid(SDL_Renderer *renderer, SDL_Texture *texture, const 
     curr_src.h = bottom_height;
     curr_dst.y = dstrect->y + dstrect->h - dst_bottom_height;
     curr_dst.h = dst_bottom_height;
-    if (!SDL_RenderTexture(renderer, texture, &curr_src, &curr_dst)) {
+    if (!SDL_RenderTexture9GridSegment(renderer, texture, &curr_src, &curr_dst, tiled, tileScale)) {
         return false;
     }
 
     return true;
 }
 
+bool SDL_RenderTexture9Grid(SDL_Renderer *renderer, SDL_Texture *texture, const SDL_FRect *srcrect, float left_width, float right_width, float top_height, float bottom_height, float scale, const SDL_FRect *dstrect)
+{
+    return SDL_RenderTexture9GridInternal(renderer, texture, srcrect, left_width, right_width, top_height, bottom_height, scale, dstrect, false, 0.0f);
+}
+
 bool SDL_RenderTexture9GridTiled(SDL_Renderer *renderer, SDL_Texture *texture, const SDL_FRect *srcrect, float left_width, float right_width, float top_height, float bottom_height, float scale, const SDL_FRect *dstrect, float tileScale)
 {
-    SDL_FRect full_src, full_dst;
-    SDL_FRect curr_src, curr_dst;
-    float dst_left_width;
-    float dst_right_width;
-    float dst_top_height;
-    float dst_bottom_height;
-
-    CHECK_RENDERER_MAGIC(renderer, false);
-    CHECK_TEXTURE_MAGIC(texture, false);
-
-    CHECK_PARAM(renderer != texture->renderer) {
-        return SDL_SetError("Texture was not created with this renderer");
-    }
-
-    if (!srcrect) {
-        full_src.x = 0;
-        full_src.y = 0;
-        full_src.w = (float)texture->w;
-        full_src.h = (float)texture->h;
-        srcrect = &full_src;
-    }
-
-    if (!dstrect) {
-        GetRenderViewportSize(renderer, &full_dst);
-        dstrect = &full_dst;
-    }
-
-    if (scale <= 0.0f || scale == 1.0f) {
-        dst_left_width = SDL_ceilf(left_width);
-        dst_right_width = SDL_ceilf(right_width);
-        dst_top_height = SDL_ceilf(top_height);
-        dst_bottom_height = SDL_ceilf(bottom_height);
-    } else {
-        dst_left_width = SDL_ceilf(left_width * scale);
-        dst_right_width = SDL_ceilf(right_width * scale);
-        dst_top_height = SDL_ceilf(top_height * scale);
-        dst_bottom_height = SDL_ceilf(bottom_height * scale);
-    }
-
-    // Center
-    curr_src.x = srcrect->x + left_width;
-    curr_src.y = srcrect->y + top_height;
-    curr_src.w = srcrect->w - left_width - right_width;
-    curr_src.h = srcrect->h - top_height - bottom_height;
-    curr_dst.x = dstrect->x + dst_left_width;
-    curr_dst.y = dstrect->y + dst_top_height;
-    curr_dst.w = dstrect->w - dst_left_width - dst_right_width;
-    curr_dst.h = dstrect->h - dst_top_height - dst_bottom_height;
-    if (!SDL_RenderTextureTiled(renderer, texture, &curr_src, tileScale, &curr_dst)) {
-        return false;
-    }
-
-    // Upper-left corner
-    curr_src.x = srcrect->x;
-    curr_src.y = srcrect->y;
-    curr_src.w = left_width;
-    curr_src.h = top_height;
-    curr_dst.x = dstrect->x;
-    curr_dst.y = dstrect->y;
-    curr_dst.w = dst_left_width;
-    curr_dst.h = dst_top_height;
-    if (!SDL_RenderTexture(renderer, texture, &curr_src, &curr_dst)) {
-        return false;
-    }
-
-    // Upper-right corner
-    curr_src.x = srcrect->x + srcrect->w - right_width;
-    curr_src.w = right_width;
-    curr_dst.x = dstrect->x + dstrect->w - dst_right_width;
-    curr_dst.w = dst_right_width;
-    if (!SDL_RenderTexture(renderer, texture, &curr_src, &curr_dst)) {
-        return false;
-    }
-
-    // Lower-right corner
-    curr_src.y = srcrect->y + srcrect->h - bottom_height;
-    curr_src.h = bottom_height;
-    curr_dst.y = dstrect->y + dstrect->h - dst_bottom_height;
-    curr_dst.h = dst_bottom_height;
-    if (!SDL_RenderTexture(renderer, texture, &curr_src, &curr_dst)) {
-        return false;
-    }
-
-    // Lower-left corner
-    curr_src.x = srcrect->x;
-    curr_src.w = left_width;
-    curr_dst.x = dstrect->x;
-    curr_dst.w = dst_left_width;
-    if (!SDL_RenderTexture(renderer, texture, &curr_src, &curr_dst)) {
-        return false;
-    }
-
-    // Left
-    curr_src.y = srcrect->y + top_height;
-    curr_src.h = srcrect->h - top_height - bottom_height;
-    curr_dst.y = dstrect->y + dst_top_height;
-    curr_dst.h = dstrect->h - dst_top_height - dst_bottom_height;
-    if (!SDL_RenderTextureTiled(renderer, texture, &curr_src, tileScale, &curr_dst)) {
-        return false;
-    }
-
-    // Right
-    curr_src.x = srcrect->x + srcrect->w - right_width;
-    curr_src.w = right_width;
-    curr_dst.x = dstrect->x + dstrect->w - dst_right_width;
-    curr_dst.w = dst_right_width;
-    if (!SDL_RenderTextureTiled(renderer, texture, &curr_src, tileScale, &curr_dst)) {
-        return false;
-    }
-
-    // Top
-    curr_src.x = srcrect->x + left_width;
-    curr_src.y = srcrect->y;
-    curr_src.w = srcrect->w - left_width - right_width;
-    curr_src.h = top_height;
-    curr_dst.x = dstrect->x + dst_left_width;
-    curr_dst.y = dstrect->y;
-    curr_dst.w = dstrect->w - dst_left_width - dst_right_width;
-    curr_dst.h = dst_top_height;
-    if (!SDL_RenderTextureTiled(renderer, texture, &curr_src, tileScale, &curr_dst)) {
-        return false;
-    }
-
-    // Bottom
-    curr_src.y = srcrect->y + srcrect->h - bottom_height;
-    curr_src.h = bottom_height;
-    curr_dst.y = dstrect->y + dstrect->h - dst_bottom_height;
-    curr_dst.h = dst_bottom_height;
-    if (!SDL_RenderTextureTiled(renderer, texture, &curr_src, tileScale, &curr_dst)) {
-        return false;
-    }
-
-    return true;
+    return SDL_RenderTexture9GridInternal(renderer, texture, srcrect, left_width, right_width, top_height, bottom_height, scale, dstrect, true, tileScale);
 }
 
 bool SDL_RenderGeometry(SDL_Renderer *renderer,
