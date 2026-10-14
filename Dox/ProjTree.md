@@ -7244,6 +7244,7 @@
 │   │   ├── SDL_displayevents.c
 │   │   ├── SDL_dropevents_c.h
 │   │   ├── SDL_dropevents.c
+│   │   ├── SDL_eventdescription.c
 │   │   ├── SDL_events_c.h
 │   │   ├── SDL_events.c
 │   │   ├── SDL_eventwatch_c.h
@@ -7332,6 +7333,7 @@
 │   │   │   ├── SDL_openxrdyn.c
 │   │   │   ├── SDL_openxrdyn.h
 │   │   │   └── SDL_openxrsym.h
+│   │   ├── SDL_gpu_format.c
 │   │   ├── SDL_gpu.c
 │   │   └── SDL_sysgpu.h
 │   ├── haptic/
