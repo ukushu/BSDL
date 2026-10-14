@@ -2116,6 +2116,22 @@ static int SDLCALL render_testTextureState(void *arg)
     return TEST_COMPLETED;
 }
 
+static int SDLCALL render_rejectsFourCCRenderTarget(void *arg)
+{
+    SDL_Texture *texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_NV12, SDL_TEXTUREACCESS_TARGET, 16, 16);
+    char expected_error[128];
+
+    SDL_snprintf(expected_error, sizeof(expected_error), "%s textures can't be render targets",
+                 SDL_GetPixelFormatName(SDL_PIXELFORMAT_NV12));
+    SDLTest_AssertCheck(texture == NULL, "FourCC render target textures are rejected");
+    SDLTest_AssertCheck(SDL_strcmp(SDL_GetError(), expected_error) == 0,
+                        "FourCC render target error is preserved: %s", SDL_GetError());
+    if (texture) {
+        SDL_DestroyTexture(texture);
+    }
+    return TEST_COMPLETED;
+}
+
 static void CheckUniformColor(float expected)
 {
     SDL_Surface *surface = SDL_RenderReadPixels(renderer, NULL);
@@ -2360,6 +2376,87 @@ static int SDLCALL render_testSoftware(void *arg)
     return TEST_COMPLETED;
 }
 
+static int SDLCALL render_testSoftwareTextureFallback(void *arg)
+{
+    const Uint8 pixels[] = {
+        0xFF, 0x00, 0x00, 0x00, 0xFF, 0x00,
+        0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF
+    };
+    SDL_Surface *surface = SDL_CreateSurface(16, 16, SDL_PIXELFORMAT_RGBA32);
+    SDL_Renderer *software = NULL;
+    SDL_Texture *texture = NULL;
+
+    if (!SDLTest_AssertCheck(surface != NULL, "Create software fallback surface: %s", SDL_GetError())) {
+        return TEST_ABORTED;
+    }
+    software = SDL_CreateSoftwareRenderer(surface);
+    if (!SDLTest_AssertCheck(software != NULL, "Create software fallback renderer: %s", SDL_GetError())) {
+        SDL_DestroySurface(surface);
+        return TEST_ABORTED;
+    }
+
+    texture = SDL_CreateTexture(software, SDL_PIXELFORMAT_RGB24, SDL_TEXTUREACCESS_STREAMING, 2, 2);
+    SDLTest_AssertCheck(texture != NULL, "Create RGB24 fallback texture: %s", SDL_GetError());
+    if (texture) {
+        SDLTest_AssertCheck(SDL_GetNumberProperty(SDL_GetTextureProperties(texture), SDL_PROP_TEXTURE_FORMAT_NUMBER, SDL_PIXELFORMAT_UNKNOWN) == SDL_PIXELFORMAT_RGB24,
+                            "Fallback texture keeps its requested format");
+        SDLTest_AssertCheck(SDL_UpdateTexture(texture, NULL, pixels, 6), "Update RGB24 fallback texture: %s", SDL_GetError());
+        SDL_DestroyTexture(texture);
+    }
+
+    SDL_DestroyRenderer(software);
+    SDL_DestroySurface(surface);
+    return TEST_COMPLETED;
+}
+
+static int SDLCALL render_testSoftwareYUVTextureUpdates(void *arg)
+{
+    const Uint8 y[] = { 16, 64, 128, 235, 16, 64, 128, 235, 16, 64, 128, 235, 16, 64, 128, 235 };
+    const Uint8 u[] = { 128, 128, 128, 128 };
+    const Uint8 v[] = { 128, 128, 128, 128 };
+    const Uint8 uv[] = { 128, 128, 128, 128, 128, 128, 128, 128 };
+    SDL_Surface *surface = SDL_CreateSurface(16, 16, SDL_PIXELFORMAT_RGBA32);
+    SDL_Renderer *software = NULL;
+    SDL_Texture *texture = NULL;
+
+    if (!SDLTest_AssertCheck(surface != NULL, "Create software YUV surface: %s", SDL_GetError())) {
+        return TEST_ABORTED;
+    }
+    software = SDL_CreateSoftwareRenderer(surface);
+    if (!SDLTest_AssertCheck(software != NULL, "Create software YUV renderer: %s", SDL_GetError())) {
+        SDL_DestroySurface(surface);
+        return TEST_ABORTED;
+    }
+
+    texture = SDL_CreateTexture(software, SDL_PIXELFORMAT_IYUV, SDL_TEXTUREACCESS_STATIC, 4, 4);
+    if (!texture && SDL_strcmp(SDL_GetError(), "SDL not built with YUV support") == 0) {
+        SDL_DestroyRenderer(software);
+        SDL_DestroySurface(surface);
+        return TEST_SKIPPED;
+    }
+    if (!SDLTest_AssertCheck(texture != NULL, "Create IYUV fallback texture: %s", SDL_GetError())) {
+        SDL_DestroyRenderer(software);
+        SDL_DestroySurface(surface);
+        return TEST_ABORTED;
+    }
+    SDLTest_AssertCheck(SDL_UpdateYUVTexture(texture, NULL, y, 4, u, 2, v, 2),
+                        "Update IYUV fallback texture: %s", SDL_GetError());
+    SDL_DestroyTexture(texture);
+
+    texture = SDL_CreateTexture(software, SDL_PIXELFORMAT_NV12, SDL_TEXTUREACCESS_STATIC, 4, 4);
+    if (!SDLTest_AssertCheck(texture != NULL, "Create NV12 fallback texture: %s", SDL_GetError())) {
+        SDL_DestroyRenderer(software);
+        SDL_DestroySurface(surface);
+        return TEST_ABORTED;
+    }
+    SDLTest_AssertCheck(SDL_UpdateNVTexture(texture, NULL, y, 4, uv, 4),
+                        "Update NV12 fallback texture: %s", SDL_GetError());
+    SDL_DestroyTexture(texture);
+    SDL_DestroyRenderer(software);
+    SDL_DestroySurface(surface);
+    return TEST_COMPLETED;
+}
+
 static int SDLCALL render_testDriverFallback(void *arg)
 {
     SDL_Window *test_window;
@@ -2466,6 +2563,10 @@ static const SDLTest_TestCaseReference renderTestTextureState = {
     render_testTextureState, "render_testTextureState", "Tests texture state changes", TEST_ENABLED
 };
 
+static const SDLTest_TestCaseReference renderTestRejectsFourCCRenderTarget = {
+    render_rejectsFourCCRenderTarget, "render_rejectsFourCCRenderTarget", "Reject FourCC render target textures", TEST_ENABLED
+};
+
 static const SDLTest_TestCaseReference renderTestGetSetTextureScaleMode = {
     render_testGetSetTextureScaleMode, "render_testGetSetTextureScaleMode", "Tests setting/getting texture scale mode", TEST_ENABLED
 };
@@ -2484,6 +2585,14 @@ static const SDLTest_TestCaseReference renderTestColorspaceSRGB = {
 
 static const SDLTest_TestCaseReference renderTestSoftware = {
     render_testSoftware, "render_testSoftware", "Tests software renderer support", TEST_ENABLED
+};
+
+static const SDLTest_TestCaseReference renderTestSoftwareTextureFallback = {
+    render_testSoftwareTextureFallback, "render_testSoftwareTextureFallback", "Tests software texture fallback creation", TEST_ENABLED
+};
+
+static const SDLTest_TestCaseReference renderTestSoftwareYUVTextureUpdates = {
+    render_testSoftwareYUVTextureUpdates, "render_testSoftwareYUVTextureUpdates", "Tests software YUV texture update paths", TEST_ENABLED
 };
 
 static const SDLTest_TestCaseReference renderTestDriverFallback = {
@@ -2507,11 +2616,14 @@ static const SDLTest_TestCaseReference *renderTests[] = {
     &renderTestUVClamping,
     &renderTestUVWrapping,
     &renderTestTextureState,
+    &renderTestRejectsFourCCRenderTarget,
     &renderTestGetSetTextureScaleMode,
     &renderTestRGBSurfaceNoAlpha,
     &renderTestColorspaceLinear,
     &renderTestColorspaceSRGB,
     &renderTestSoftware,
+    &renderTestSoftwareTextureFallback,
+    &renderTestSoftwareYUVTextureUpdates,
     &renderTestDriverFallback,
     NULL
 };

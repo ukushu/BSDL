@@ -343,6 +343,59 @@ static int SDLCALL video_rejectsModalWithoutParent(void *arg)
     return TEST_COMPLETED;
 }
 
+static int SDLCALL video_rejectsConflictingGraphicsFlags(void *arg)
+{
+    const SDL_WindowFlags flags = SDL_WINDOW_OPENGL | SDL_WINDOW_VULKAN;
+    SDL_Window *window = SDL_CreateWindow("video_rejectsConflictingGraphicsFlags", 64, 64, flags);
+    char expected_error[128];
+
+    SDL_snprintf(expected_error, sizeof(expected_error),
+                 "Conflicting window graphics flags specified: 0x%.8x", (unsigned int)flags);
+    SDLTest_AssertCheck(window == NULL, "Conflicting graphics flags are rejected");
+    SDLTest_AssertCheck(SDL_strcmp(SDL_GetError(), expected_error) == 0,
+                        "Conflicting graphics flags error is preserved: %s", SDL_GetError());
+    if (window) {
+        SDL_DestroyWindow(window);
+    }
+    return TEST_COMPLETED;
+}
+
+static int SDLCALL video_testFullscreenEnterLeave(void *arg)
+{
+    SDL_Window *window;
+    SDL_WindowFlags flags;
+
+    if (SDL_strcmp(SDL_GetCurrentVideoDriver(), "x11") != 0) {
+        return TEST_SKIPPED;
+    }
+
+    window = createVideoSuiteTestWindow("video_testFullscreenEnterLeave");
+    if (!window) {
+        return TEST_ABORTED;
+    }
+
+    if (!SDL_SetWindowFullscreen(window, true)) {
+        SDLTest_AssertCheck(false, "Enter fullscreen: %s", SDL_GetError());
+        destroyVideoSuiteTestWindow(window);
+        return TEST_ABORTED;
+    }
+    SDL_SyncWindow(window);
+    flags = SDL_GetWindowFlags(window);
+    SDLTest_AssertCheck((flags & SDL_WINDOW_FULLSCREEN) != 0, "Fullscreen flag is set after entering");
+
+    if (!SDL_SetWindowFullscreen(window, false)) {
+        SDLTest_AssertCheck(false, "Leave fullscreen: %s", SDL_GetError());
+        destroyVideoSuiteTestWindow(window);
+        return TEST_ABORTED;
+    }
+    SDL_SyncWindow(window);
+    flags = SDL_GetWindowFlags(window);
+    SDLTest_AssertCheck((flags & SDL_WINDOW_FULLSCREEN) == 0, "Fullscreen flag is cleared after leaving");
+
+    destroyVideoSuiteTestWindow(window);
+    return TEST_COMPLETED;
+}
+
 /**
  * Tests the functionality of the SDL_GetWindowFlags function
  */
@@ -2658,6 +2711,14 @@ static const SDLTest_TestCaseReference videoTestRejectsModalWithoutParent = {
     video_rejectsModalWithoutParent, "video_rejectsModalWithoutParent", "Reject modal windows without a parent", TEST_ENABLED
 };
 
+static const SDLTest_TestCaseReference videoTestRejectsConflictingGraphicsFlags = {
+    video_rejectsConflictingGraphicsFlags, "video_rejectsConflictingGraphicsFlags", "Reject conflicting graphics flags", TEST_ENABLED
+};
+
+static const SDLTest_TestCaseReference videoTestFullscreenEnterLeave = {
+    video_testFullscreenEnterLeave, "video_testFullscreenEnterLeave", "Tests fullscreen display selection on X11", TEST_ENABLED
+};
+
 static const SDLTest_TestCaseReference videoTestGetWindowFlags = {
     video_getWindowFlags, "video_getWindowFlags", "Get window flags set during SDL_CreateWindow", TEST_ENABLED
 };
@@ -2743,6 +2804,8 @@ static const SDLTest_TestCaseReference *videoTests[] = {
     &videoTestCreateWindowVariousSizes,
     &videoTestCreateWindowVariousFlags,
     &videoTestRejectsModalWithoutParent,
+    &videoTestRejectsConflictingGraphicsFlags,
+    &videoTestFullscreenEnterLeave,
     &videoTestGetWindowFlags,
     &videoTestGetFullscreenDisplayModes,
     &videoTestGetClosestDisplayModeCurrentResolution,

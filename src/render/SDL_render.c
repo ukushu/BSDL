@@ -1620,6 +1620,85 @@ static SDL_PixelFormat GetClosestSupportedFormat(SDL_Renderer *renderer, SDL_Pix
     return renderer->texture_formats[0];
 }
 
+static bool SDL_CreateTextureFallback(SDL_Texture *texture)
+{
+    SDL_Renderer *renderer = texture->renderer;
+    SDL_PixelFormat format = texture->format;
+    SDL_TextureAccess access = texture->access;
+    SDL_PixelFormat closest_format = GetClosestSupportedFormat(renderer, format, false);
+    SDL_PropertiesID native_props = SDL_CreateProperties();
+
+    if (format == SDL_PIXELFORMAT_MJPG && closest_format == SDL_PIXELFORMAT_NV12) {
+        SDL_SetNumberProperty(native_props, SDL_PROP_TEXTURE_CREATE_COLORSPACE_NUMBER, SDL_COLORSPACE_JPEG);
+    } else {
+        const SDL_Colorspace default_colorspace = SDL_GetDefaultColorspaceForFormat(closest_format);
+        if (SDL_COLORSPACETYPE(texture->colorspace) == SDL_COLORSPACETYPE(default_colorspace) &&
+            SDL_COLORSPACETRANSFER(texture->colorspace) == SDL_COLORSPACETRANSFER(default_colorspace)) {
+            SDL_SetNumberProperty(native_props, SDL_PROP_TEXTURE_CREATE_COLORSPACE_NUMBER, texture->colorspace);
+        } else {
+            SDL_SetNumberProperty(native_props, SDL_PROP_TEXTURE_CREATE_COLORSPACE_NUMBER, default_colorspace);
+        }
+    }
+    SDL_SetNumberProperty(native_props, SDL_PROP_TEXTURE_CREATE_FORMAT_NUMBER, closest_format);
+    if (SDL_ISPIXELFORMAT_INDEXED(format)) {
+        // We're going to be uploading pixels frequently as the palette changes
+        SDL_SetNumberProperty(native_props, SDL_PROP_TEXTURE_CREATE_ACCESS_NUMBER, SDL_TEXTUREACCESS_STREAMING);
+    } else {
+        SDL_SetNumberProperty(native_props, SDL_PROP_TEXTURE_CREATE_ACCESS_NUMBER, access);
+    }
+    SDL_SetNumberProperty(native_props, SDL_PROP_TEXTURE_CREATE_WIDTH_NUMBER, texture->w);
+    SDL_SetNumberProperty(native_props, SDL_PROP_TEXTURE_CREATE_HEIGHT_NUMBER, texture->h);
+
+    texture->native = SDL_CreateTextureWithProperties(renderer, native_props);
+    SDL_DestroyProperties(native_props);
+    if (!texture->native) {
+        return false;
+    }
+
+    SDL_SetPointerProperty(SDL_GetTextureProperties(texture->native), SDL_PROP_TEXTURE_PARENT_POINTER, texture);
+
+    // Swap textures to have texture before texture->native in the list
+    texture->native->next = texture->next;
+    if (texture->native->next) {
+        texture->native->next->prev = texture->native;
+    }
+    texture->prev = texture->native->prev;
+    if (texture->prev) {
+        texture->prev->next = texture;
+    }
+    texture->native->prev = texture;
+    texture->next = texture->native;
+    renderer->textures = texture;
+
+    SDL_SetTextureScaleMode(texture->native, texture->scaleMode);
+
+    if (format == SDL_PIXELFORMAT_MJPG) {
+        // We have a custom decode + upload path for this
+    } else if (SDL_ISPIXELFORMAT_FOURCC(format)) {
+#ifdef SDL_HAVE_YUV
+        texture->yuv = SDL_SW_CreateYUVTexture(format, texture->colorspace, texture->w, texture->h);
+#else
+        SDL_SetError("SDL not built with YUV support");
+#endif
+        if (!texture->yuv) {
+            return false;
+        }
+    } else if (SDL_ISPIXELFORMAT_INDEXED(format)) {
+        texture->palette_surface = SDL_CreateSurfaceZeroed(texture->w, texture->h, format);
+        if (!texture->palette_surface) {
+            return false;
+        }
+    } else if (access == SDL_TEXTUREACCESS_STREAMING) {
+        // The pitch is 4 byte aligned
+        texture->pitch = (((texture->w * SDL_BYTESPERPIXEL(format)) + 3) & ~3);
+        texture->pixels = SDL_calloc(1, (size_t)texture->pitch * texture->h);
+        if (!texture->pixels) {
+            return false;
+        }
+    }
+    return true;
+}
+
 SDL_Texture *SDL_CreateTextureWithProperties(SDL_Renderer *renderer, SDL_PropertiesID props)
 {
     SDL_Texture *texture;
@@ -1629,7 +1708,6 @@ SDL_Texture *SDL_CreateTextureWithProperties(SDL_Renderer *renderer, SDL_Propert
     int h = (int)SDL_GetNumberProperty(props, SDL_PROP_TEXTURE_CREATE_HEIGHT_NUMBER, 0);
     SDL_Palette *palette = (SDL_Palette *)SDL_GetPointerProperty(props, SDL_PROP_TEXTURE_CREATE_PALETTE_POINTER, NULL);
     SDL_Colorspace default_colorspace;
-    bool texture_is_fourcc_and_target;
 
     CHECK_RENDERER_MAGIC(renderer, NULL);
 
@@ -1701,95 +1779,15 @@ SDL_Texture *SDL_CreateTextureWithProperties(SDL_Renderer *renderer, SDL_Propert
     texture->SDR_white_point = SDL_GetFloatProperty(props, SDL_PROP_TEXTURE_CREATE_SDR_WHITE_POINT_FLOAT, SDL_GetDefaultSDRWhitePoint(texture->colorspace));
     texture->HDR_headroom = SDL_GetFloatProperty(props, SDL_PROP_TEXTURE_CREATE_HDR_HEADROOM_FLOAT, SDL_GetDefaultHDRHeadroom(texture->colorspace));
 
-    // FOURCC format cannot be used directly by renderer back-ends for target texture
-    texture_is_fourcc_and_target = (access == SDL_TEXTUREACCESS_TARGET && SDL_ISPIXELFORMAT_FOURCC(format));
-
-    if (!texture_is_fourcc_and_target && IsSupportedFormat(renderer, format)) {
+    if (IsSupportedFormat(renderer, format)) {
         if (!renderer->CreateTexture(renderer, texture, props)) {
             SDL_DestroyTexture(texture);
             return NULL;
         }
     } else {
-        SDL_PixelFormat closest_format;
-        SDL_PropertiesID native_props = SDL_CreateProperties();
-
-        if (!texture_is_fourcc_and_target) {
-            closest_format = GetClosestSupportedFormat(renderer, format, false);
-        } else {
-            closest_format = renderer->texture_formats[0];
-        }
-
-        if (format == SDL_PIXELFORMAT_MJPG && closest_format == SDL_PIXELFORMAT_NV12) {
-            SDL_SetNumberProperty(native_props, SDL_PROP_TEXTURE_CREATE_COLORSPACE_NUMBER, SDL_COLORSPACE_JPEG);
-        } else {
-            default_colorspace = SDL_GetDefaultColorspaceForFormat(closest_format);
-            if (SDL_COLORSPACETYPE(texture->colorspace) == SDL_COLORSPACETYPE(default_colorspace) &&
-                SDL_COLORSPACETRANSFER(texture->colorspace) == SDL_COLORSPACETRANSFER(default_colorspace)) {
-                SDL_SetNumberProperty(native_props, SDL_PROP_TEXTURE_CREATE_COLORSPACE_NUMBER, texture->colorspace);
-            } else {
-                SDL_SetNumberProperty(native_props, SDL_PROP_TEXTURE_CREATE_COLORSPACE_NUMBER, default_colorspace);
-            }
-        }
-        SDL_SetNumberProperty(native_props, SDL_PROP_TEXTURE_CREATE_FORMAT_NUMBER, closest_format);
-        if (SDL_ISPIXELFORMAT_INDEXED(texture->format)) {
-            // We're going to be uploading pixels frequently as the palette changes
-            SDL_SetNumberProperty(native_props, SDL_PROP_TEXTURE_CREATE_ACCESS_NUMBER, SDL_TEXTUREACCESS_STREAMING);
-        } else {
-            SDL_SetNumberProperty(native_props, SDL_PROP_TEXTURE_CREATE_ACCESS_NUMBER, texture->access);
-        }
-        SDL_SetNumberProperty(native_props, SDL_PROP_TEXTURE_CREATE_WIDTH_NUMBER, texture->w);
-        SDL_SetNumberProperty(native_props, SDL_PROP_TEXTURE_CREATE_HEIGHT_NUMBER, texture->h);
-
-        texture->native = SDL_CreateTextureWithProperties(renderer, native_props);
-        SDL_DestroyProperties(native_props);
-        if (!texture->native) {
+        if (!SDL_CreateTextureFallback(texture)) {
             SDL_DestroyTexture(texture);
             return NULL;
-        }
-
-        SDL_SetPointerProperty(SDL_GetTextureProperties(texture->native), SDL_PROP_TEXTURE_PARENT_POINTER, texture);
-
-        // Swap textures to have texture before texture->native in the list
-        texture->native->next = texture->next;
-        if (texture->native->next) {
-            texture->native->next->prev = texture->native;
-        }
-        texture->prev = texture->native->prev;
-        if (texture->prev) {
-            texture->prev->next = texture;
-        }
-        texture->native->prev = texture;
-        texture->next = texture->native;
-        renderer->textures = texture;
-
-        SDL_SetTextureScaleMode(texture->native, texture->scaleMode);
-
-        if (texture->format == SDL_PIXELFORMAT_MJPG) {
-            // We have a custom decode + upload path for this
-        } else if (SDL_ISPIXELFORMAT_FOURCC(texture->format)) {
-#ifdef SDL_HAVE_YUV
-            texture->yuv = SDL_SW_CreateYUVTexture(texture->format, texture->colorspace, w, h);
-#else
-            SDL_SetError("SDL not built with YUV support");
-#endif
-            if (!texture->yuv) {
-                SDL_DestroyTexture(texture);
-                return NULL;
-            }
-        } else if (SDL_ISPIXELFORMAT_INDEXED(texture->format)) {
-            texture->palette_surface = SDL_CreateSurfaceZeroed(w, h, texture->format);
-            if (!texture->palette_surface) {
-                SDL_DestroyTexture(texture);
-                return NULL;
-            }
-        } else if (access == SDL_TEXTUREACCESS_STREAMING) {
-            // The pitch is 4 byte aligned
-            texture->pitch = (((w * SDL_BYTESPERPIXEL(format)) + 3) & ~3);
-            texture->pixels = SDL_calloc(1, (size_t)texture->pitch * h);
-            if (!texture->pixels) {
-                SDL_DestroyTexture(texture);
-                return NULL;
-            }
         }
     }
 
@@ -2465,51 +2463,36 @@ bool SDL_UpdateTexture(SDL_Texture *texture, const SDL_Rect *rect, const void *p
 }
 
 #ifdef SDL_HAVE_YUV
-static bool SDL_UpdateTextureYUVPlanar(SDL_Texture *texture, const SDL_Rect *rect,
-                                      const Uint8 *Yplane, int Ypitch,
-                                      const Uint8 *Uplane, int Upitch,
-                                      const Uint8 *Vplane, int Vpitch)
+static bool SDL_UpdateTextureYUVToNative(SDL_Texture *texture)
 {
     SDL_Texture *native = texture->native;
-    SDL_Rect full_rect;
+    SDL_Rect rect = { 0, 0, texture->w, texture->h };
     bool result = true;
 
-    if (!SDL_SW_UpdateYUVTexturePlanar(texture->yuv, rect, Yplane, Ypitch, Uplane, Upitch, Vplane, Vpitch)) {
-        return false;
-    }
-
-    full_rect.x = 0;
-    full_rect.y = 0;
-    full_rect.w = texture->w;
-    full_rect.h = texture->h;
-    rect = &full_rect;
-
-    if (!rect->w || !rect->h) {
+    if (!rect.w || !rect.h) {
         return true; // nothing to do.
     }
 
     if (texture->access == SDL_TEXTUREACCESS_STREAMING) {
-        // We can lock the texture and copy to it
         void *native_pixels = NULL;
         int native_pitch = 0;
 
-        if (!SDL_LockTexture(native, rect, &native_pixels, &native_pitch)) {
+        if (!SDL_LockTexture(native, &rect, &native_pixels, &native_pitch)) {
             return false;
         }
-        result = SDL_SW_CopyYUVToRGB(texture->yuv, rect, native->format, rect->w, rect->h, native_pixels, native_pitch);
+        result = SDL_SW_CopyYUVToRGB(texture->yuv, &rect, native->format, rect.w, rect.h, native_pixels, native_pitch);
         SDL_UnlockTexture(native);
     } else {
-        // Use a temporary buffer for updating
-        const int temp_pitch = (((rect->w * SDL_BYTESPERPIXEL(native->format)) + 3) & ~3);
-        const size_t alloclen = (size_t)rect->h * temp_pitch;
+        const int temp_pitch = (((rect.w * SDL_BYTESPERPIXEL(native->format)) + 3) & ~3);
+        const size_t alloclen = (size_t)rect.h * temp_pitch;
         if (alloclen > 0) {
             void *temp_pixels = SDL_malloc(alloclen);
             if (!temp_pixels) {
                 return false;
             }
-            result = SDL_SW_CopyYUVToRGB(texture->yuv, rect, native->format, rect->w, rect->h, temp_pixels, temp_pitch);
+            result = SDL_SW_CopyYUVToRGB(texture->yuv, &rect, native->format, rect.w, rect.h, temp_pixels, temp_pitch);
             if (result) {
-                SDL_UpdateTexture(native, rect, temp_pixels, temp_pitch);
+                SDL_UpdateTexture(native, &rect, temp_pixels, temp_pitch);
             }
             SDL_free(temp_pixels);
         }
@@ -2517,55 +2500,25 @@ static bool SDL_UpdateTextureYUVPlanar(SDL_Texture *texture, const SDL_Rect *rec
     return result;
 }
 
+static bool SDL_UpdateTextureYUVPlanar(SDL_Texture *texture, const SDL_Rect *rect,
+                                      const Uint8 *Yplane, int Ypitch,
+                                      const Uint8 *Uplane, int Upitch,
+                                      const Uint8 *Vplane, int Vpitch)
+{
+    if (!SDL_SW_UpdateYUVTexturePlanar(texture->yuv, rect, Yplane, Ypitch, Uplane, Upitch, Vplane, Vpitch)) {
+        return false;
+    }
+    return SDL_UpdateTextureYUVToNative(texture);
+}
+
 static bool SDL_UpdateTextureNVPlanar(SDL_Texture *texture, const SDL_Rect *rect,
                                      const Uint8 *Yplane, int Ypitch,
                                      const Uint8 *UVplane, int UVpitch)
 {
-    SDL_Texture *native = texture->native;
-    SDL_Rect full_rect;
-    bool result = true;
-
     if (!SDL_SW_UpdateNVTexturePlanar(texture->yuv, rect, Yplane, Ypitch, UVplane, UVpitch)) {
         return false;
     }
-
-    full_rect.x = 0;
-    full_rect.y = 0;
-    full_rect.w = texture->w;
-    full_rect.h = texture->h;
-    rect = &full_rect;
-
-    if (!rect->w || !rect->h) {
-        return true; // nothing to do.
-    }
-
-    if (texture->access == SDL_TEXTUREACCESS_STREAMING) {
-        // We can lock the texture and copy to it
-        void *native_pixels = NULL;
-        int native_pitch = 0;
-
-        if (!SDL_LockTexture(native, rect, &native_pixels, &native_pitch)) {
-            return false;
-        }
-        result = SDL_SW_CopyYUVToRGB(texture->yuv, rect, native->format, rect->w, rect->h, native_pixels, native_pitch);
-        SDL_UnlockTexture(native);
-    } else {
-        // Use a temporary buffer for updating
-        const int temp_pitch = (((rect->w * SDL_BYTESPERPIXEL(native->format)) + 3) & ~3);
-        const size_t alloclen = (size_t)rect->h * temp_pitch;
-        if (alloclen > 0) {
-            void *temp_pixels = SDL_malloc(alloclen);
-            if (!temp_pixels) {
-                return false;
-            }
-            result = SDL_SW_CopyYUVToRGB(texture->yuv, rect, native->format, rect->w, rect->h, temp_pixels, temp_pitch);
-            if (result) {
-                SDL_UpdateTexture(native, rect, temp_pixels, temp_pitch);
-            }
-            SDL_free(temp_pixels);
-        }
-    }
-    return result;
+    return SDL_UpdateTextureYUVToNative(texture);
 }
 
 #endif // SDL_HAVE_YUV

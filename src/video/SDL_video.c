@@ -1933,6 +1933,21 @@ static void SDL_CheckWindowDisplayScaleChanged(SDL_Window *window)
     }
 }
 
+static SDL_VideoDisplay *SDL_GetFullscreenDisplay(SDL_Window *window, bool entering)
+{
+    if (entering) {
+        return SDL_GetVideoDisplayForFullscreenWindow(window);
+    }
+
+    for (int i = 0; i < _this->num_displays; ++i) {
+        SDL_VideoDisplay *display = _this->displays[i];
+        if (display->fullscreen_window == window) {
+            return display;
+        }
+    }
+    return NULL;
+}
+
 bool SDL_UpdateFullscreenMode(SDL_Window *window, SDL_FullscreenOp fullscreen, bool commit)
 {
     SDL_VideoDisplay *display = NULL;
@@ -1950,22 +1965,11 @@ bool SDL_UpdateFullscreenMode(SDL_Window *window, SDL_FullscreenOp fullscreen, b
     }
 
     // Get the correct display for this operation
+    display = SDL_GetFullscreenDisplay(window, fullscreen != SDL_FULLSCREEN_OP_LEAVE);
     if (fullscreen) {
-        display = SDL_GetVideoDisplayForFullscreenWindow(window);
         if (!display) {
             // This should never happen, but it did...
             goto done;
-        }
-    } else {
-        for (i = 0; i < _this->num_displays; ++i) {
-            display = _this->displays[i];
-            if (display->fullscreen_window == window) {
-                break;
-            }
-        }
-        if (!display || i == _this->num_displays) {
-            // Already not fullscreen on any display
-            display = NULL;
         }
     }
 
@@ -2432,6 +2436,42 @@ static bool SDL_ValidateWindowType(SDL_VideoDevice *_this, SDL_Window *parent, S
     return true;
 }
 
+static bool SDL_PrepareWindowGraphics(SDL_VideoDevice *_this, SDL_WindowFlags *flags, bool external_graphics_context)
+{
+    SDL_WindowFlags graphics_flags = *flags & (SDL_WINDOW_OPENGL | SDL_WINDOW_METAL | SDL_WINDOW_VULKAN);
+    if (graphics_flags & (graphics_flags - 1)) {
+        return SDL_SetError("Conflicting window graphics flags specified: 0x%.8x", (unsigned int)graphics_flags);
+    }
+
+    // Some platforms have certain graphics backends enabled by default
+    if (!graphics_flags && !external_graphics_context) {
+        *flags |= SDL_DefaultGraphicsBackends(_this);
+    }
+
+    if (*flags & SDL_WINDOW_OPENGL) {
+        if (!_this->GL_CreateContext) {
+            return SDL_ContextNotSupported("OpenGL");
+        }
+        if (!SDL_GL_LoadLibrary(NULL)) {
+            return false;
+        }
+    }
+
+    if (*flags & SDL_WINDOW_VULKAN) {
+        if (!_this->Vulkan_CreateSurface) {
+            return SDL_ContextNotSupported("Vulkan");
+        }
+        if (!SDL_Vulkan_LoadLibrary(NULL)) {
+            return false;
+        }
+    }
+
+    if ((*flags & SDL_WINDOW_METAL) && !_this->Metal_CreateView) {
+        return SDL_ContextNotSupported("Metal");
+    }
+    return true;
+}
+
 SDL_Window *SDL_CreateWindowWithProperties(SDL_PropertiesID props)
 {
     SDL_Window *window;
@@ -2442,7 +2482,6 @@ SDL_Window *SDL_CreateWindowWithProperties(SDL_PropertiesID props)
     int h = (int)SDL_GetNumberProperty(props, SDL_PROP_WINDOW_CREATE_HEIGHT_NUMBER, 0);
     SDL_Window *parent = (SDL_Window *)SDL_GetPointerProperty(props, SDL_PROP_WINDOW_CREATE_PARENT_POINTER, NULL);
     SDL_WindowFlags flags = SDL_GetWindowFlagProperties(props);
-    SDL_WindowFlags graphics_flags;
     SDL_DisplayID displayID = 0;
     bool undefined_x = false;
     bool undefined_y = false;
@@ -2510,43 +2549,8 @@ SDL_Window *SDL_CreateWindowWithProperties(SDL_PropertiesID props)
         }
     }
 
-    // ensure no more than one of these flags is set
-    graphics_flags = flags & (SDL_WINDOW_OPENGL | SDL_WINDOW_METAL | SDL_WINDOW_VULKAN);
-    if (graphics_flags & (graphics_flags - 1)) {
-        SDL_SetError("Conflicting window graphics flags specified: 0x%.8x", (unsigned int)graphics_flags);
+    if (!SDL_PrepareWindowGraphics(_this, &flags, external_graphics_context)) {
         return NULL;
-    }
-
-    // Some platforms have certain graphics backends enabled by default
-    if (!graphics_flags && !external_graphics_context) {
-        flags |= SDL_DefaultGraphicsBackends(_this);
-    }
-
-    if (flags & SDL_WINDOW_OPENGL) {
-        if (!_this->GL_CreateContext) {
-            SDL_ContextNotSupported("OpenGL");
-            return NULL;
-        }
-        if (!SDL_GL_LoadLibrary(NULL)) {
-            return NULL;
-        }
-    }
-
-    if (flags & SDL_WINDOW_VULKAN) {
-        if (!_this->Vulkan_CreateSurface) {
-            SDL_ContextNotSupported("Vulkan");
-            return NULL;
-        }
-        if (!SDL_Vulkan_LoadLibrary(NULL)) {
-            return NULL;
-        }
-    }
-
-    if (flags & SDL_WINDOW_METAL) {
-        if (!_this->Metal_CreateView) {
-            SDL_ContextNotSupported("Metal");
-            return NULL;
-        }
     }
 
     window = (SDL_Window *)SDL_calloc(1, sizeof(*window));
