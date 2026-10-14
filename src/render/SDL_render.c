@@ -198,104 +198,6 @@ void SDL_ConvertToLinear(SDL_Renderer *renderer, SDL_FColor *color)
     }
 }
 
-static SDL_INLINE void DebugLogRenderCommands(const SDL_RenderCommand *cmd)
-{
-#if 0
-    unsigned int i = 1;
-    SDL_Log("Render commands to flush:");
-    while (cmd) {
-        switch (cmd->command) {
-        case SDL_RENDERCMD_NO_OP:
-            SDL_Log(" %u. no-op", i++);
-            break;
-
-        case SDL_RENDERCMD_SETVIEWPORT:
-            SDL_Log(" %u. set viewport (first=%u, rect={(%d, %d), %dx%d})", i++,
-                    (unsigned int)cmd->data.viewport.first,
-                    cmd->data.viewport.rect.x, cmd->data.viewport.rect.y,
-                    cmd->data.viewport.rect.w, cmd->data.viewport.rect.h);
-            break;
-
-        case SDL_RENDERCMD_SETCLIPRECT:
-            SDL_Log(" %u. set cliprect (enabled=%s, rect={(%d, %d), %dx%d})", i++,
-                    cmd->data.cliprect.enabled ? "true" : "false",
-                    cmd->data.cliprect.rect.x, cmd->data.cliprect.rect.y,
-                    cmd->data.cliprect.rect.w, cmd->data.cliprect.rect.h);
-            break;
-
-        case SDL_RENDERCMD_SETDRAWCOLOR:
-            SDL_Log(" %u. set draw color (first=%u, r=%.2f, g=%.2f, b=%.2f, a=%.2f, color_scale=%g)", i++,
-                    (unsigned int)cmd->data.color.first,
-                    cmd->data.draw.color.r, cmd->data.draw.color.g,
-                    cmd->data.draw.color.b, cmd->data.draw.color.a, cmd->data.color.color_scale);
-            break;
-
-        case SDL_RENDERCMD_CLEAR:
-            SDL_Log(" %u. clear (first=%u, r=%.2f, g=%.2f, b=%.2f, a=%.2f, color_scale=%g)", i++,
-                    (unsigned int)cmd->data.color.first,
-                    cmd->data.draw.color.r, cmd->data.draw.color.g,
-                    cmd->data.draw.color.b, cmd->data.draw.color.a, cmd->data.color.color_scale);
-            break;
-
-        case SDL_RENDERCMD_DRAW_POINTS:
-            SDL_Log(" %u. draw points (first=%u, count=%u, r=%.2f, g=%.2f, b=%.2f, a=%.2f, blend=%d, color_scale=%g)", i++,
-                    (unsigned int)cmd->data.draw.first,
-                    (unsigned int)cmd->data.draw.count,
-                    cmd->data.draw.color.r, cmd->data.draw.color.g,
-                    cmd->data.draw.color.b, cmd->data.draw.color.a,
-                    (int)cmd->data.draw.blend, cmd->data.draw.color_scale);
-            break;
-
-        case SDL_RENDERCMD_DRAW_LINES:
-            SDL_Log(" %u. draw lines (first=%u, count=%u, r=%.2f, g=%.2f, b=%.2f, a=%.2f, blend=%d, color_scale=%g)", i++,
-                    (unsigned int)cmd->data.draw.first,
-                    (unsigned int)cmd->data.draw.count,
-                    cmd->data.draw.color.r, cmd->data.draw.color.g,
-                    cmd->data.draw.color.b, cmd->data.draw.color.a,
-                    (int)cmd->data.draw.blend, cmd->data.draw.color_scale);
-            break;
-
-        case SDL_RENDERCMD_FILL_RECTS:
-            SDL_Log(" %u. fill rects (first=%u, count=%u, r=%.2f, g=%.2f, b=%.2f, a=%.2f, blend=%d, color_scale=%g)", i++,
-                    (unsigned int)cmd->data.draw.first,
-                    (unsigned int)cmd->data.draw.count,
-                    cmd->data.draw.color.r, cmd->data.draw.color.g,
-                    cmd->data.draw.color.b, cmd->data.draw.color.a,
-                    (int)cmd->data.draw.blend, cmd->data.draw.color_scale);
-            break;
-
-        case SDL_RENDERCMD_COPY:
-            SDL_Log(" %u. copy (first=%u, count=%u, r=%.2f, g=%.2f, b=%.2f, a=%.2f, blend=%d, color_scale=%g, tex=%p)", i++,
-                    (unsigned int)cmd->data.draw.first,
-                    (unsigned int)cmd->data.draw.count,
-                    cmd->data.draw.color.r, cmd->data.draw.color.g,
-                    cmd->data.draw.color.b, cmd->data.draw.color.a,
-                    (int)cmd->data.draw.blend, cmd->data.draw.color_scale, cmd->data.draw.texture);
-            break;
-
-        case SDL_RENDERCMD_COPY_EX:
-            SDL_Log(" %u. copyex (first=%u, count=%u, r=%.2f, g=%.2f, b=%.2f, a=%.2f, blend=%d, color_scale=%g, tex=%p)", i++,
-                    (unsigned int)cmd->data.draw.first,
-                    (unsigned int)cmd->data.draw.count,
-                    cmd->data.draw.color.r, cmd->data.draw.color.g,
-                    cmd->data.draw.color.b, cmd->data.draw.color.a,
-                    (int)cmd->data.draw.blend, cmd->data.draw.color_scale, cmd->data.draw.texture);
-            break;
-
-        case SDL_RENDERCMD_GEOMETRY:
-            SDL_Log(" %u. geometry (first=%u, count=%u, r=%.2f, g=%.2f, b=%.2f, a=%.2f, blend=%d, color_scale=%g, tex=%p)", i++,
-                    (unsigned int)cmd->data.draw.first,
-                    (unsigned int)cmd->data.draw.count,
-                    cmd->data.draw.color.r, cmd->data.draw.color.g,
-                    cmd->data.draw.color.b, cmd->data.draw.color.a,
-                    (int)cmd->data.draw.blend, cmd->data.draw.color_scale, cmd->data.draw.texture);
-            break;
-        }
-        cmd = cmd->next;
-    }
-#endif
-}
-
 static bool FlushRenderCommands(SDL_Renderer *renderer)
 {
     bool result;
@@ -306,8 +208,6 @@ static bool FlushRenderCommands(SDL_Renderer *renderer)
         SDL_assert(renderer->vertex_data_used == 0);
         return true;
     }
-
-    DebugLogRenderCommands(renderer->render_commands);
 
 #if DONT_DRAW_WHILE_HIDDEN
     // Don't send commands to the GPU while we're hidden
@@ -1726,34 +1626,6 @@ static bool SDL_ValidateTextureCreateParams(SDL_Renderer *renderer, SDL_PixelFor
     return true;
 }
 
-static void SDL_InitializeTextureFields(SDL_Texture *texture, SDL_Renderer *renderer, SDL_PropertiesID props, SDL_PixelFormat format, SDL_TextureAccess access, int w, int h, SDL_Colorspace default_colorspace)
-{
-    texture->refcount = 1;
-    SDL_SetObjectValid(texture, SDL_OBJECT_TYPE_TEXTURE, true);
-    texture->colorspace = (SDL_Colorspace)SDL_GetNumberProperty(props, SDL_PROP_TEXTURE_CREATE_COLORSPACE_NUMBER, default_colorspace);
-    texture->format = format;
-    texture->access = access;
-    texture->w = w;
-    texture->h = h;
-    texture->color.r = 1.0f;
-    texture->color.g = 1.0f;
-    texture->color.b = 1.0f;
-    texture->color.a = 1.0f;
-    texture->blendMode = SDL_ISPIXELFORMAT_ALPHA(format) ? SDL_BLENDMODE_BLEND : SDL_BLENDMODE_NONE;
-    texture->scaleMode = renderer->scale_mode;
-    texture->view.pixel_w = w;
-    texture->view.pixel_h = h;
-    texture->view.viewport.w = -1.0f;
-    texture->view.viewport.h = -1.0f;
-    texture->view.scale.x = 1.0f;
-    texture->view.scale.y = 1.0f;
-    texture->view.logical_scale.x = 1.0f;
-    texture->view.logical_scale.y = 1.0f;
-    texture->view.current_scale.x = 1.0f;
-    texture->view.current_scale.y = 1.0f;
-    texture->renderer = renderer;
-}
-
 SDL_Texture *SDL_CreateTextureWithProperties(SDL_Renderer *renderer, SDL_PropertiesID props)
 {
     SDL_Texture *texture;
@@ -1780,7 +1652,30 @@ SDL_Texture *SDL_CreateTextureWithProperties(SDL_Renderer *renderer, SDL_Propert
     if (!texture) {
         return NULL;
     }
-    SDL_InitializeTextureFields(texture, renderer, props, format, access, w, h, default_colorspace);
+    texture->refcount = 1;
+    SDL_SetObjectValid(texture, SDL_OBJECT_TYPE_TEXTURE, true);
+    texture->colorspace = (SDL_Colorspace)SDL_GetNumberProperty(props, SDL_PROP_TEXTURE_CREATE_COLORSPACE_NUMBER, default_colorspace);
+    texture->format = format;
+    texture->access = access;
+    texture->w = w;
+    texture->h = h;
+    texture->color.r = 1.0f;
+    texture->color.g = 1.0f;
+    texture->color.b = 1.0f;
+    texture->color.a = 1.0f;
+    texture->blendMode = SDL_ISPIXELFORMAT_ALPHA(format) ? SDL_BLENDMODE_BLEND : SDL_BLENDMODE_NONE;
+    texture->scaleMode = renderer->scale_mode;
+    texture->view.pixel_w = w;
+    texture->view.pixel_h = h;
+    texture->view.viewport.w = -1.0f;
+    texture->view.viewport.h = -1.0f;
+    texture->view.scale.x = 1.0f;
+    texture->view.scale.y = 1.0f;
+    texture->view.logical_scale.x = 1.0f;
+    texture->view.logical_scale.y = 1.0f;
+    texture->view.current_scale.x = 1.0f;
+    texture->view.current_scale.y = 1.0f;
+    texture->renderer = renderer;
     texture->next = renderer->textures;
     if (renderer->textures) {
         renderer->textures->prev = texture;

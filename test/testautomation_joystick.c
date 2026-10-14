@@ -209,6 +209,37 @@ static int SDLCALL joystick_testVirtual(void *arg)
     return TEST_COMPLETED;
 }
 
+/** Check the initial values of a two-axis virtual joystick. */
+static int SDLCALL joystick_twoAxisInitialState(void *arg)
+{
+    SDL_VirtualJoystickDesc desc;
+    SDL_JoystickID device_id;
+    SDL_Joystick *joystick;
+    Sint16 value;
+
+    SDL_INIT_INTERFACE(&desc);
+    desc.type = SDL_JOYSTICK_TYPE_UNKNOWN;
+    desc.naxes = 2;
+    device_id = SDL_AttachVirtualJoystick(&desc);
+    if (!SDLTest_AssertCheck(device_id > 0, "Attach two-axis joystick: %s", SDL_GetError())) {
+        return TEST_ABORTED;
+    }
+
+    joystick = SDL_OpenJoystick(device_id);
+    SDLTest_AssertCheck(joystick != NULL, "Open two-axis joystick: %s", SDL_GetError());
+    if (joystick) {
+        for (int axis = 0; axis < 2; ++axis) {
+            value = 1;
+            SDLTest_AssertCheck(SDL_GetJoystickAxisInitialState(joystick, axis, &value),
+                                "Axis %d has an initial state", axis);
+            SDLTest_AssertCheck(value == 0, "Axis %d starts centered at zero, got %d", axis, value);
+        }
+        SDL_CloseJoystick(joystick);
+    }
+    SDLTest_AssertCheck(SDL_DetachVirtualJoystick(device_id), "Detach two-axis joystick");
+    return TEST_COMPLETED;
+}
+
 /**
  * Check gamepad mappings
  */
@@ -276,6 +307,38 @@ static int SDLCALL joystick_testMappings(void *arg)
     }
     SDLTest_AssertCheck(SDL_DetachVirtualJoystick(device_id), "SDL_DetachVirtualJoystick()");
 
+    return TEST_COMPLETED;
+}
+
+static int SDLCALL joystick_mappingLabelHints(void *arg)
+{
+    const struct {
+        const char *guid;
+        const char *mapping;
+        const char *expected;
+    } cases[] = {
+        { "03000000adde00000100000000000000",
+          "03000000adde00000100000000000000,GameCube labels,a:b0,b:b1,x:b2,y:b3,hint:SDL_GAMECONTROLLER_USE_GAMECUBE_LABELS:=1,",
+          ",a:b0,x:b1,b:b2,y:b3,hint:!SDL_GAMECONTROLLER_USE_GAMECUBE_LABELS:=1," },
+        { "03000000adde00000200000000000000",
+          "03000000adde00000200000000000000,Nintendo labels,a:b0,b:b1,x:b2,y:b3,hint:SDL_GAMECONTROLLER_USE_BUTTON_LABELS:=1,",
+          ",b:b0,a:b1,y:b2,x:b3,hint:!SDL_GAMECONTROLLER_USE_BUTTON_LABELS:=1," }
+    };
+
+    for (int i = 0; i < SDL_arraysize(cases); ++i) {
+        char *mapping;
+        if (!SDLTest_AssertCheck(SDL_AddGamepadMapping(cases[i].mapping) >= 0,
+                                 "Add labeled mapping %d: %s", i, SDL_GetError())) {
+            return TEST_ABORTED;
+        }
+        mapping = SDL_GetGamepadMappingForGUID(SDL_StringToGUID(cases[i].guid));
+        if (!SDLTest_AssertCheck(mapping != NULL, "Read labeled mapping %d: %s", i, SDL_GetError())) {
+            return TEST_ABORTED;
+        }
+        SDLTest_AssertCheck(SDL_strstr(mapping, cases[i].expected) != NULL,
+                            "Mapping %d preserves positional buttons and negates the label hint: %s", i, mapping);
+        SDL_free(mapping);
+    }
     return TEST_COMPLETED;
 }
 
@@ -347,8 +410,14 @@ static int SDLCALL joystick_testMissingAxes(void *arg)
 static const SDLTest_TestCaseReference joystickTest1 = {
     joystick_testVirtual, "joystick_testVirtual", "Test virtual joystick functionality", TEST_ENABLED
 };
+static const SDLTest_TestCaseReference joystickTestInitialState = {
+    joystick_twoAxisInitialState, "joystick_twoAxisInitialState", "Two-axis virtual joysticks start centered", TEST_ENABLED
+};
 static const SDLTest_TestCaseReference joystickTest2 = {
     joystick_testMappings, "joystick_testMappings", "Test gamepad mapping functionality", TEST_ENABLED
+};
+static const SDLTest_TestCaseReference joystickTestMappingLabelHints = {
+    joystick_mappingLabelHints, "joystick_mappingLabelHints", "Legacy label hints map buttons to positions", TEST_ENABLED
 };
 static const SDLTest_TestCaseReference joystickTest3 = {
     joystick_testMissingAxes, "joystick_testMissingAxes", "Test mappings with missing joystick axes", TEST_ENABLED
@@ -357,7 +426,9 @@ static const SDLTest_TestCaseReference joystickTest3 = {
 /* Sequence of Joystick routine test cases */
 static const SDLTest_TestCaseReference *joystickTests[] = {
     &joystickTest1,
+    &joystickTestInitialState,
     &joystickTest2,
+    &joystickTestMappingLabelHints,
     &joystickTest3,
     NULL
 };

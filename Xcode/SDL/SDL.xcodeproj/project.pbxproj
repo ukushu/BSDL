@@ -324,6 +324,7 @@
 		A7D8BB4B23E2514500DCD162 /* default_cursor.h in Headers */ = {isa = PBXBuildFile; fileRef = A7D8A93323E2514000DCD162 /* default_cursor.h */; };
 		A7D8BB5123E2514500DCD162 /* scancodes_darwin.h in Headers */ = {isa = PBXBuildFile; fileRef = A7D8A93423E2514000DCD162 /* scancodes_darwin.h */; };
 		A7D8BB5723E2514500DCD162 /* SDL_events.c in Sources */ = {isa = PBXBuildFile; fileRef = A7D8A93523E2514000DCD162 /* SDL_events.c */; };
+		F4A1B2C3D4E5F60718293A4B /* SDL_eventdescription.c in Sources */ = {isa = PBXBuildFile; fileRef = F4A1B2C3D4E5F60718293A4C /* SDL_eventdescription.c */; };
 		A7D8BB5D23E2514500DCD162 /* scancodes_linux.h in Headers */ = {isa = PBXBuildFile; fileRef = A7D8A93623E2514000DCD162 /* scancodes_linux.h */; };
 		A7D8BB6323E2514500DCD162 /* SDL_touch_c.h in Headers */ = {isa = PBXBuildFile; fileRef = A7D8A93723E2514000DCD162 /* SDL_touch_c.h */; };
 		A7D8BB6923E2514500DCD162 /* SDL_keyboard.c in Sources */ = {isa = PBXBuildFile; fileRef = A7D8A93823E2514000DCD162 /* SDL_keyboard.c */; };
@@ -373,6 +374,7 @@
 		E4F257942C81903800FCEAFC /* SDL_gpu_vulkan_vkfuncs.h in Headers */ = {isa = PBXBuildFile; fileRef = E4F257822C81903800FCEAFC /* SDL_gpu_vulkan_vkfuncs.h */; };
 		E4F257952C81903800FCEAFC /* SDL_gpu_vulkan.c in Sources */ = {isa = PBXBuildFile; fileRef = E4F257832C81903800FCEAFC /* SDL_gpu_vulkan.c */; };
 		E4F257962C81903800FCEAFC /* SDL_gpu.c in Sources */ = {isa = PBXBuildFile; fileRef = E4F257852C81903800FCEAFC /* SDL_gpu.c */; };
+		E4F2579A2C81903800FCEAFC /* SDL_gpu_format.c in Sources */ = {isa = PBXBuildFile; fileRef = E4F2578E2C81903800FCEAFC /* SDL_gpu_format.c */; };
 		E4F257972C81903800FCEAFC /* SDL_sysgpu.h in Headers */ = {isa = PBXBuildFile; fileRef = E4F257862C81903800FCEAFC /* SDL_sysgpu.h */; };
 		E4F257982C81903800FCEAFC /* SDL_gpu_openxr.c in Sources */ = {isa = PBXBuildFile; fileRef = E4F257882C81903800FCEAFC /* SDL_gpu_openxr.c */; };
 		E4F257992C81903800FCEAFC /* SDL_openxrdyn.c in Sources */ = {isa = PBXBuildFile; fileRef = E4F257892C81903800FCEAFC /* SDL_openxrdyn.c */; };
@@ -938,6 +940,7 @@
 		A7D8A93323E2514000DCD162 /* default_cursor.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = default_cursor.h; sourceTree = "<group>"; };
 		A7D8A93423E2514000DCD162 /* scancodes_darwin.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = scancodes_darwin.h; sourceTree = "<group>"; };
 		A7D8A93523E2514000DCD162 /* SDL_events.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_events.c; sourceTree = "<group>"; };
+		F4A1B2C3D4E5F60718293A4C /* SDL_eventdescription.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_eventdescription.c; sourceTree = "<group>"; };
 		A7D8A93623E2514000DCD162 /* scancodes_linux.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = scancodes_linux.h; sourceTree = "<group>"; };
 		A7D8A93723E2514000DCD162 /* SDL_touch_c.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SDL_touch_c.h; sourceTree = "<group>"; };
 		A7D8A93823E2514000DCD162 /* SDL_keyboard.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_keyboard.c; sourceTree = "<group>"; };
@@ -964,6 +967,7 @@
 		E4F257822C81903800FCEAFC /* SDL_gpu_vulkan_vkfuncs.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SDL_gpu_vulkan_vkfuncs.h; sourceTree = "<group>"; };
 		E4F257832C81903800FCEAFC /* SDL_gpu_vulkan.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_gpu_vulkan.c; sourceTree = "<group>"; };
 		E4F257852C81903800FCEAFC /* SDL_gpu.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_gpu.c; sourceTree = "<group>"; };
+		E4F2578E2C81903800FCEAFC /* SDL_gpu_format.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_gpu_format.c; sourceTree = "<group>"; };
 		E4F257862C81903800FCEAFC /* SDL_sysgpu.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SDL_sysgpu.h; sourceTree = "<group>"; };
 		E4F257882C81903800FCEAFC /* SDL_gpu_openxr.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_gpu_openxr.c; sourceTree = "<group>"; };
 		E4F257892C81903800FCEAFC /* SDL_openxrdyn.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_openxrdyn.c; sourceTree = "<group>"; };
@@ -2355,6 +2359,7 @@
 				A7D8A93B23E2514000DCD162 /* SDL_dropevents.c */,
 				A7D8A92E23E2514000DCD162 /* SDL_dropevents_c.h */,
 				A7D8A93523E2514000DCD162 /* SDL_events.c */,
+				F4A1B2C3D4E5F60718293A4C /* SDL_eventdescription.c */,
 				A7D8A94223E2514000DCD162 /* SDL_events_c.h */,
 				F3D8BDFA2D6D2C7000B22FA1 /* SDL_eventwatch.c */,
 				F3D8BDFB2D6D2C7000B22FA1 /* SDL_eventwatch_c.h */,
@@ -2437,6 +2442,7 @@
 				E4F257842C81903800FCEAFC /* vulkan */,
 				E4F2578B2C81903800FCEAFC /* xr */,
 				E4F257852C81903800FCEAFC /* SDL_gpu.c */,
+				E4F2578E2C81903800FCEAFC /* SDL_gpu_format.c */,
 				E4F257862C81903800FCEAFC /* SDL_sysgpu.h */,
 			);
 			path = gpu;
@@ -3053,6 +3059,7 @@
 				F3973FAB28A59BDD00B84553 /* SDL_crc16.c in Sources */,
 				A7D8AB2B23E2514100DCD162 /* SDL_timer.c in Sources */,
 				E4F257962C81903800FCEAFC /* SDL_gpu.c in Sources */,
+				E4F2579A2C81903800FCEAFC /* SDL_gpu_format.c in Sources */,
 				F3D60A8328C16A1900788A3A /* SDL_hidapi_wii.c in Sources */,
 				A7D8B9DD23E2514400DCD162 /* SDL_blendpoint.c in Sources */,
 				F3DB66342EA9ACC300568044 /* SDL_rotate.c in Sources */,
@@ -3131,6 +3138,7 @@
 				F3B439512C935C2400792030 /* SDL_dummyprocess.c in Sources */,
 				A7D8B76423E2514300DCD162 /* SDL_mixer.c in Sources */,
 				A7D8BB5723E2514500DCD162 /* SDL_events.c in Sources */,
+				F4A1B2C3D4E5F60718293A4B /* SDL_eventdescription.c in Sources */,
 				F3A8957D2F7DC15500B9E5C2 /* SDL_uikitviewcontroller.swift in Sources */,
 				A7D8ADE623E2514100DCD162 /* SDL_blit_0.c in Sources */,
 				89E5801E2D03602200DAF6D3 /* SDL_hidapi_lg4ff.c in Sources */,

@@ -36,6 +36,10 @@
 #include "SDL_pen_c.h"
 #include "SDL_windowevents_c.h"
 
+#define SDL2_SYSWMEVENT 0x201
+
+extern int SDL_GetEventDescription(const SDL_Event *event, char *buf, int buflen);
+
 // The event mutex
 //
 // This mutex prevents multiple threads from watching multiple events

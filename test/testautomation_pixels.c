@@ -1207,7 +1207,32 @@ static int SDLCALL pixels_saveLoadPNG(void *arg)
 
 /* ================= Test References ================== */
 
+static int SDLCALL pixels_gpuFormatConversions(void *arg)
+{
+    SDLTest_AssertCheck(SDL_GPUTextureFormatTexelBlockSize(SDL_GPU_TEXTUREFORMAT_BC1_RGBA_UNORM) == 8,
+                        "BC1 uses eight bytes per block");
+    SDLTest_AssertCheck(SDL_GPUTextureFormatTexelBlockSize(SDL_GPU_TEXTUREFORMAT_BC3_RGBA_UNORM) == 16,
+                        "BC3 uses sixteen bytes per block");
+    SDLTest_AssertCheck(SDL_GPUTextureFormatTexelBlockSize(SDL_GPU_TEXTUREFORMAT_R8_UNORM) == 1,
+                        "R8 uses one byte per texel");
+    SDLTest_AssertCheck(SDL_GPUTextureFormatTexelBlockSize(SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM) == 4,
+                        "RGBA8 uses four bytes per texel");
+    SDLTest_AssertCheck(SDL_GetPixelFormatFromGPUTextureFormat(SDL_GPU_TEXTUREFORMAT_B8G8R8A8_UNORM) == SDL_PIXELFORMAT_BGRA32,
+                        "BGRA8 GPU format maps to BGRA32 pixels");
+    SDLTest_AssertCheck(SDL_GetGPUTextureFormatFromPixelFormat(SDL_PIXELFORMAT_RGBA64_FLOAT) == SDL_GPU_TEXTUREFORMAT_R16G16B16A16_FLOAT,
+                        "RGBA64 float pixels map to RGBA16 float GPU format");
+    SDLTest_AssertCheck(SDL_GetPixelFormatFromGPUTextureFormat(SDL_GPU_TEXTUREFORMAT_INVALID) == SDL_PIXELFORMAT_UNKNOWN,
+                        "Invalid GPU format has no pixel equivalent");
+    SDLTest_AssertCheck(SDL_GetGPUTextureFormatFromPixelFormat(SDL_PIXELFORMAT_UNKNOWN) == SDL_GPU_TEXTUREFORMAT_INVALID,
+                        "Unknown pixel format has no GPU equivalent");
+    return TEST_COMPLETED;
+}
+
 /* Pixels test cases */
+static const SDLTest_TestCaseReference pixelsTestGPUFormatConversions = {
+    pixels_gpuFormatConversions, "pixels_gpuFormatConversions", "GPU and pixel format conversion values", TEST_ENABLED
+};
+
 static const SDLTest_TestCaseReference pixelsTestGetPixelFormatName = {
     pixels_getPixelFormatName, "pixels_getPixelFormatName", "Call to SDL_GetPixelFormatName", TEST_ENABLED
 };
@@ -1230,6 +1255,7 @@ static const SDLTest_TestCaseReference pixelsTestSaveLoadPNG = {
 
 /* Sequence of Pixels test cases */
 static const SDLTest_TestCaseReference *pixelsTests[] = {
+    &pixelsTestGPUFormatConversions,
     &pixelsTestGetPixelFormatName,
     &pixelsTestGetPixelFormatDetails,
     &pixelsTestAllocFreePalette,

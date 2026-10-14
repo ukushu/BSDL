@@ -2506,67 +2506,29 @@ bool SDL_ReloadGamepadMappings(void)
     return true;
 }
 
-static char *SDL_ConvertMappingToPositionalAXBY(const char *mapping)
+static char *SDL_ConvertMappingToPositional(const char *mapping, const char *from, const char *to, const char *hint_name)
 {
     // Add space for '!' and null terminator
     size_t length = SDL_strlen(mapping) + 1 + 1;
     char *remapped = (char *)SDL_malloc(length);
     if (remapped) {
-        char *button_B;
-        char *button_X;
-        char *hint;
+        char *buttons[4];
+        const size_t num_buttons = SDL_strlen(from);
+
+        SDL_assert(num_buttons == SDL_strlen(to) && num_buttons <= SDL_arraysize(buttons));
 
         SDL_strlcpy(remapped, mapping, length);
-        button_B = SDL_strstr(remapped, ",b:");
-        button_X = SDL_strstr(remapped, ",x:");
-        hint = SDL_strstr(remapped, "hint:SDL_GAMECONTROLLER_USE_GAMECUBE_LABELS");
+        for (size_t i = 0; i < num_buttons; ++i) {
+            const char button_name[] = { ',', from[i], ':', '\0' };
+            buttons[i] = SDL_strstr(remapped, button_name);
+        }
+        for (size_t i = 0; i < num_buttons; ++i) {
+            if (buttons[i]) {
+                buttons[i][1] = to[i];
+            }
+        }
 
-        if (button_B) {
-            button_B[1] = 'x';
-        }
-        if (button_X) {
-            button_X[1] = 'b';
-        }
-        if (hint) {
-            hint += 5;
-            SDL_memmove(hint + 1, hint, SDL_strlen(hint) + 1);
-            *hint = '!';
-        }
-    }
-    return remapped;
-}
-
-static char *SDL_ConvertMappingToPositionalBAXY(const char *mapping)
-{
-    // Add space for '!' and null terminator
-    size_t length = SDL_strlen(mapping) + 1 + 1;
-    char *remapped = (char *)SDL_malloc(length);
-    if (remapped) {
-        char *button_A;
-        char *button_B;
-        char *button_X;
-        char *button_Y;
-        char *hint;
-
-        SDL_strlcpy(remapped, mapping, length);
-        button_A = SDL_strstr(remapped, ",a:");
-        button_B = SDL_strstr(remapped, ",b:");
-        button_X = SDL_strstr(remapped, ",x:");
-        button_Y = SDL_strstr(remapped, ",y:");
-        hint = SDL_strstr(remapped, "hint:SDL_GAMECONTROLLER_USE_BUTTON_LABELS");
-
-        if (button_A) {
-            button_A[1] = 'b';
-        }
-        if (button_B) {
-            button_B[1] = 'a';
-        }
-        if (button_X) {
-            button_X[1] = 'y';
-        }
-        if (button_Y) {
-            button_Y[1] = 'x';
-        }
+        char *hint = SDL_strstr(remapped, hint_name);
         if (hint) {
             hint += 5;
             SDL_memmove(hint + 1, hint, SDL_strlen(hint) + 1);
@@ -2658,7 +2620,7 @@ static int SDL_PrivateAddGamepadMapping(const char *mappingString, SDL_GamepadMa
                     // This mapping uses positional buttons, we can use it as-is
                 } else {
                     // This mapping uses labeled buttons, we need to swap them to positional
-                    remapped = SDL_ConvertMappingToPositionalAXBY(mappingString);
+                    remapped = SDL_ConvertMappingToPositional(mappingString, "bx", "xb", "hint:SDL_GAMECONTROLLER_USE_GAMECUBE_LABELS");
                     if (!remapped) {
                         goto done;
                     }
@@ -2670,7 +2632,7 @@ static int SDL_PrivateAddGamepadMapping(const char *mappingString, SDL_GamepadMa
                     // This mapping uses positional buttons, we can use it as-is
                 } else {
                     // This mapping uses labeled buttons, we need to swap them to positional
-                    remapped = SDL_ConvertMappingToPositionalBAXY(mappingString);
+                    remapped = SDL_ConvertMappingToPositional(mappingString, "abxy", "bayx", "hint:SDL_GAMECONTROLLER_USE_BUTTON_LABELS");
                     if (!remapped) {
                         goto done;
                     }

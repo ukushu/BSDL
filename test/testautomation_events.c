@@ -24,6 +24,68 @@ static int g_userdataValue2 = 2;
 
 #define MAX_ITERATIONS 100
 
+typedef struct EventLogCapture
+{
+    char message[256];
+    int count;
+} EventLogCapture;
+
+static void SDLCALL events_captureLog(void *userdata, int category, SDL_LogPriority priority, const char *message)
+{
+    EventLogCapture *capture = (EventLogCapture *)userdata;
+
+    if (SDL_strncmp(message, "SDL EVENT: ", 11) == 0) {
+        SDL_strlcpy(capture->message, message, sizeof(capture->message));
+        ++capture->count;
+    }
+}
+
+static int SDLCALL events_logDescription(void *arg)
+{
+    SDL_LogOutputFunction previous_output;
+    void *previous_userdata;
+    const char *hint = SDL_GetHint(SDL_HINT_EVENT_LOGGING);
+    char *previous_hint = hint ? SDL_strdup(hint) : NULL;
+    EventLogCapture capture = { { 0 }, 0 };
+    SDL_Event event;
+    bool pushed;
+
+    if (hint && !previous_hint) {
+        return TEST_ABORTED;
+    }
+    if (!SDL_InitSubSystem(SDL_INIT_EVENTS)) {
+        SDL_free(previous_hint);
+        return TEST_ABORTED;
+    }
+
+    SDL_GetLogOutputFunction(&previous_output, &previous_userdata);
+    SDL_SetLogOutputFunction(events_captureLog, &capture);
+    SDL_SetHint(SDL_HINT_EVENT_LOGGING, "1");
+
+    SDL_zero(event);
+    event.type = SDL_EVENT_USER;
+    event.user.code = 42;
+    pushed = SDL_PushEvent(&event);
+
+    SDL_SetLogOutputFunction(previous_output, previous_userdata);
+    if (previous_hint) {
+        SDL_SetHint(SDL_HINT_EVENT_LOGGING, previous_hint);
+    } else {
+        SDL_ResetHint(SDL_HINT_EVENT_LOGGING);
+    }
+    SDL_free(previous_hint);
+    SDL_FlushEvent(SDL_EVENT_USER);
+    SDL_QuitSubSystem(SDL_INIT_EVENTS);
+
+    SDLTest_AssertCheck(pushed, "Push user event for logging: %s", SDL_GetError());
+    SDLTest_AssertCheck(capture.count == 1, "Log exactly one event, got %d", capture.count);
+    SDLTest_AssertCheck(SDL_strstr(capture.message, "SDL EVENT: SDL_EVENT_USER") != NULL,
+                        "Log user event name: %s", capture.message);
+    SDLTest_AssertCheck(SDL_strstr(capture.message, "windowid=0 code=42") != NULL,
+                        "Log user event details: %s", capture.message);
+    return TEST_COMPLETED;
+}
+
 /* Event filter that sets some flags and optionally checks userdata */
 static bool SDLCALL events_sampleNullEventFilter(void *userdata, SDL_Event *event)
 {
@@ -315,6 +377,10 @@ static const SDLTest_TestCaseReference eventsTest_pushPumpAndPollUserevent = {
     events_pushPumpAndPollUserevent, "events_pushPumpAndPollUserevent", "Pushes, pumps and polls a user event", TEST_ENABLED
 };
 
+static const SDLTest_TestCaseReference eventsTest_logDescription = {
+    events_logDescription, "events_logDescription", "Formats an event in the event log", TEST_ENABLED
+};
+
 static const SDLTest_TestCaseReference eventsTest_addDelEventWatch = {
     events_addDelEventWatch, "events_addDelEventWatch", "Adds and deletes an event watch function with NULL userdata", TEST_ENABLED
 };
@@ -330,6 +396,7 @@ static const SDLTest_TestCaseReference eventsTest_mainThreadCallbacks = {
 /* Sequence of Events test cases */
 static const SDLTest_TestCaseReference *eventsTests[] = {
     &eventsTest_pushPumpAndPollUserevent,
+    &eventsTest_logDescription,
     &eventsTest_addDelEventWatch,
     &eventsTest_addDelEventWatchWithUserdata,
     &eventsTest_mainThreadCallbacks,

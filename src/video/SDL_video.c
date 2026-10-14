@@ -2688,6 +2688,24 @@ SDL_Window *SDL_CreatePopupWindow(SDL_Window *parent, int offset_x, int offset_y
     return window;
 }
 
+static bool SDL_ValidateReconfiguredWindowGraphics(SDL_WindowFlags graphics_flags)
+{
+    if (graphics_flags & (graphics_flags - 1)) {
+        return SDL_SetError("Conflicting window flags specified");
+    }
+
+    if ((graphics_flags & SDL_WINDOW_OPENGL) && !_this->GL_CreateContext) {
+        return SDL_ContextNotSupported("OpenGL");
+    }
+    if ((graphics_flags & SDL_WINDOW_VULKAN) && !_this->Vulkan_CreateSurface) {
+        return SDL_ContextNotSupported("Vulkan");
+    }
+    if ((graphics_flags & SDL_WINDOW_METAL) && !_this->Metal_CreateView) {
+        return SDL_ContextNotSupported("Metal");
+    }
+    return true;
+}
+
 static bool SDL_ReconfigureWindowInternal(SDL_Window *window, SDL_WindowFlags flags)
 {
     bool loaded_opengl = false;
@@ -2698,18 +2716,8 @@ static bool SDL_ReconfigureWindowInternal(SDL_Window *window, SDL_WindowFlags fl
     }
 
     const SDL_WindowFlags graphics_flags = flags & (SDL_WINDOW_OPENGL | SDL_WINDOW_METAL | SDL_WINDOW_VULKAN);
-    if (graphics_flags & (graphics_flags - 1)) {
-        return SDL_SetError("Conflicting window flags specified");
-    }
-
-    if ((flags & SDL_WINDOW_OPENGL) && !_this->GL_CreateContext) {
-        return SDL_ContextNotSupported("OpenGL");
-    }
-    if ((flags & SDL_WINDOW_VULKAN) && !_this->Vulkan_CreateSurface) {
-        return SDL_ContextNotSupported("Vulkan");
-    }
-    if ((flags & SDL_WINDOW_METAL) && !_this->Metal_CreateView) {
-        return SDL_ContextNotSupported("Metal");
+    if (!SDL_ValidateReconfiguredWindowGraphics(graphics_flags)) {
+        return false;
     }
 
     if (!(window->flags & SDL_WINDOW_EXTERNAL)) {
@@ -2775,20 +2783,9 @@ bool SDL_RecreateWindow(SDL_Window *window, SDL_WindowFlags flags)
     bool need_vulkan_load = false;
     SDL_WindowFlags graphics_flags;
 
-    // ensure no more than one of these flags is set
     graphics_flags = flags & (SDL_WINDOW_OPENGL | SDL_WINDOW_METAL | SDL_WINDOW_VULKAN);
-    if (graphics_flags & (graphics_flags - 1)) {
-        return SDL_SetError("Conflicting window flags specified");
-    }
-
-    if ((flags & SDL_WINDOW_OPENGL) && !_this->GL_CreateContext) {
-        return SDL_ContextNotSupported("OpenGL");
-    }
-    if ((flags & SDL_WINDOW_VULKAN) && !_this->Vulkan_CreateSurface) {
-        return SDL_ContextNotSupported("Vulkan");
-    }
-    if ((flags & SDL_WINDOW_METAL) && !_this->Metal_CreateView) {
-        return SDL_ContextNotSupported("Metal");
+    if (!SDL_ValidateReconfiguredWindowGraphics(graphics_flags)) {
+        return false;
     }
 
     if (window->flags & SDL_WINDOW_EXTERNAL) {
@@ -4731,9 +4728,6 @@ void SDL_QuitVideo(void)
     _this->is_quitting = true;
 
     // Halt event processing before doing anything else
-#if 0 // This was moved to the end to fix a memory leak
-    SDL_QuitPen();
-#endif
     SDL_QuitTouch();
     SDL_QuitMouse();
     SDL_QuitKeyboard();
@@ -5698,103 +5692,6 @@ bool SDL_GL_DestroyContext(SDL_GLContext context)
 
     return _this->GL_DestroyContext(_this, context);
 }
-
-#if 0 // FIXME
-/*
- * Utility function used by SDL_WM_SetIcon(); flags & 1 for color key, flags
- * & 2 for alpha channel.
- */
-static void CreateMaskFromColorKeyOrAlpha(SDL_Surface *icon, Uint8 *mask, int flags)
-{
-    int x, y;
-    Uint32 colorkey;
-#define SET_MASKBIT(icon, x, y, mask) \
-    mask[(y * ((icon->w + 7) / 8)) + (x / 8)] &= ~(0x01 << (7 - (x % 8)))
-
-    colorkey = icon->format->colorkey;
-    switch (SDL_BYTESPERPIXEL(icon->format)) {
-    case 1:
-        {
-            Uint8 *pixels;
-            for (y = 0; y < icon->h; ++y) {
-                pixels = (Uint8 *) icon->pixels + y * icon->pitch;
-                for (x = 0; x < icon->w; ++x) {
-                    if (*pixels++ == colorkey) {
-                        SET_MASKBIT(icon, x, y, mask);
-                    }
-                }
-            }
-        }
-        break;
-
-    case 2:
-        {
-            Uint16 *pixels;
-            for (y = 0; y < icon->h; ++y) {
-                pixels = (Uint16 *) icon->pixels + y * icon->pitch / 2;
-                for (x = 0; x < icon->w; ++x) {
-                    if ((flags & 1) && *pixels == colorkey) {
-                        SET_MASKBIT(icon, x, y, mask);
-                    } else if ((flags & 2)
-                               && (*pixels & icon->format->Amask) == 0) {
-                        SET_MASKBIT(icon, x, y, mask);
-                    }
-                    pixels++;
-                }
-            }
-        }
-        break;
-
-    case 4:
-        {
-            Uint32 *pixels;
-            for (y = 0; y < icon->h; ++y) {
-                pixels = (Uint32 *) icon->pixels + y * icon->pitch / 4;
-                for (x = 0; x < icon->w; ++x) {
-                    if ((flags & 1) && *pixels == colorkey) {
-                        SET_MASKBIT(icon, x, y, mask);
-                    } else if ((flags & 2)
-                               && (*pixels & icon->format->Amask) == 0) {
-                        SET_MASKBIT(icon, x, y, mask);
-                    }
-                    pixels++;
-                }
-            }
-        }
-        break;
-    }
-}
-
-/*
- * Sets the window manager icon for the display window.
- */
-void SDL_WM_SetIcon(SDL_Surface *icon, Uint8 *mask)
-{
-    if (icon && _this->SetIcon) {
-        // Generate a mask if necessary, and create the icon!
-        if (mask == NULL) {
-            int mask_len = icon->h * (icon->w + 7) / 8;
-            int flags = 0;
-            mask = (Uint8 *) SDL_malloc(mask_len);
-            if (mask == NULL) {
-                return;
-            }
-            SDL_memset(mask, ~0, mask_len);
-            if (icon->flags & SDL_SRCCOLORKEY)
-                flags |= 1;
-            if (icon->flags & SDL_SRCALPHA)
-                flags |= 2;
-            if (flags) {
-                CreateMaskFromColorKeyOrAlpha(icon, mask, flags);
-            }
-            _this->SetIcon(_this, icon, mask);
-            SDL_free(mask);
-        } else {
-            _this->SetIcon(_this, icon, mask);
-        }
-    }
-}
-#endif
 
 SDL_TextInputType SDL_GetTextInputType(SDL_PropertiesID props)
 {

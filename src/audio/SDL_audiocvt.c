@@ -25,6 +25,41 @@
 #include "SDL_audioqueue.h"
 #include "SDL_audioresample.h"
 
+int *SDL_ChannelMapDup(const int *origchmap, int channels)
+{
+    int *chmap = NULL;
+    if ((channels > 0) && origchmap) {
+        const size_t chmaplen = sizeof (*origchmap) * channels;
+        chmap = (int *)SDL_malloc(chmaplen);
+        if (chmap) {
+            SDL_memcpy(chmap, origchmap, chmaplen);
+        }
+    }
+    return chmap;
+}
+
+bool SDL_AudioSpecsEqual(const SDL_AudioSpec *a, const SDL_AudioSpec *b, const int *channel_map_a, const int *channel_map_b)
+{
+    if ((a->format != b->format) || (a->channels != b->channels) || (a->freq != b->freq) || ((channel_map_a != NULL) != (channel_map_b != NULL))) {
+        return false;
+    } else if (channel_map_a && (SDL_memcmp(channel_map_a, channel_map_b, sizeof (*channel_map_a) * a->channels) != 0)) {
+        return false;
+    }
+    return true;
+}
+
+bool SDL_AudioChannelMapsEqual(int channels, const int *channel_map_a, const int *channel_map_b)
+{
+    if (channel_map_a == channel_map_b) {
+        return true;
+    } else if ((channel_map_a != NULL) != (channel_map_b != NULL)) {
+        return false;
+    } else if (channel_map_a && (SDL_memcmp(channel_map_a, channel_map_b, sizeof (*channel_map_a) * channels) != 0)) {
+        return false;
+    }
+    return true;
+}
+
 #ifndef SDL_INT_MAX
 #define SDL_INT_MAX ((int)(~0u>>1))
 #endif
