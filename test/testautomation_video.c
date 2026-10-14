@@ -389,7 +389,10 @@ static int SDLCALL video_testFullscreenEnterLeave(void *arg)
         destroyVideoSuiteTestWindow(window);
         return TEST_ABORTED;
     }
-    SDLTest_AssertCheck(SDL_SyncWindow(window), "Sync fullscreen window: %s", SDL_GetError());
+    if (!SDLTest_AssertCheck(SDL_SyncWindow(window), "Sync fullscreen window: %s", SDL_GetError())) {
+        destroyVideoSuiteTestWindow(window);
+        return TEST_ABORTED;
+    }
     flags = SDL_GetWindowFlags(window);
     SDLTest_AssertCheck((flags & SDL_WINDOW_FULLSCREEN) != 0, "Fullscreen flag is set after entering");
     SDLTest_AssertCheck(SDL_GetDisplayForWindow(window) == display, "Fullscreen window remains on selected display");
@@ -399,13 +402,21 @@ static int SDLCALL video_testFullscreenEnterLeave(void *arg)
         destroyVideoSuiteTestWindow(window);
         return TEST_ABORTED;
     }
-    SDLTest_AssertCheck(SDL_SyncWindow(window), "Sync window after leaving fullscreen: %s", SDL_GetError());
+    if (!SDLTest_AssertCheck(SDL_SyncWindow(window), "Sync window after leaving fullscreen: %s", SDL_GetError())) {
+        destroyVideoSuiteTestWindow(window);
+        return TEST_ABORTED;
+    }
     flags = SDL_GetWindowFlags(window);
     SDLTest_AssertCheck((flags & SDL_WINDOW_FULLSCREEN) == 0, "Fullscreen flag is cleared after leaving");
     SDLTest_AssertCheck(SDL_GetDisplayForWindow(window) == display, "Window remains on selected display after leaving fullscreen");
     current_mode = SDL_GetCurrentDisplayMode(display);
-    SDLTest_AssertCheck(current_mode != NULL && current_mode->w == original_mode.w &&
-                        current_mode->h == original_mode.h && current_mode->format == original_mode.format,
+    SDLTest_AssertCheck(current_mode != NULL && current_mode->displayID == original_mode.displayID &&
+                        current_mode->w == original_mode.w && current_mode->h == original_mode.h &&
+                        current_mode->format == original_mode.format &&
+                        current_mode->pixel_density == original_mode.pixel_density &&
+                        current_mode->refresh_rate == original_mode.refresh_rate &&
+                        current_mode->refresh_rate_numerator == original_mode.refresh_rate_numerator &&
+                        current_mode->refresh_rate_denominator == original_mode.refresh_rate_denominator,
                         "Display mode is restored after leaving fullscreen");
 
     destroyVideoSuiteTestWindow(window);
