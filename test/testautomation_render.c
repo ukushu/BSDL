@@ -2382,7 +2382,7 @@ static int SDLCALL render_testSoftwareTextureFallback(void *arg)
         0xFF, 0x00, 0x00, 0x00, 0xFF, 0x00,
         0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF
     };
-    SDL_Surface *surface = SDL_CreateSurface(16, 16, SDL_PIXELFORMAT_RGBA32);
+    SDL_Surface *surface = SDL_CreateSurface(2, 2, SDL_PIXELFORMAT_RGBA32);
     SDL_Renderer *software = NULL;
     SDL_Texture *texture = NULL;
 
@@ -2404,12 +2404,14 @@ static int SDLCALL render_testSoftwareTextureFallback(void *arg)
         SDLTest_AssertCheck(SDL_SetRenderDrawColor(software, 0, 0, 0, 255), "Set fallback clear color: %s", SDL_GetError());
         SDLTest_AssertCheck(SDL_RenderClear(software), "Clear fallback target: %s", SDL_GetError());
         SDLTest_AssertCheck(SDL_RenderTexture(software, texture, NULL, NULL), "Render fallback texture: %s", SDL_GetError());
-        SDL_RenderPresent(software);
-        {
-            Uint8 r, g, b, a;
-            SDLTest_AssertCheck(SDL_ReadSurfacePixel(surface, 0, 0, &r, &g, &b, &a), "Read fallback pixel: %s", SDL_GetError());
-            SDLTest_AssertCheck(r == 0xFF && g == 0 && b == 0 && a == 0xFF,
-                                "Fallback upload produces expected pixel, got %u,%u,%u,%u", r, g, b, a);
+        SDLTest_AssertCheck(SDL_RenderPresent(software), "Present fallback texture: %s", SDL_GetError());
+        for (int i = 0; i < 4; ++i) {
+            Uint8 r = 0, g = 0, b = 0, a = 0;
+            if (SDLTest_AssertCheck(SDL_ReadSurfacePixel(surface, i % 2, i / 2, &r, &g, &b, &a),
+                                    "Read fallback pixel %d: %s", i, SDL_GetError())) {
+                SDLTest_AssertCheck(r == pixels[3 * i] && g == pixels[3 * i + 1] && b == pixels[3 * i + 2] && a == 255,
+                                    "Fallback pixel %d matches uploaded RGB24 data", i);
+            }
         }
         SDL_DestroyTexture(texture);
     }
@@ -2419,13 +2421,45 @@ static int SDLCALL render_testSoftwareTextureFallback(void *arg)
     return TEST_COMPLETED;
 }
 
+static void checkSoftwareYUVPixels(SDL_Surface *surface, const char *format)
+{
+    const Uint8 minimum[] = { 0, 40, 110, 235 };
+    const Uint8 maximum[] = { 10, 80, 150, 255 };
+
+    for (int x = 0; x < 4; ++x) {
+        Uint8 r = 0, g = 0, b = 0, a = 0;
+        if (SDLTest_AssertCheck(SDL_ReadSurfacePixel(surface, x, 0, &r, &g, &b, &a),
+                                "Read %s pixel %d: %s", format, x, SDL_GetError())) {
+            SDLTest_AssertCheck(r >= minimum[x] && r <= maximum[x] &&
+                                g >= minimum[x] && g <= maximum[x] &&
+                                b >= minimum[x] && b <= maximum[x] && a == 255,
+                                "%s grayscale pixel %d matches input luminance, got %u,%u,%u,%u",
+                                format, x, r, g, b, a);
+        }
+    }
+
+    {
+        Uint8 left_r = 0, left_g = 0, left_b = 0, left_a = 0;
+        Uint8 right_r = 0, right_g = 0, right_b = 0, right_a = 0;
+        bool left_read = SDLTest_AssertCheck(SDL_ReadSurfacePixel(surface, 1, 3, &left_r, &left_g, &left_b, &left_a),
+                                             "Read %s red pixel: %s", format, SDL_GetError());
+        bool right_read = SDLTest_AssertCheck(SDL_ReadSurfacePixel(surface, 2, 3, &right_r, &right_g, &right_b, &right_a),
+                                              "Read %s blue pixel: %s", format, SDL_GetError());
+        if (left_read && right_read) {
+            SDLTest_AssertCheck(left_r > left_b + 40 && right_b > right_r + 40 && left_a == 255 && right_a == 255,
+                                "%s chroma produces red and blue pixels, got %u,%u,%u and %u,%u,%u",
+                                format, left_r, left_g, left_b, right_r, right_g, right_b);
+        }
+    }
+}
+
 static int SDLCALL render_testSoftwareYUVTextureUpdates(void *arg)
 {
     const Uint8 y[] = { 16, 64, 128, 235, 16, 64, 128, 235, 16, 64, 128, 235, 16, 64, 128, 235 };
-    const Uint8 u[] = { 128, 128, 128, 128 };
-    const Uint8 v[] = { 128, 128, 128, 128 };
-    const Uint8 uv[] = { 128, 128, 128, 128, 128, 128, 128, 128 };
-    SDL_Surface *surface = SDL_CreateSurface(16, 16, SDL_PIXELFORMAT_RGBA32);
+    const Uint8 u[] = { 128, 128, 80, 200 };
+    const Uint8 v[] = { 128, 128, 200, 80 };
+    const Uint8 uv[] = { 128, 128, 128, 128, 80, 200, 200, 80 };
+    SDL_Surface *surface = SDL_CreateSurface(4, 4, SDL_PIXELFORMAT_RGBA32);
     SDL_Renderer *software = NULL;
     SDL_Texture *texture = NULL;
 
@@ -2453,14 +2487,8 @@ static int SDLCALL render_testSoftwareYUVTextureUpdates(void *arg)
                         "Update IYUV fallback texture: %s", SDL_GetError());
     SDLTest_AssertCheck(SDL_RenderClear(software), "Clear IYUV target: %s", SDL_GetError());
     SDLTest_AssertCheck(SDL_RenderTexture(software, texture, NULL, NULL), "Render IYUV fallback texture: %s", SDL_GetError());
-    SDL_RenderPresent(software);
-    {
-        Uint8 r0, g0, b0, a0, r3, g3, b3, a3;
-        SDL_ReadSurfacePixel(surface, 0, 0, &r0, &g0, &b0, &a0);
-        SDL_ReadSurfacePixel(surface, 3, 0, &r3, &g3, &b3, &a3);
-        SDLTest_AssertCheck(r0 < 10 && g0 < 10 && b0 < 10 && r3 > 15 && g3 > 15 && b3 > 15,
-                            "IYUV output reflects luminance, got %u,%u,%u and %u,%u,%u", r0, g0, b0, r3, g3, b3);
-    }
+    SDLTest_AssertCheck(SDL_RenderPresent(software), "Present IYUV fallback texture: %s", SDL_GetError());
+    checkSoftwareYUVPixels(surface, "IYUV");
     SDL_DestroyTexture(texture);
 
     texture = SDL_CreateTexture(software, SDL_PIXELFORMAT_NV12, SDL_TEXTUREACCESS_STATIC, 4, 4);
@@ -2473,14 +2501,8 @@ static int SDLCALL render_testSoftwareYUVTextureUpdates(void *arg)
                         "Update NV12 fallback texture: %s", SDL_GetError());
     SDLTest_AssertCheck(SDL_RenderClear(software), "Clear NV12 target: %s", SDL_GetError());
     SDLTest_AssertCheck(SDL_RenderTexture(software, texture, NULL, NULL), "Render NV12 fallback texture: %s", SDL_GetError());
-    SDL_RenderPresent(software);
-    {
-        Uint8 r0, g0, b0, a0, r3, g3, b3, a3;
-        SDL_ReadSurfacePixel(surface, 0, 0, &r0, &g0, &b0, &a0);
-        SDL_ReadSurfacePixel(surface, 3, 0, &r3, &g3, &b3, &a3);
-        SDLTest_AssertCheck(r0 < 10 && g0 < 10 && b0 < 10 && r3 > 15 && g3 > 15 && b3 > 15,
-                            "NV12 output reflects luminance, got %u,%u,%u and %u,%u,%u", r0, g0, b0, r3, g3, b3);
-    }
+    SDLTest_AssertCheck(SDL_RenderPresent(software), "Present NV12 fallback texture: %s", SDL_GetError());
+    checkSoftwareYUVPixels(surface, "NV12");
     SDL_DestroyTexture(texture);
     SDL_DestroyRenderer(software);
     SDL_DestroySurface(surface);
@@ -2492,11 +2514,13 @@ static int SDLCALL render_testDriverFallback(void *arg)
     SDL_Window *test_window;
     SDL_Renderer *test_renderer;
     bool has_software = false;
+    bool has_gpu = false;
 
     for (int i = 0; i < SDL_GetNumRenderDrivers(); ++i) {
         if (SDL_strcmp(SDL_GetRenderDriver(i), SDL_SOFTWARE_RENDERER) == 0) {
             has_software = true;
-            break;
+        } else if (SDL_strcmp(SDL_GetRenderDriver(i), SDL_GPU_RENDERER) == 0) {
+            has_gpu = true;
         }
     }
     if (!has_software) {
@@ -2525,6 +2549,23 @@ static int SDLCALL render_testDriverFallback(void *arg)
 
     if (test_renderer) {
         SDL_DestroyRenderer(test_renderer);
+    }
+
+    if (has_gpu) {
+        test_renderer = SDL_CreateRenderer(test_window, SDL_GPU_RENDERER);
+        if (test_renderer) {
+            SDL_DestroyRenderer(test_renderer);
+            SDLTest_Log("GPU renderer is available; known-backend failure path not exercised");
+        } else {
+            SDLTest_AssertCheck(SDL_GetError()[0] != '\0', "Known GPU backend failure reports an error");
+            test_renderer = SDL_CreateRenderer(test_window, SDL_GPU_RENDERER "," SDL_SOFTWARE_RENDERER);
+            SDLTest_AssertCheck(test_renderer != NULL, "Software renderer follows failed GPU backend: %s", SDL_GetError());
+            if (test_renderer) {
+                SDLTest_AssertCheck(SDL_strcmp(SDL_GetRendererName(test_renderer), SDL_SOFTWARE_RENDERER) == 0,
+                                    "Selected renderer is software after GPU failure");
+                SDL_DestroyRenderer(test_renderer);
+            }
+        }
     }
     SDL_DestroyWindow(test_window);
     return TEST_COMPLETED;

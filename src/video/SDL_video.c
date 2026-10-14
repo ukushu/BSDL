@@ -2413,14 +2413,14 @@ static SDL_WindowFlags SDL_GetWindowFlagProperties(SDL_PropertiesID props)
     return flags;
 }
 
-static bool SDL_ValidateWindowType(SDL_VideoDevice *_this, SDL_Window *parent, SDL_WindowFlags *flags)
+static bool SDL_ValidateWindowType(SDL_VideoDevice *device, SDL_Window *parent, SDL_WindowFlags *flags)
 {
     if ((*flags & SDL_WINDOW_MODAL) && !SDL_ObjectValid(parent, SDL_OBJECT_TYPE_WINDOW)) {
         return SDL_SetError("Modal windows must specify a parent window");
     }
 
     if ((*flags & (SDL_WINDOW_TOOLTIP | SDL_WINDOW_POPUP_MENU)) != 0) {
-        if (!(_this->device_caps & VIDEO_DEVICE_CAPS_HAS_POPUP_WINDOW_SUPPORT)) {
+        if (!(device->device_caps & VIDEO_DEVICE_CAPS_HAS_POPUP_WINDOW_SUPPORT)) {
             return SDL_Unsupported();
         }
         if (!SDL_ObjectValid(parent, SDL_OBJECT_TYPE_WINDOW)) {
@@ -2436,7 +2436,7 @@ static bool SDL_ValidateWindowType(SDL_VideoDevice *_this, SDL_Window *parent, S
     return true;
 }
 
-static bool SDL_PrepareWindowGraphics(SDL_VideoDevice *_this, SDL_WindowFlags *flags, bool external_graphics_context)
+static bool SDL_PrepareWindowGraphics(SDL_VideoDevice *device, SDL_WindowFlags *flags, bool external_graphics_context)
 {
     SDL_WindowFlags graphics_flags = *flags & (SDL_WINDOW_OPENGL | SDL_WINDOW_METAL | SDL_WINDOW_VULKAN);
     if (graphics_flags & (graphics_flags - 1)) {
@@ -2445,11 +2445,11 @@ static bool SDL_PrepareWindowGraphics(SDL_VideoDevice *_this, SDL_WindowFlags *f
 
     // Some platforms have certain graphics backends enabled by default
     if (!graphics_flags && !external_graphics_context) {
-        *flags |= SDL_DefaultGraphicsBackends(_this);
+        *flags |= SDL_DefaultGraphicsBackends(device);
     }
 
     if (*flags & SDL_WINDOW_OPENGL) {
-        if (!_this->GL_CreateContext) {
+        if (!device->GL_CreateContext) {
             return SDL_ContextNotSupported("OpenGL");
         }
         if (!SDL_GL_LoadLibrary(NULL)) {
@@ -2458,7 +2458,7 @@ static bool SDL_PrepareWindowGraphics(SDL_VideoDevice *_this, SDL_WindowFlags *f
     }
 
     if (*flags & SDL_WINDOW_VULKAN) {
-        if (!_this->Vulkan_CreateSurface) {
+        if (!device->Vulkan_CreateSurface) {
             return SDL_ContextNotSupported("Vulkan");
         }
         if (!SDL_Vulkan_LoadLibrary(NULL)) {
@@ -2466,7 +2466,7 @@ static bool SDL_PrepareWindowGraphics(SDL_VideoDevice *_this, SDL_WindowFlags *f
         }
     }
 
-    if ((*flags & SDL_WINDOW_METAL) && !_this->Metal_CreateView) {
+    if ((*flags & SDL_WINDOW_METAL) && !device->Metal_CreateView) {
         return SDL_ContextNotSupported("Metal");
     }
     return true;

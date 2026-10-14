@@ -364,6 +364,9 @@ static int SDLCALL video_testFullscreenEnterLeave(void *arg)
 {
     SDL_Window *window;
     SDL_WindowFlags flags;
+    SDL_DisplayID display;
+    SDL_DisplayMode original_mode;
+    const SDL_DisplayMode *current_mode;
 
     if (SDL_strcmp(SDL_GetCurrentVideoDriver(), "x11") != 0) {
         return TEST_SKIPPED;
@@ -373,24 +376,37 @@ static int SDLCALL video_testFullscreenEnterLeave(void *arg)
     if (!window) {
         return TEST_ABORTED;
     }
+    display = SDL_GetDisplayForWindow(window);
+    current_mode = SDL_GetCurrentDisplayMode(display);
+    if (!SDLTest_AssertCheck(display != 0 && current_mode != NULL, "Get window display and mode: %s", SDL_GetError())) {
+        destroyVideoSuiteTestWindow(window);
+        return TEST_ABORTED;
+    }
+    original_mode = *current_mode;
 
     if (!SDL_SetWindowFullscreen(window, true)) {
         SDLTest_AssertCheck(false, "Enter fullscreen: %s", SDL_GetError());
         destroyVideoSuiteTestWindow(window);
         return TEST_ABORTED;
     }
-    SDL_SyncWindow(window);
+    SDLTest_AssertCheck(SDL_SyncWindow(window), "Sync fullscreen window: %s", SDL_GetError());
     flags = SDL_GetWindowFlags(window);
     SDLTest_AssertCheck((flags & SDL_WINDOW_FULLSCREEN) != 0, "Fullscreen flag is set after entering");
+    SDLTest_AssertCheck(SDL_GetDisplayForWindow(window) == display, "Fullscreen window remains on selected display");
 
     if (!SDL_SetWindowFullscreen(window, false)) {
         SDLTest_AssertCheck(false, "Leave fullscreen: %s", SDL_GetError());
         destroyVideoSuiteTestWindow(window);
         return TEST_ABORTED;
     }
-    SDL_SyncWindow(window);
+    SDLTest_AssertCheck(SDL_SyncWindow(window), "Sync window after leaving fullscreen: %s", SDL_GetError());
     flags = SDL_GetWindowFlags(window);
     SDLTest_AssertCheck((flags & SDL_WINDOW_FULLSCREEN) == 0, "Fullscreen flag is cleared after leaving");
+    SDLTest_AssertCheck(SDL_GetDisplayForWindow(window) == display, "Window remains on selected display after leaving fullscreen");
+    current_mode = SDL_GetCurrentDisplayMode(display);
+    SDLTest_AssertCheck(current_mode != NULL && current_mode->w == original_mode.w &&
+                        current_mode->h == original_mode.h && current_mode->format == original_mode.format,
+                        "Display mode is restored after leaving fullscreen");
 
     destroyVideoSuiteTestWindow(window);
     return TEST_COMPLETED;
