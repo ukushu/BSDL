@@ -29,6 +29,7 @@ __pycache__
 *.rej
 
 # for CMake
+.deus-build/
 .cmake
 CMakeFiles/
 CMakeCache.txt

@@ -1625,7 +1625,8 @@ static bool SDL_CreateTextureFallback(SDL_Texture *texture)
     SDL_Renderer *renderer = texture->renderer;
     SDL_PixelFormat format = texture->format;
     SDL_TextureAccess access = texture->access;
-    SDL_PixelFormat closest_format = GetClosestSupportedFormat(renderer, format, false);
+    bool texture_is_fourcc_and_target = (access == SDL_TEXTUREACCESS_TARGET && SDL_ISPIXELFORMAT_FOURCC(format));
+    SDL_PixelFormat closest_format = texture_is_fourcc_and_target ? renderer->texture_formats[0] : GetClosestSupportedFormat(renderer, format, false);
     SDL_PropertiesID native_props = SDL_CreateProperties();
 
     if (format == SDL_PIXELFORMAT_MJPG && closest_format == SDL_PIXELFORMAT_NV12) {
