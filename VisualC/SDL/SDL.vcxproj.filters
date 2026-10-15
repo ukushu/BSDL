@@ -1534,6 +1534,12 @@
     <ClCompile Include="..\..\src\joystick\SDL_joystick.c">
       <Filter>joystick</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\src\joystick\SDL_joystick_classify.c">
+      <Filter>joystick</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\joystick\SDL_joystick_guid.c">
+      <Filter>joystick</Filter>
+    </ClCompile>
     <ClCompile Include="..\..\src\joystick\SDL_steam_virtual_gamepad.c">
       <Filter>joystick</Filter>
     </ClCompile>
@@ -1902,6 +1908,9 @@
     </ClCompile>
     <ClCompile Include="..\..\src\sensor\windows\SDL_windowssensor.c">
       <Filter>sensor\windows</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\render\SDL_blendmode.c">
+      <Filter>render</Filter>
     </ClCompile>
     <ClCompile Include="..\..\src\render\SDL_render.c">
       <Filter>render</Filter>

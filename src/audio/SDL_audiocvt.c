@@ -60,6 +60,64 @@ bool SDL_AudioChannelMapsEqual(int channels, const int *channel_map_a, const int
     return true;
 }
 
+#if SDL_BYTEORDER == SDL_LIL_ENDIAN
+#define NATIVE(type) SDL_AUDIO_##type##LE
+#define SWAPPED(type) SDL_AUDIO_##type##BE
+#else
+#define NATIVE(type) SDL_AUDIO_##type##BE
+#define SWAPPED(type) SDL_AUDIO_##type##LE
+#endif
+
+#define NUM_FORMATS 8
+// always favor Float32 in native byte order, since we're probably going to convert to that for processing anyhow.
+static const SDL_AudioFormat format_list[NUM_FORMATS][NUM_FORMATS + 1] = {
+    { SDL_AUDIO_U8, NATIVE(F32),  SWAPPED(F32), SDL_AUDIO_S8, NATIVE(S16),  SWAPPED(S16), NATIVE(S32),  SWAPPED(S32), SDL_AUDIO_UNKNOWN },
+    { SDL_AUDIO_S8, NATIVE(F32),  SWAPPED(F32), SDL_AUDIO_U8, NATIVE(S16),  SWAPPED(S16), NATIVE(S32),  SWAPPED(S32), SDL_AUDIO_UNKNOWN },
+    { NATIVE(S16),  NATIVE(F32),  SWAPPED(F32), SWAPPED(S16), NATIVE(S32),  SWAPPED(S32), SDL_AUDIO_U8, SDL_AUDIO_S8, SDL_AUDIO_UNKNOWN },
+    { SWAPPED(S16), NATIVE(F32),  SWAPPED(F32), NATIVE(S16),  SWAPPED(S32), NATIVE(S32),  SDL_AUDIO_U8, SDL_AUDIO_S8, SDL_AUDIO_UNKNOWN },
+    { NATIVE(S32),  NATIVE(F32),  SWAPPED(F32), SWAPPED(S32), NATIVE(S16),  SWAPPED(S16), SDL_AUDIO_U8, SDL_AUDIO_S8, SDL_AUDIO_UNKNOWN },
+    { SWAPPED(S32), NATIVE(F32),  SWAPPED(F32), NATIVE(S32),  SWAPPED(S16), NATIVE(S16),  SDL_AUDIO_U8, SDL_AUDIO_S8, SDL_AUDIO_UNKNOWN },
+    { NATIVE(F32),  SWAPPED(F32), NATIVE(S32),  SWAPPED(S32), NATIVE(S16),  SWAPPED(S16), SDL_AUDIO_U8, SDL_AUDIO_S8, SDL_AUDIO_UNKNOWN },
+    { SWAPPED(F32), NATIVE(F32),  SWAPPED(S32), NATIVE(S32),  SWAPPED(S16), NATIVE(S16),  SDL_AUDIO_U8, SDL_AUDIO_S8, SDL_AUDIO_UNKNOWN },
+};
+
+#undef NATIVE
+#undef SWAPPED
+
+const SDL_AudioFormat *SDL_ClosestAudioFormats(SDL_AudioFormat format)
+{
+    for (int i = 0; i < NUM_FORMATS; i++) {
+        if (format_list[i][0] == format) {
+            return &format_list[i][0];
+        }
+    }
+    return &format_list[0][NUM_FORMATS]; // not found; return what looks like a list with only a zero in it.
+}
+
+const char *SDL_GetAudioFormatName(SDL_AudioFormat format)
+{
+    switch (format) {
+#define CASE(X) \
+    case X: return #X;
+    CASE(SDL_AUDIO_U8)
+    CASE(SDL_AUDIO_S8)
+    CASE(SDL_AUDIO_S16LE)
+    CASE(SDL_AUDIO_S16BE)
+    CASE(SDL_AUDIO_S32LE)
+    CASE(SDL_AUDIO_S32BE)
+    CASE(SDL_AUDIO_F32LE)
+    CASE(SDL_AUDIO_F32BE)
+#undef CASE
+    default:
+        return "SDL_AUDIO_UNKNOWN";
+    }
+}
+
+int SDL_GetSilenceValueForFormat(SDL_AudioFormat format)
+{
+    return (format == SDL_AUDIO_U8) ? 0x80 : 0x00;
+}
+
 #ifndef SDL_INT_MAX
 #define SDL_INT_MAX ((int)(~0u>>1))
 #endif

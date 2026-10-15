@@ -552,6 +552,19 @@ static int SDLCALL audio_getAudioFormatName(void *arg)
     return TEST_COMPLETED;
 }
 
+static int SDLCALL audio_getSilenceValueForFormat(void *arg)
+{
+    for (int i = 0; i < g_numAudioFormats; ++i) {
+        const SDL_AudioFormat format = g_audioFormats[i];
+        const int expected = (format == SDL_AUDIO_U8) ? 0x80 : 0;
+        SDLTest_AssertCheck(SDL_GetSilenceValueForFormat(format) == expected,
+                            "Silence value for %s is 0x%02x", SDL_GetAudioFormatName(format), expected);
+    }
+    SDLTest_AssertCheck(SDL_GetSilenceValueForFormat(SDL_AUDIO_UNKNOWN) == 0,
+                        "Unknown audio format has zero silence value");
+    return TEST_COMPLETED;
+}
+
 /**
  * Builds various audio conversion structures
  *
@@ -1477,6 +1490,10 @@ static const SDLTest_TestCaseReference audioTestGetAudioFormatName = {
     audio_getAudioFormatName, "audio_getAudioFormatName", "Call to SDL_GetAudioFormatName", TEST_ENABLED
 };
 
+static const SDLTest_TestCaseReference audioTestGetSilenceValueForFormat = {
+    audio_getSilenceValueForFormat, "audio_getSilenceValueForFormat", "Call to SDL_GetSilenceValueForFormat", TEST_ENABLED
+};
+
 static const SDLTest_TestCaseReference audioTest1 = {
     audio_enumerateAndNameAudioDevices, "audio_enumerateAndNameAudioDevices", "Enumerate and name available audio devices (playback and recording)", TEST_ENABLED
 };
@@ -1554,6 +1571,7 @@ static const SDLTest_TestCaseReference audioTest18 = {
 /* Sequence of Audio test cases */
 static const SDLTest_TestCaseReference *audioTests[] = {
     &audioTestGetAudioFormatName,
+    &audioTestGetSilenceValueForFormat,
     &audioTest1, &audioTest2, &audioTest3, &audioTest4, &audioTest5, &audioTest6,
     &audioTest7, &audioTest8, &audioTest9, &audioTest10, &audioTest11,
     &audioTest12, &audioTest13, &audioTest14, &audioTest15, &audioTest16,

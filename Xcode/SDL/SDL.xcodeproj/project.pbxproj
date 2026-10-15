@@ -232,6 +232,8 @@
 		A7D8B4AC23E2514300DCD162 /* SDL_gamepad_db.h in Headers */ = {isa = PBXBuildFile; fileRef = A7D8A79E23E2513E00DCD162 /* SDL_gamepad_db.h */; };
 		A7D8B4B223E2514300DCD162 /* SDL_sysjoystick.c in Sources */ = {isa = PBXBuildFile; fileRef = A7D8A7A023E2513E00DCD162 /* SDL_sysjoystick.c */; };
 		A7D8B4DC23E2514300DCD162 /* SDL_joystick.c in Sources */ = {isa = PBXBuildFile; fileRef = A7D8A7A923E2513E00DCD162 /* SDL_joystick.c */; };
+		B1E0D0000000000000000005 /* SDL_joystick_classify.c in Sources */ = {isa = PBXBuildFile; fileRef = B1E0D0000000000000000006 /* SDL_joystick_classify.c */; };
+		B1E0D0000000000000000003 /* SDL_joystick_guid.c in Sources */ = {isa = PBXBuildFile; fileRef = B1E0D0000000000000000004 /* SDL_joystick_guid.c */; };
 		A7D8B4EE23E2514300DCD162 /* SDL_gamepad.c in Sources */ = {isa = PBXBuildFile; fileRef = A7D8A7AD23E2513E00DCD162 /* SDL_gamepad.c */; };
 		A7D8B53923E2514300DCD162 /* SDL_hidapi_xbox360.c in Sources */ = {isa = PBXBuildFile; fileRef = A7D8A7C223E2513E00DCD162 /* SDL_hidapi_xbox360.c */; };
 		A7D8B53F23E2514300DCD162 /* SDL_hidapi_ps4.c in Sources */ = {isa = PBXBuildFile; fileRef = A7D8A7C323E2513E00DCD162 /* SDL_hidapi_ps4.c */; };
@@ -283,6 +285,7 @@
 		A7D8B96E23E2514400DCD162 /* SDL_stdlib.c in Sources */ = {isa = PBXBuildFile; fileRef = A7D8A8D823E2514000DCD162 /* SDL_stdlib.c */; };
 		A7D8B97423E2514400DCD162 /* SDL_malloc.c in Sources */ = {isa = PBXBuildFile; fileRef = A7D8A8D923E2514000DCD162 /* SDL_malloc.c */; };
 		A7D8B97A23E2514400DCD162 /* SDL_render.c in Sources */ = {isa = PBXBuildFile; fileRef = A7D8A8DB23E2514000DCD162 /* SDL_render.c */; };
+		B1E0D0000000000000000001 /* SDL_blendmode.c in Sources */ = {isa = PBXBuildFile; fileRef = B1E0D0000000000000000002 /* SDL_blendmode.c */; };
 		A7D8B98023E2514400DCD162 /* SDL_d3dmath.h in Headers */ = {isa = PBXBuildFile; fileRef = A7D8A8DC23E2514000DCD162 /* SDL_d3dmath.h */; };
 		A7D8B98623E2514400DCD162 /* SDL_render_metal.m in Sources */ = {isa = PBXBuildFile; fileRef = A7D8A8DE23E2514000DCD162 /* SDL_render_metal.m */; };
 		A7D8B98C23E2514400DCD162 /* SDL_shaders_metal_ios.h in Headers */ = {isa = PBXBuildFile; fileRef = A7D8A8DF23E2514000DCD162 /* SDL_shaders_metal_ios.h */; };
@@ -847,6 +850,8 @@
 		A7D8A79E23E2513E00DCD162 /* SDL_gamepad_db.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SDL_gamepad_db.h; sourceTree = "<group>"; };
 		A7D8A7A023E2513E00DCD162 /* SDL_sysjoystick.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_sysjoystick.c; sourceTree = "<group>"; };
 		A7D8A7A923E2513E00DCD162 /* SDL_joystick.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_joystick.c; sourceTree = "<group>"; };
+		B1E0D0000000000000000006 /* SDL_joystick_classify.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_joystick_classify.c; sourceTree = "<group>"; };
+		B1E0D0000000000000000004 /* SDL_joystick_guid.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_joystick_guid.c; sourceTree = "<group>"; };
 		A7D8A7AD23E2513E00DCD162 /* SDL_gamepad.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_gamepad.c; sourceTree = "<group>"; };
 		A7D8A7C223E2513E00DCD162 /* SDL_hidapi_xbox360.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_hidapi_xbox360.c; sourceTree = "<group>"; };
 		A7D8A7C323E2513E00DCD162 /* SDL_hidapi_ps4.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_hidapi_ps4.c; sourceTree = "<group>"; };
@@ -899,6 +904,7 @@
 		A7D8A8D823E2514000DCD162 /* SDL_stdlib.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_stdlib.c; sourceTree = "<group>"; };
 		A7D8A8D923E2514000DCD162 /* SDL_malloc.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_malloc.c; sourceTree = "<group>"; };
 		A7D8A8DB23E2514000DCD162 /* SDL_render.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_render.c; sourceTree = "<group>"; };
+		B1E0D0000000000000000002 /* SDL_blendmode.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_blendmode.c; sourceTree = "<group>"; };
 		A7D8A8DC23E2514000DCD162 /* SDL_d3dmath.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SDL_d3dmath.h; sourceTree = "<group>"; };
 		A7D8A8DE23E2514000DCD162 /* SDL_render_metal.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = SDL_render_metal.m; sourceTree = "<group>"; };
 		A7D8A8DF23E2514000DCD162 /* SDL_shaders_metal_ios.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SDL_shaders_metal_ios.h; sourceTree = "<group>"; };
@@ -2002,6 +2008,8 @@
 				A7D8A7AD23E2513E00DCD162 /* SDL_gamepad.c */,
 				A7D8A7D023E2513E00DCD162 /* SDL_joystick_c.h */,
 				A7D8A7A923E2513E00DCD162 /* SDL_joystick.c */,
+				B1E0D0000000000000000006 /* SDL_joystick_classify.c */,
+				B1E0D0000000000000000004 /* SDL_joystick_guid.c */,
 				F362B9182B3349E200D30B94 /* SDL_steam_virtual_gamepad.c */,
 				F362B9172B3349E200D30B94 /* SDL_steam_virtual_gamepad.h */,
 				A7D8A7CF23E2513E00DCD162 /* SDL_sysjoystick.h */,
@@ -2277,6 +2285,7 @@
 				A7D8A8EF23E2514000DCD162 /* software */,
 				A7D8A8DC23E2514000DCD162 /* SDL_d3dmath.h */,
 				A7D8A8DB23E2514000DCD162 /* SDL_render.c */,
+				B1E0D0000000000000000002 /* SDL_blendmode.c */,
 				E4F7981D2AD8D86A00669F54 /* SDL_render_unsupported.c */,
 				A7D8A8EE23E2514000DCD162 /* SDL_sysrender.h */,
 				A7D8A8EC23E2514000DCD162 /* SDL_yuv_sw_c.h */,
@@ -3131,6 +3140,7 @@
 				F3990DF52A787C10000D8759 /* SDL_sysurl.m in Sources */,
 				F316ABD92B5C3185002EF551 /* SDL_memcpy.c in Sources */,
 				A7D8B97A23E2514400DCD162 /* SDL_render.c in Sources */,
+				B1E0D0000000000000000001 /* SDL_blendmode.c in Sources */,
 				A7D8ABD323E2514100DCD162 /* SDL_stretch.c in Sources */,
 				F38C72492CEEB1DE000B0A90 /* SDL_hidapi_steam_triton.c in Sources */,
 				A7D8AC3923E2514100DCD162 /* SDL_blit_copy.c in Sources */,
@@ -3166,6 +3176,8 @@
 				A7D8B95623E2514400DCD162 /* SDL_getenv.c in Sources */,
 				A7D8B56323E2514300DCD162 /* SDL_hidapi_gamecube.c in Sources */,
 				A7D8B4DC23E2514300DCD162 /* SDL_joystick.c in Sources */,
+				B1E0D0000000000000000005 /* SDL_joystick_classify.c in Sources */,
+				B1E0D0000000000000000003 /* SDL_joystick_guid.c in Sources */,
 				A7D8BA4923E2514400DCD162 /* SDL_render_gles2.c in Sources */,
 				F3A8371C2F69C80100AD32B6 /* SDL_RealityKitHelper.swift in Sources */,
 				A7D8AC2D23E2514100DCD162 /* SDL_surface.c in Sources */,

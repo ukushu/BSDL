@@ -947,6 +947,22 @@ static Uint32 SDLCALL HashAudioDeviceID(void *userdata, const void *key)
     return ((Uint32) ((uintptr_t) key)) >> 2;
 }
 
+static bool TryAudioBootstrap(const AudioBootStrap *driver, SDL_RWLock *subsystem_rwlock,
+                              SDL_HashTable *device_hash_physical, SDL_HashTable *device_hash_logical)
+{
+    SDL_zero(current_audio);
+    current_audio.pending_events_tail = &current_audio.pending_events;
+    current_audio.subsystem_rwlock = subsystem_rwlock;
+    current_audio.device_hash_physical = device_hash_physical;
+    current_audio.device_hash_logical = device_hash_logical;
+    if (!driver->init(&current_audio.impl)) {
+        return false;
+    }
+    current_audio.name = driver->name;
+    current_audio.desc = driver->desc;
+    return true;
+}
+
 bool SDL_InitAudio(const char *driver_name)
 {
     if (SDL_GetCurrentAudioDriver()) {
@@ -1012,14 +1028,7 @@ bool SDL_InitAudio(const char *driver_name)
             for (int i = 0; bootstrap[i]; ++i) {
                 if (!bootstrap[i]->is_preferred && SDL_strcasecmp(bootstrap[i]->name, driver_attempt) == 0) {
                     tried_to_init = true;
-                    SDL_zero(current_audio);
-                    current_audio.pending_events_tail = &current_audio.pending_events;
-                    current_audio.subsystem_rwlock = subsystem_rwlock;
-                    current_audio.device_hash_physical = device_hash_physical;
-                    current_audio.device_hash_logical = device_hash_logical;
-                    if (bootstrap[i]->init(&current_audio.impl)) {
-                        current_audio.name = bootstrap[i]->name;
-                        current_audio.desc = bootstrap[i]->desc;
+                    if (TryAudioBootstrap(bootstrap[i], subsystem_rwlock, device_hash_physical, device_hash_logical)) {
                         initialized = true;
                         break;
                     }
@@ -1037,14 +1046,7 @@ bool SDL_InitAudio(const char *driver_name)
             }
 
             tried_to_init = true;
-            SDL_zero(current_audio);
-            current_audio.pending_events_tail = &current_audio.pending_events;
-            current_audio.subsystem_rwlock = subsystem_rwlock;
-            current_audio.device_hash_physical = device_hash_physical;
-            current_audio.device_hash_logical = device_hash_logical;
-            if (bootstrap[i]->init(&current_audio.impl)) {
-                current_audio.name = bootstrap[i]->name;
-                current_audio.desc = bootstrap[i]->desc;
+            if (TryAudioBootstrap(bootstrap[i], subsystem_rwlock, device_hash_physical, device_hash_logical)) {
                 initialized = true;
             }
         }
@@ -2391,64 +2393,6 @@ bool SDL_AudioStreamDevicePaused(SDL_AudioStream *stream)
     return SDL_AudioDevicePaused(devid);
 }
 
-#if SDL_BYTEORDER == SDL_LIL_ENDIAN
-#define NATIVE(type) SDL_AUDIO_##type##LE
-#define SWAPPED(type) SDL_AUDIO_##type##BE
-#else
-#define NATIVE(type) SDL_AUDIO_##type##BE
-#define SWAPPED(type) SDL_AUDIO_##type##LE
-#endif
-
-#define NUM_FORMATS 8
-// always favor Float32 in native byte order, since we're probably going to convert to that for processing anyhow.
-static const SDL_AudioFormat format_list[NUM_FORMATS][NUM_FORMATS + 1] = {
-    { SDL_AUDIO_U8, NATIVE(F32),  SWAPPED(F32), SDL_AUDIO_S8, NATIVE(S16),  SWAPPED(S16), NATIVE(S32),  SWAPPED(S32), SDL_AUDIO_UNKNOWN },
-    { SDL_AUDIO_S8, NATIVE(F32),  SWAPPED(F32), SDL_AUDIO_U8, NATIVE(S16),  SWAPPED(S16), NATIVE(S32),  SWAPPED(S32), SDL_AUDIO_UNKNOWN },
-    { NATIVE(S16),  NATIVE(F32),  SWAPPED(F32), SWAPPED(S16), NATIVE(S32),  SWAPPED(S32), SDL_AUDIO_U8, SDL_AUDIO_S8, SDL_AUDIO_UNKNOWN },
-    { SWAPPED(S16), NATIVE(F32),  SWAPPED(F32), NATIVE(S16),  SWAPPED(S32), NATIVE(S32),  SDL_AUDIO_U8, SDL_AUDIO_S8, SDL_AUDIO_UNKNOWN },
-    { NATIVE(S32),  NATIVE(F32),  SWAPPED(F32), SWAPPED(S32), NATIVE(S16),  SWAPPED(S16), SDL_AUDIO_U8, SDL_AUDIO_S8, SDL_AUDIO_UNKNOWN },
-    { SWAPPED(S32), NATIVE(F32),  SWAPPED(F32), NATIVE(S32),  SWAPPED(S16), NATIVE(S16),  SDL_AUDIO_U8, SDL_AUDIO_S8, SDL_AUDIO_UNKNOWN },
-    { NATIVE(F32),  SWAPPED(F32), NATIVE(S32),  SWAPPED(S32), NATIVE(S16),  SWAPPED(S16), SDL_AUDIO_U8, SDL_AUDIO_S8, SDL_AUDIO_UNKNOWN },
-    { SWAPPED(F32), NATIVE(F32),  SWAPPED(S32), NATIVE(S32),  SWAPPED(S16), NATIVE(S16),  SDL_AUDIO_U8, SDL_AUDIO_S8, SDL_AUDIO_UNKNOWN },
-};
-
-#undef NATIVE
-#undef SWAPPED
-
-const SDL_AudioFormat *SDL_ClosestAudioFormats(SDL_AudioFormat format)
-{
-    for (int i = 0; i < NUM_FORMATS; i++) {
-        if (format_list[i][0] == format) {
-            return &format_list[i][0];
-        }
-    }
-    return &format_list[0][NUM_FORMATS]; // not found; return what looks like a list with only a zero in it.
-}
-
-const char *SDL_GetAudioFormatName(SDL_AudioFormat format)
-{
-    switch (format) {
-#define CASE(X) \
-    case X: return #X;
-    CASE(SDL_AUDIO_U8)
-    CASE(SDL_AUDIO_S8)
-    CASE(SDL_AUDIO_S16LE)
-    CASE(SDL_AUDIO_S16BE)
-    CASE(SDL_AUDIO_S32LE)
-    CASE(SDL_AUDIO_S32BE)
-    CASE(SDL_AUDIO_F32LE)
-    CASE(SDL_AUDIO_F32BE)
-#undef CASE
-    default:
-        return "SDL_AUDIO_UNKNOWN";
-    }
-}
-
-int SDL_GetSilenceValueForFormat(SDL_AudioFormat format)
-{
-    return (format == SDL_AUDIO_U8) ? 0x80 : 0x00;
-}
-
 // called internally by backends when the system default device changes.
 void SDL_DefaultAudioDeviceChanged(SDL_AudioDevice *new_default_device)
 {
@@ -2740,4 +2684,3 @@ void SDL_UpdateAudio(void)
         SDL_free(i);
     }
 }
-

@@ -5693,45 +5693,6 @@ bool SDL_GL_DestroyContext(SDL_GLContext context)
     return _this->GL_DestroyContext(_this, context);
 }
 
-SDL_TextInputType SDL_GetTextInputType(SDL_PropertiesID props)
-{
-    return (SDL_TextInputType)SDL_GetNumberProperty(props, SDL_PROP_TEXTINPUT_TYPE_NUMBER, SDL_TEXTINPUT_TYPE_TEXT);
-}
-
-SDL_Capitalization SDL_GetTextInputCapitalization(SDL_PropertiesID props)
-{
-    if (SDL_HasProperty(props, SDL_PROP_TEXTINPUT_CAPITALIZATION_NUMBER)) {
-        return (SDL_Capitalization)SDL_GetNumberProperty(props, SDL_PROP_TEXTINPUT_CAPITALIZATION_NUMBER, SDL_CAPITALIZE_NONE);
-    }
-
-    switch (SDL_GetTextInputType(props)) {
-    case SDL_TEXTINPUT_TYPE_TEXT:
-        return SDL_CAPITALIZE_SENTENCES;
-    case SDL_TEXTINPUT_TYPE_TEXT_NAME:
-        return SDL_CAPITALIZE_WORDS;
-    default:
-        return SDL_CAPITALIZE_NONE;
-    }
-}
-
-bool SDL_GetTextInputAutocorrect(SDL_PropertiesID props)
-{
-    return SDL_GetBooleanProperty(props, SDL_PROP_TEXTINPUT_AUTOCORRECT_BOOLEAN, true);
-}
-
-bool SDL_GetTextInputMultiline(SDL_PropertiesID props)
-{
-    if (SDL_HasProperty(props, SDL_PROP_TEXTINPUT_MULTILINE_BOOLEAN)) {
-        return SDL_GetBooleanProperty(props, SDL_PROP_TEXTINPUT_MULTILINE_BOOLEAN, false);
-    }
-
-    if (SDL_GetHintBoolean(SDL_HINT_RETURN_KEY_HIDES_IME, false)) {
-        return false;
-    } else {
-        return true;
-    }
-}
-
 static bool AutoShowingScreenKeyboard(void)
 {
     const char *hint = SDL_GetHint(SDL_HINT_ENABLE_SCREEN_KEYBOARD);

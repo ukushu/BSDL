@@ -7681,6 +7681,8 @@
 │   │   ├── SDL_gamepad.c
 │   │   ├── SDL_joystick_c.h
 │   │   ├── SDL_joystick.c
+│   │   ├── SDL_joystick_classify.c
+│   │   ├── SDL_joystick_guid.c
 │   │   ├── SDL_steam_virtual_gamepad.c
 │   │   ├── SDL_steam_virtual_gamepad.h
 │   │   ├── SDL_sysjoystick.h
@@ -8042,6 +8044,7 @@
 │   │   │   ├── VULKAN_PixelShader_Textures.hlsl
 │   │   │   ├── VULKAN_VertexShader.h
 │   │   │   └── VULKAN_VertexShader.hlsl
+│   │   ├── SDL_blendmode.c
 │   │   ├── SDL_d3dmath.h
 │   │   ├── SDL_render_debug_font.h
 │   │   ├── SDL_render_unsupported.c

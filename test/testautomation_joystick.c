@@ -240,6 +240,93 @@ static int SDLCALL joystick_twoAxisInitialState(void *arg)
     return TEST_COMPLETED;
 }
 
+static int SDLCALL joystick_virtualGUIDFields(void *arg)
+{
+    SDL_VirtualJoystickDesc desc;
+    SDL_JoystickID id;
+    SDL_GUID guid;
+    Uint16 vendor = 0, product = 0, version = 0, crc = 0;
+
+    SDL_INIT_INTERFACE(&desc);
+    desc.type = SDL_JOYSTICK_TYPE_GAMEPAD;
+    desc.vendor_id = 0x1234;
+    desc.product_id = 0x5678;
+    desc.name = "Virtual GUID test";
+    id = SDL_AttachVirtualJoystick(&desc);
+    if (!SDLTest_AssertCheck(id > 0, "Attach virtual GUID joystick: %s", SDL_GetError())) {
+        return TEST_ABORTED;
+    }
+
+    guid = SDL_GetJoystickGUIDForID(id);
+    SDL_GetJoystickGUIDInfo(guid, &vendor, &product, &version, &crc);
+    SDLTest_AssertCheck(vendor == desc.vendor_id && product == desc.product_id && version == 0,
+                        "Virtual GUID preserves vendor, product and version fields");
+    SDLTest_AssertCheck(crc == SDL_crc16(0, desc.name, SDL_strlen(desc.name)),
+                        "Virtual GUID preserves the name CRC");
+    SDLTest_AssertCheck(guid.data[14] == 'v' && guid.data[15] == desc.type,
+                        "Virtual GUID preserves driver signature and joystick type");
+    SDLTest_AssertCheck(SDL_DetachVirtualJoystick(id), "Detach virtual GUID joystick");
+    return TEST_COMPLETED;
+}
+
+static int SDLCALL joystick_typeClassification(void *arg)
+{
+    SDL_VirtualJoystickDesc desc;
+    SDL_JoystickID id;
+    SDL_Joystick *joystick;
+    const char *old_hint = SDL_GetHint(SDL_HINT_JOYSTICK_WHEEL_DEVICES);
+    char *saved_hint = old_hint ? SDL_strdup(old_hint) : NULL;
+
+    if (old_hint && !SDLTest_AssertCheck(saved_hint != NULL, "Save existing wheel hint")) {
+        return TEST_ABORTED;
+    }
+
+    SDL_INIT_INTERFACE(&desc);
+    desc.type = SDL_JOYSTICK_TYPE_GAMEPAD;
+    desc.vendor_id = 0x046d;
+    desc.product_id = 0xc29b; // Logitech G27, in the built-in wheel list
+    desc.name = "Virtual known wheel";
+    id = SDL_AttachVirtualJoystick(&desc);
+    if (!SDLTest_AssertCheck(id > 0, "Attach known wheel: %s", SDL_GetError())) {
+        SDL_free(saved_hint);
+        return TEST_ABORTED;
+    }
+    SDLTest_AssertCheck(SDL_GetJoystickTypeForID(id) == SDL_JOYSTICK_TYPE_WHEEL,
+                        "Built-in VID/PID classifies a wheel by ID");
+    joystick = SDL_OpenJoystick(id);
+    if (SDLTest_AssertCheck(joystick != NULL, "Open known wheel: %s", SDL_GetError())) {
+        SDLTest_AssertCheck(SDL_GetJoystickType(joystick) == SDL_JOYSTICK_TYPE_WHEEL,
+                            "Built-in VID/PID classifies an open wheel");
+        SDL_CloseJoystick(joystick);
+    }
+    SDLTest_AssertCheck(SDL_DetachVirtualJoystick(id), "Detach known wheel");
+
+    desc.vendor_id = 0x1234;
+    desc.product_id = 0xabcd;
+    desc.name = "Virtual hinted wheel";
+    id = SDL_AttachVirtualJoystick(&desc);
+    if (!SDLTest_AssertCheck(id > 0, "Attach hinted wheel: %s", SDL_GetError())) {
+        SDL_free(saved_hint);
+        return TEST_ABORTED;
+    }
+    SDLTest_AssertCheck(SDL_GetJoystickTypeForID(id) == SDL_JOYSTICK_TYPE_GAMEPAD,
+                        "Unknown VID/PID initially keeps virtual type");
+    SDLTest_AssertCheck(SDL_SetHint(SDL_HINT_JOYSTICK_WHEEL_DEVICES, "0x1234/0xabcd"),
+                        "Add wheel VID/PID with hint");
+    SDLTest_AssertCheck(SDL_GetJoystickTypeForID(id) == SDL_JOYSTICK_TYPE_WHEEL,
+                        "Updated wheel hint changes classification");
+    if (saved_hint) {
+        SDL_SetHint(SDL_HINT_JOYSTICK_WHEEL_DEVICES, saved_hint);
+    } else {
+        SDL_ResetHint(SDL_HINT_JOYSTICK_WHEEL_DEVICES);
+    }
+    SDLTest_AssertCheck(SDL_GetJoystickTypeForID(id) == SDL_JOYSTICK_TYPE_GAMEPAD,
+                        "Restored wheel hint restores virtual type");
+    SDLTest_AssertCheck(SDL_DetachVirtualJoystick(id), "Detach hinted wheel");
+    SDL_free(saved_hint);
+    return TEST_COMPLETED;
+}
+
 /**
  * Check gamepad mappings
  */
@@ -413,6 +500,12 @@ static const SDLTest_TestCaseReference joystickTest1 = {
 static const SDLTest_TestCaseReference joystickTestInitialState = {
     joystick_twoAxisInitialState, "joystick_twoAxisInitialState", "Two-axis virtual joysticks start centered", TEST_ENABLED
 };
+static const SDLTest_TestCaseReference joystickTestVirtualGUIDFields = {
+    joystick_virtualGUIDFields, "joystick_virtualGUIDFields", "Virtual joystick GUID retains its encoded fields", TEST_ENABLED
+};
+static const SDLTest_TestCaseReference joystickTestTypeClassification = {
+    joystick_typeClassification, "joystick_typeClassification", "Known and hinted wheel VID/PID classification", TEST_ENABLED
+};
 static const SDLTest_TestCaseReference joystickTest2 = {
     joystick_testMappings, "joystick_testMappings", "Test gamepad mapping functionality", TEST_ENABLED
 };
@@ -427,6 +520,8 @@ static const SDLTest_TestCaseReference joystickTest3 = {
 static const SDLTest_TestCaseReference *joystickTests[] = {
     &joystickTest1,
     &joystickTestInitialState,
+    &joystickTestVirtualGUIDFields,
+    &joystickTestTypeClassification,
     &joystickTest2,
     &joystickTestMappingLabelHints,
     &joystickTest3,

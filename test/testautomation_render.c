@@ -1151,6 +1151,20 @@ static int SDLCALL render_testBlendModes(void *arg)
     return TEST_COMPLETED;
 }
 
+static int SDLCALL render_testComposeBlendMode(void *arg)
+{
+    SDLTest_AssertCheck(SDL_ComposeCustomBlendMode(SDL_BLENDFACTOR_ONE, SDL_BLENDFACTOR_ZERO, SDL_BLENDOPERATION_ADD,
+                                                  SDL_BLENDFACTOR_ONE, SDL_BLENDFACTOR_ZERO, SDL_BLENDOPERATION_ADD) == SDL_BLENDMODE_NONE,
+                        "Compose the predefined none blend mode");
+    SDLTest_AssertCheck(SDL_ComposeCustomBlendMode(SDL_BLENDFACTOR_SRC_ALPHA, SDL_BLENDFACTOR_ONE_MINUS_SRC_ALPHA, SDL_BLENDOPERATION_ADD,
+                                                  SDL_BLENDFACTOR_ONE, SDL_BLENDFACTOR_ONE_MINUS_SRC_ALPHA, SDL_BLENDOPERATION_ADD) == SDL_BLENDMODE_BLEND,
+                        "Compose the predefined alpha blend mode");
+    SDLTest_AssertCheck(SDL_ComposeCustomBlendMode(SDL_BLENDFACTOR_SRC_ALPHA, SDL_BLENDFACTOR_ONE_MINUS_SRC_ALPHA, SDL_BLENDOPERATION_SUBTRACT,
+                                                  SDL_BLENDFACTOR_DST_ALPHA, SDL_BLENDFACTOR_ONE, SDL_BLENDOPERATION_REV_SUBTRACT) == 0x02930652u,
+                        "Preserve a custom blend mode value");
+    return TEST_COMPLETED;
+}
+
 /**
  * Test viewport
  */
@@ -1990,6 +2004,69 @@ static int SDLCALL render_testUVWrapping(void *arg)
     return TEST_COMPLETED;
 }
 
+static int SDLCALL render_testGeometryAutoTextureAddress(void *arg)
+{
+    SDL_Surface *target = SDL_CreateSurface(16, 16, SDL_PIXELFORMAT_RGBA32);
+    SDL_Surface *source = SDL_CreateSurface(2, 1, SDL_PIXELFORMAT_RGBA32);
+    SDL_Renderer *software = NULL;
+    SDL_Texture *texture = NULL;
+    const SDL_Rect left = { 0, 0, 1, 1 };
+    const SDL_Rect right = { 1, 0, 1, 1 };
+    const SDL_FColor white = { 1.0f, 1.0f, 1.0f, 1.0f };
+    SDL_Vertex vertices[4] = {
+        { { 0.0f, 0.0f }, white, { 0.0f, 0.0f } },
+        { { 16.0f, 0.0f }, white, { 2.0f, 0.0f } },
+        { { 16.0f, 16.0f }, white, { 2.0f, 1.0f } },
+        { { 0.0f, 16.0f }, white, { 0.0f, 1.0f } }
+    };
+    const int indices[6] = { 0, 1, 2, 0, 2, 3 };
+    Uint8 r = 0, g = 0, b = 0, a = 0;
+
+    if (!SDLTest_AssertCheck(target && source, "Create geometry address mode surfaces: %s", SDL_GetError())) {
+        SDL_DestroySurface(target);
+        SDL_DestroySurface(source);
+        return TEST_ABORTED;
+    }
+    SDL_FillSurfaceRect(source, &left, SDL_MapSurfaceRGB(source, 255, 0, 0));
+    SDL_FillSurfaceRect(source, &right, SDL_MapSurfaceRGB(source, 0, 255, 0));
+    software = SDL_CreateSoftwareRenderer(target);
+    if (!SDLTest_AssertCheck(software != NULL, "Create geometry address mode renderer: %s", SDL_GetError())) {
+        SDL_DestroySurface(target);
+        SDL_DestroySurface(source);
+        return TEST_ABORTED;
+    }
+    texture = SDL_CreateTextureFromSurface(software, source);
+    if (!SDLTest_AssertCheck(texture != NULL, "Create geometry address mode texture: %s", SDL_GetError())) {
+        SDL_DestroyRenderer(software);
+        SDL_DestroySurface(target);
+        SDL_DestroySurface(source);
+        return TEST_ABORTED;
+    }
+    CHECK_FUNC(SDL_SetTextureScaleMode, (texture, SDL_SCALEMODE_NEAREST));
+    CHECK_FUNC(SDL_SetRenderDrawColor, (software, 0, 0, 0, 255));
+    CHECK_FUNC(SDL_SetRenderTextureAddressMode, (software, SDL_TEXTURE_ADDRESS_AUTO, SDL_TEXTURE_ADDRESS_AUTO));
+    CHECK_FUNC(SDL_RenderClear, (software));
+    CHECK_FUNC(SDL_RenderGeometry, (software, texture, vertices, 4, indices, 6));
+    CHECK_FUNC(SDL_RenderPresent, (software));
+    if (SDLTest_AssertCheck(SDL_ReadSurfacePixel(target, 10, 8, &r, &g, &b, &a), "Read wrapped geometry pixel: %s", SDL_GetError())) {
+        SDLTest_AssertCheck(r > 200 && g < 50, "AUTO wraps U while V remains in range");
+    }
+
+    CHECK_FUNC(SDL_SetRenderTextureAddressMode, (software, SDL_TEXTURE_ADDRESS_CLAMP, SDL_TEXTURE_ADDRESS_AUTO));
+    CHECK_FUNC(SDL_RenderClear, (software));
+    CHECK_FUNC(SDL_RenderGeometry, (software, texture, vertices, 4, indices, 6));
+    CHECK_FUNC(SDL_RenderPresent, (software));
+    if (SDLTest_AssertCheck(SDL_ReadSurfacePixel(target, 10, 8, &r, &g, &b, &a), "Read clamped geometry pixel: %s", SDL_GetError())) {
+        SDLTest_AssertCheck(g > 200 && r < 50, "Explicit CLAMP keeps U at the texture edge");
+    }
+
+    SDL_DestroyTexture(texture);
+    SDL_DestroyRenderer(software);
+    SDL_DestroySurface(source);
+    SDL_DestroySurface(target);
+    return TEST_COMPLETED;
+}
+
 /**
  * Tests texture state changes
  */
@@ -2591,6 +2668,10 @@ static const SDLTest_TestCaseReference renderTestBlendModes = {
     render_testBlendModes, "render_testBlendModes", "Tests rendering blend modes", TEST_ENABLED
 };
 
+static const SDLTest_TestCaseReference renderTestComposeBlendMode = {
+    render_testComposeBlendMode, "render_testComposeBlendMode", "Tests blend mode composition", TEST_ENABLED
+};
+
 static const SDLTest_TestCaseReference renderTestViewport = {
     render_testViewport, "render_testViewport", "Tests viewport", TEST_ENABLED
 };
@@ -2609,6 +2690,10 @@ static const SDLTest_TestCaseReference renderTestUVClamping = {
 
 static const SDLTest_TestCaseReference renderTestUVWrapping = {
     render_testUVWrapping, "render_testUVWrapping", "Tests geometry UV wrapping", TEST_ENABLED
+};
+
+static const SDLTest_TestCaseReference renderTestGeometryAutoTextureAddress = {
+    render_testGeometryAutoTextureAddress, "render_testGeometryAutoTextureAddress", "Tests per-axis geometry texture address modes", TEST_ENABLED
 };
 
 static const SDLTest_TestCaseReference renderTestTextureState = {
@@ -2662,11 +2747,13 @@ static const SDLTest_TestCaseReference *renderTests[] = {
     &renderTestBlit9GridTiled,
     &renderTestBlitColor,
     &renderTestBlendModes,
+    &renderTestComposeBlendMode,
     &renderTestViewport,
     &renderTestClipRect,
     &renderTestLogicalSize,
     &renderTestUVClamping,
     &renderTestUVWrapping,
+    &renderTestGeometryAutoTextureAddress,
     &renderTestTextureState,
     &renderTestRejectsFourCCRenderTarget,
     &renderTestGetSetTextureScaleMode,
