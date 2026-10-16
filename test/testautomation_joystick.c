@@ -276,8 +276,13 @@ static int SDLCALL joystick_typeClassification(void *arg)
     SDL_Joystick *joystick;
     const char *old_hint = SDL_GetHint(SDL_HINT_JOYSTICK_WHEEL_DEVICES);
     char *saved_hint = old_hint ? SDL_strdup(old_hint) : NULL;
+    const char *old_excluded_hint = SDL_GetHint(SDL_HINT_JOYSTICK_WHEEL_DEVICES_EXCLUDED);
+    char *saved_excluded_hint = old_excluded_hint ? SDL_strdup(old_excluded_hint) : NULL;
 
-    if (old_hint && !SDLTest_AssertCheck(saved_hint != NULL, "Save existing wheel hint")) {
+    if ((old_hint && !saved_hint) || (old_excluded_hint && !saved_excluded_hint)) {
+        SDLTest_AssertCheck(false, "Save existing wheel hints");
+        SDL_free(saved_hint);
+        SDL_free(saved_excluded_hint);
         return TEST_ABORTED;
     }
 
@@ -289,6 +294,7 @@ static int SDLCALL joystick_typeClassification(void *arg)
     id = SDL_AttachVirtualJoystick(&desc);
     if (!SDLTest_AssertCheck(id > 0, "Attach known wheel: %s", SDL_GetError())) {
         SDL_free(saved_hint);
+        SDL_free(saved_excluded_hint);
         return TEST_ABORTED;
     }
     SDLTest_AssertCheck(SDL_GetJoystickTypeForID(id) == SDL_JOYSTICK_TYPE_WHEEL,
@@ -299,6 +305,17 @@ static int SDLCALL joystick_typeClassification(void *arg)
                             "Built-in VID/PID classifies an open wheel");
         SDL_CloseJoystick(joystick);
     }
+    SDLTest_AssertCheck(SDL_SetHint(SDL_HINT_JOYSTICK_WHEEL_DEVICES_EXCLUDED, "0x046d/0xc29b"),
+                        "Exclude built-in wheel VID/PID");
+    SDLTest_AssertCheck(SDL_GetJoystickTypeForID(id) == SDL_JOYSTICK_TYPE_GAMEPAD,
+                        "Exclusion hint overrides built-in wheel classification");
+    if (saved_excluded_hint) {
+        SDL_SetHint(SDL_HINT_JOYSTICK_WHEEL_DEVICES_EXCLUDED, saved_excluded_hint);
+    } else {
+        SDL_ResetHint(SDL_HINT_JOYSTICK_WHEEL_DEVICES_EXCLUDED);
+    }
+    SDLTest_AssertCheck(SDL_GetJoystickTypeForID(id) == SDL_JOYSTICK_TYPE_WHEEL,
+                        "Restored exclusion hint restores built-in wheel classification");
     SDLTest_AssertCheck(SDL_DetachVirtualJoystick(id), "Detach known wheel");
 
     desc.vendor_id = 0x1234;
@@ -307,6 +324,7 @@ static int SDLCALL joystick_typeClassification(void *arg)
     id = SDL_AttachVirtualJoystick(&desc);
     if (!SDLTest_AssertCheck(id > 0, "Attach hinted wheel: %s", SDL_GetError())) {
         SDL_free(saved_hint);
+        SDL_free(saved_excluded_hint);
         return TEST_ABORTED;
     }
     SDLTest_AssertCheck(SDL_GetJoystickTypeForID(id) == SDL_JOYSTICK_TYPE_GAMEPAD,
@@ -324,6 +342,7 @@ static int SDLCALL joystick_typeClassification(void *arg)
                         "Restored wheel hint restores virtual type");
     SDLTest_AssertCheck(SDL_DetachVirtualJoystick(id), "Detach hinted wheel");
     SDL_free(saved_hint);
+    SDL_free(saved_excluded_hint);
     return TEST_COMPLETED;
 }
 
@@ -394,6 +413,33 @@ static int SDLCALL joystick_testMappings(void *arg)
     }
     SDLTest_AssertCheck(SDL_DetachVirtualJoystick(device_id), "SDL_DetachVirtualJoystick()");
 
+    return TEST_COMPLETED;
+}
+
+static int SDLCALL joystick_gamepadNameConversions(void *arg)
+{
+    for (int i = SDL_GAMEPAD_TYPE_STANDARD; i < SDL_GAMEPAD_TYPE_COUNT; ++i) {
+        const char *name = SDL_GetGamepadStringForType((SDL_GamepadType)i);
+        SDLTest_AssertCheck(name && SDL_GetGamepadTypeFromString(name) == (SDL_GamepadType)i,
+                            "Gamepad type %d round-trips through its name", i);
+    }
+    for (int i = 0; i < SDL_GAMEPAD_AXIS_COUNT; ++i) {
+        const char *name = SDL_GetGamepadStringForAxis((SDL_GamepadAxis)i);
+        SDLTest_AssertCheck(name && SDL_GetGamepadAxisFromString(name) == (SDL_GamepadAxis)i,
+                            "Gamepad axis %d round-trips through its name", i);
+    }
+    for (int i = 0; i < SDL_GAMEPAD_BUTTON_COUNT; ++i) {
+        const char *name = SDL_GetGamepadStringForButton((SDL_GamepadButton)i);
+        SDLTest_AssertCheck(name && SDL_GetGamepadButtonFromString(name) == (SDL_GamepadButton)i,
+                            "Gamepad button %d round-trips through its name", i);
+    }
+
+    SDLTest_AssertCheck(SDL_GetGamepadTypeFromString("+PS5") == SDL_GAMEPAD_TYPE_PS5, "Type parsing accepts a sign and ignores case");
+    SDLTest_AssertCheck(SDL_GetGamepadAxisFromString("-LEFTX") == SDL_GAMEPAD_AXIS_LEFTX, "Axis parsing accepts a sign and ignores case");
+    SDLTest_AssertCheck(SDL_GetGamepadButtonFromString("A") == SDL_GAMEPAD_BUTTON_SOUTH, "Button parsing ignores case");
+    SDLTest_AssertCheck(SDL_GetGamepadStringForType(SDL_GAMEPAD_TYPE_UNKNOWN) == NULL, "Unknown type has no public name");
+    SDLTest_AssertCheck(SDL_GetGamepadStringForAxis(SDL_GAMEPAD_AXIS_INVALID) == NULL, "Invalid axis has no name");
+    SDLTest_AssertCheck(SDL_GetGamepadStringForButton(SDL_GAMEPAD_BUTTON_INVALID) == NULL, "Invalid button has no name");
     return TEST_COMPLETED;
 }
 
@@ -512,6 +558,9 @@ static const SDLTest_TestCaseReference joystickTest2 = {
 static const SDLTest_TestCaseReference joystickTestMappingLabelHints = {
     joystick_mappingLabelHints, "joystick_mappingLabelHints", "Legacy label hints map buttons to positions", TEST_ENABLED
 };
+static const SDLTest_TestCaseReference joystickTestGamepadNameConversions = {
+    joystick_gamepadNameConversions, "joystick_gamepadNameConversions", "Gamepad names and enums round-trip", TEST_ENABLED
+};
 static const SDLTest_TestCaseReference joystickTest3 = {
     joystick_testMissingAxes, "joystick_testMissingAxes", "Test mappings with missing joystick axes", TEST_ENABLED
 };
@@ -523,6 +572,7 @@ static const SDLTest_TestCaseReference *joystickTests[] = {
     &joystickTestVirtualGUIDFields,
     &joystickTestTypeClassification,
     &joystickTest2,
+    &joystickTestGamepadNameConversions,
     &joystickTestMappingLabelHints,
     &joystickTest3,
     NULL

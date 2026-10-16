@@ -2104,6 +2104,65 @@ bool SDL_SetAudioPostmixCallback(SDL_AudioDeviceID devid, SDL_AudioPostmixCallba
     return result;
 }
 
+static bool LockAudioStreamsForBinding(SDL_AudioStream * const *streams, int num_streams)
+{
+    bool result = true;
+
+    // Lock all streams before checking bindings so the batch succeeds or fails as a whole.
+    for (int i = 0; i < num_streams; i++) {
+        SDL_AudioStream *stream = streams[i];
+        if (!stream) {
+            SDL_SetError("Stream #%d is NULL", i);
+            result = false;  // to pacify the static analyzer, that doesn't realize SDL_SetError() always returns false.
+        } else {
+            SDL_LockMutex(stream->lock);
+            SDL_assert((stream->bound_device == NULL) == ((stream->prev_binding == NULL) || (stream->next_binding == NULL)));
+            if (stream->bound_device) {
+                result = SDL_SetError("Stream #%d is already bound to a device", i);
+            } else if (stream->simplified) {  // You can get here if you closed the device instead of destroying the stream.
+                result = SDL_SetError("Cannot change binding on a stream created with SDL_OpenAudioDeviceStream");
+            }
+        }
+
+        if (!result) {
+            int j;
+            for (j = 0; j < i; j++) {
+                SDL_UnlockMutex(streams[j]->lock);
+            }
+            if (stream) {
+                SDL_UnlockMutex(stream->lock);
+            }
+            break;
+        }
+    }
+    return result;
+}
+
+static void BindLockedAudioStreams(SDL_LogicalAudioDevice *logdev, SDL_AudioDevice *device, SDL_AudioStream * const *streams, int num_streams)
+{
+    const bool recording = device->recording;
+    for (int i = 0; i < num_streams; i++) {
+        SDL_AudioStream *stream = streams[i];
+        if (stream) {  // shouldn't be NULL, but just in case...
+            // if the stream never had its non-device-end format set, just set it to the device end's format.
+            if (recording && (stream->dst_spec.format == SDL_AUDIO_UNKNOWN)) {
+                SDL_copyp(&stream->dst_spec, &device->spec);
+            } else if (!recording && (stream->src_spec.format == SDL_AUDIO_UNKNOWN)) {
+                SDL_copyp(&stream->src_spec, &device->spec);
+            }
+
+            stream->bound_device = logdev;
+            stream->prev_binding = NULL;
+            stream->next_binding = logdev->bound_streams;
+            if (logdev->bound_streams) {
+                logdev->bound_streams->prev_binding = stream;
+            }
+            logdev->bound_streams = stream;
+            SDL_UnlockMutex(stream->lock);
+        }
+    }
+}
+
 bool SDL_BindAudioStreams(SDL_AudioDeviceID devid, SDL_AudioStream * const *streams, int num_streams)
 {
     SDL_AudioDevice *device = NULL;
@@ -2133,58 +2192,12 @@ bool SDL_BindAudioStreams(SDL_AudioDeviceID devid, SDL_AudioStream * const *stre
         // make sure start of list is sane.
         SDL_assert(!logdev->bound_streams || (logdev->bound_streams->prev_binding == NULL));
 
-        // lock all the streams upfront, so we can verify they aren't bound elsewhere and add them all in one block, as this is intended to add everything or nothing.
-        for (int i = 0; i < num_streams; i++) {
-            SDL_AudioStream *stream = streams[i];
-            if (!stream) {
-                SDL_SetError("Stream #%d is NULL", i);
-                result = false;  // to pacify the static analyzer, that doesn't realize SDL_SetError() always returns false.
-            } else {
-                SDL_LockMutex(stream->lock);
-                SDL_assert((stream->bound_device == NULL) == ((stream->prev_binding == NULL) || (stream->next_binding == NULL)));
-                if (stream->bound_device) {
-                    result = SDL_SetError("Stream #%d is already bound to a device", i);
-                } else if (stream->simplified) {  // You can get here if you closed the device instead of destroying the stream.
-                    result = SDL_SetError("Cannot change binding on a stream created with SDL_OpenAudioDeviceStream");
-                }
-            }
-
-            if (!result) {
-                int j;
-                for (j = 0; j < i; j++) {
-                    SDL_UnlockMutex(streams[j]->lock);
-                }
-                if (stream) {
-                    SDL_UnlockMutex(stream->lock);
-                }
-                break;
-            }
-        }
+        result = LockAudioStreamsForBinding(streams, num_streams);
     }
 
     if (result) {
         // Now that everything is verified, chain everything together.
-        const bool recording = device->recording;
-        for (int i = 0; i < num_streams; i++) {
-            SDL_AudioStream *stream = streams[i];
-            if (stream) {  // shouldn't be NULL, but just in case...
-                // if the stream never had its non-device-end format set, just set it to the device end's format.
-                if (recording && (stream->dst_spec.format == SDL_AUDIO_UNKNOWN)) {
-                    SDL_copyp(&stream->dst_spec, &device->spec);
-                } else if (!recording && (stream->src_spec.format == SDL_AUDIO_UNKNOWN)) {
-                    SDL_copyp(&stream->src_spec, &device->spec);
-                }
-
-                stream->bound_device = logdev;
-                stream->prev_binding = NULL;
-                stream->next_binding = logdev->bound_streams;
-                if (logdev->bound_streams) {
-                    logdev->bound_streams->prev_binding = stream;
-                }
-                logdev->bound_streams = stream;
-                SDL_UnlockMutex(stream->lock);
-            }
-        }
+        BindLockedAudioStreams(logdev, device, streams, num_streams);
     }
 
     UpdateAudioStreamFormatsPhysical(device);

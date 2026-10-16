@@ -26,6 +26,8 @@
 
 // Useful functions and variables from SDL_gamepad.c
 
+extern SDL_GamepadButton SDL_PrivateGetGamepadButtonFromString(const char *str, bool axby, bool baxy);
+
 // Initialization and shutdown functions
 extern bool SDL_InitGamepadMappings(void);
 extern void SDL_QuitGamepadMappings(void);

@@ -1483,6 +1483,43 @@ cleanup:
 
     return status;
 }
+
+static int SDLCALL audio_bindStreamsAtomically(void *arg)
+{
+    SDL_AudioDeviceID device = SDL_OpenAudioDevice(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, NULL);
+    SDL_AudioStream *streams[2] = { NULL, NULL };
+
+    if (!SDLTest_AssertCheck(device != 0, "Open playback device: %s", SDL_GetError())) {
+        return TEST_COMPLETED;
+    }
+
+    streams[0] = SDL_CreateAudioStream(NULL, NULL);
+    streams[1] = SDL_CreateAudioStream(NULL, NULL);
+    if (!SDLTest_AssertCheck(streams[0] && streams[1], "Create streams: %s", SDL_GetError())) {
+        goto cleanup;
+    }
+
+    if (!SDLTest_AssertCheck(SDL_BindAudioStreams(device, streams, 2), "Bind two streams: %s", SDL_GetError())) {
+        goto cleanup;
+    }
+    SDLTest_AssertCheck(SDL_GetAudioStreamDevice(streams[0]) == device, "First stream is bound");
+    SDLTest_AssertCheck(SDL_GetAudioStreamDevice(streams[1]) == device, "Second stream is bound");
+
+    SDL_UnbindAudioStreams(streams, 2);
+    if (!SDLTest_AssertCheck(SDL_BindAudioStream(device, streams[0]), "Rebind first stream: %s", SDL_GetError())) {
+        goto cleanup;
+    }
+    SDLTest_AssertCheck(!SDL_BindAudioStreams(device, streams, 2), "Binding an already-bound stream fails");
+    SDLTest_AssertCheck(SDL_GetAudioStreamDevice(streams[0]) == device, "Failed batch leaves first stream bound");
+    SDLTest_AssertCheck(SDL_GetAudioStreamDevice(streams[1]) == 0, "Failed batch leaves second stream unbound");
+
+cleanup:
+    SDL_UnbindAudioStreams(streams, 2);
+    SDL_DestroyAudioStream(streams[0]);
+    SDL_DestroyAudioStream(streams[1]);
+    SDL_CloseAudioDevice(device);
+    return TEST_COMPLETED;
+}
 /* ================= Test Case References ================== */
 
 /* Audio test cases */
@@ -1568,6 +1605,10 @@ static const SDLTest_TestCaseReference audioTest18 = {
     audio_formatChange, "audio_formatChange", "Check handling of format changes.", TEST_ENABLED
 };
 
+static const SDLTest_TestCaseReference audioTestBindStreams = {
+    audio_bindStreamsAtomically, "audio_bindStreamsAtomically", "Check batch audio stream binding and failure atomicity.", TEST_ENABLED
+};
+
 /* Sequence of Audio test cases */
 static const SDLTest_TestCaseReference *audioTests[] = {
     &audioTestGetAudioFormatName,
@@ -1575,7 +1616,7 @@ static const SDLTest_TestCaseReference *audioTests[] = {
     &audioTest1, &audioTest2, &audioTest3, &audioTest4, &audioTest5, &audioTest6,
     &audioTest7, &audioTest8, &audioTest9, &audioTest10, &audioTest11,
     &audioTest12, &audioTest13, &audioTest14, &audioTest15, &audioTest16,
-    &audioTest17, &audioTest18, NULL
+    &audioTest17, &audioTest18, &audioTestBindStreams, NULL
 };
 
 /* Audio test suite (global) */

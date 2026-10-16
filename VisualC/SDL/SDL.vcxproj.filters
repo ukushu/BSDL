@@ -1531,6 +1531,9 @@
     <ClCompile Include="..\..\src\joystick\SDL_gamepad.c">
       <Filter>joystick</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\src\joystick\SDL_gamepad_names.c">
+      <Filter>joystick</Filter>
+    </ClCompile>
     <ClCompile Include="..\..\src\joystick\SDL_joystick.c">
       <Filter>joystick</Filter>
     </ClCompile>
@@ -1541,6 +1544,9 @@
       <Filter>joystick</Filter>
     </ClCompile>
     <ClCompile Include="..\..\src\joystick\SDL_steam_virtual_gamepad.c">
+      <Filter>joystick</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\joystick\SDL_vidpid.c">
       <Filter>joystick</Filter>
     </ClCompile>
     <ClCompile Include="..\..\src\libm\s_modf.c">
@@ -1913,6 +1919,15 @@
       <Filter>render</Filter>
     </ClCompile>
     <ClCompile Include="..\..\src\render\SDL_render.c">
+      <Filter>render</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\render\SDL_render_debug.c">
+      <Filter>render</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\render\SDL_render_texture_state.c">
+      <Filter>render</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\render\SDL_render_texture_update.c">
       <Filter>render</Filter>
     </ClCompile>
     <ClCompile Include="..\..\src\render\SDL_render_unsupported.c">

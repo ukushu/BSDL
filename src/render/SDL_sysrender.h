@@ -403,6 +403,7 @@ extern void SDL_QuitRender(void);
 
 // Add a supported texture format to a renderer
 extern bool SDL_AddSupportedTextureFormat(SDL_Renderer *renderer, SDL_PixelFormat format);
+extern bool SDL_FlushRenderCommandsIfTextureNeeded(SDL_Texture *texture);
 
 // Setup colorspace conversion
 extern void SDL_SetupRendererColorspace(SDL_Renderer *renderer, SDL_PropertiesID props);
@@ -415,6 +416,7 @@ extern void SDL_SetupRendererColorspace(SDL_Renderer *renderer, SDL_PropertiesID
 extern void SDL_ConvertToLinear(SDL_Renderer *renderer, SDL_FColor *color);
 
 // Blend mode functions
+extern bool SDL_RendererSupportsBlendMode(SDL_Renderer *renderer, SDL_BlendMode blendMode);
 extern SDL_BlendFactor SDL_GetBlendModeSrcColorFactor(SDL_BlendMode blendMode);
 extern SDL_BlendFactor SDL_GetBlendModeDstColorFactor(SDL_BlendMode blendMode);
 extern SDL_BlendOperation SDL_GetBlendModeColorOperation(SDL_BlendMode blendMode);

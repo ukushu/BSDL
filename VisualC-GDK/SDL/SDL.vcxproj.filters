@@ -101,10 +101,12 @@
     <ClCompile Include="..\..\src\joystick\hidapi\SDL_hidapi_zuiki.c" />
     <ClCompile Include="..\..\src\joystick\hidapi\SDL_report_descriptor.c" />
     <ClCompile Include="..\..\src\joystick\SDL_gamepad.c" />
+    <ClCompile Include="..\..\src\joystick\SDL_gamepad_names.c" />
     <ClCompile Include="..\..\src\joystick\SDL_joystick.c" />
     <ClCompile Include="..\..\src\joystick\SDL_joystick_classify.c" />
     <ClCompile Include="..\..\src\joystick\SDL_joystick_guid.c" />
     <ClCompile Include="..\..\src\joystick\SDL_steam_virtual_gamepad.c" />
+    <ClCompile Include="..\..\src\joystick\SDL_vidpid.c" />
     <ClCompile Include="..\..\src\joystick\virtual\SDL_virtualjoystick.c" />
     <ClCompile Include="..\..\src\joystick\windows\SDL_dinputjoystick.c" />
     <ClCompile Include="..\..\src\joystick\windows\SDL_rawinputjoystick.c" />
@@ -135,6 +137,9 @@
     <ClCompile Include="..\..\src\render\opengles2\SDL_shaders_gles2.c" />
     <ClCompile Include="..\..\src\render\SDL_blendmode.c" />
     <ClCompile Include="..\..\src\render\SDL_render.c" />
+    <ClCompile Include="..\..\src\render\SDL_render_debug.c" />
+    <ClCompile Include="..\..\src\render\SDL_render_texture_state.c" />
+    <ClCompile Include="..\..\src\render\SDL_render_texture_update.c" />
     <ClCompile Include="..\..\src\render\SDL_render_unsupported.c" />
     <ClCompile Include="..\..\src\render\SDL_yuv_sw.c" />
     <ClCompile Include="..\..\src\render\software\SDL_blendfillrect.c" />
