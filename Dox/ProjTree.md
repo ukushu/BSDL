@@ -7333,10 +7333,10 @@
 │   │   │   ├── SDL_openxrdyn.c
 │   │   │   ├── SDL_openxrdyn.h
 │   │   │   └── SDL_openxrsym.h
-│   │   ├── SDL_gpu.c
 │   │   ├── SDL_gpu_blit.c
 │   │   ├── SDL_gpu_device.c
 │   │   ├── SDL_gpu_format.c
+│   │   ├── SDL_gpu.c
 │   │   └── SDL_sysgpu.h
 │   ├── haptic/
 │   │   ├── android/
