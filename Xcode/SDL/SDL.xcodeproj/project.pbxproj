@@ -143,6 +143,7 @@
 		A7D8AC0323E2514100DCD162 /* SDL_rect_c.h in Headers */ = {isa = PBXBuildFile; fileRef = A7D8A60C23E2513D00DCD162 /* SDL_rect_c.h */; };
 		B1E0D0000000000000000011 /* SDL_cursor_names.c in Sources */ = {isa = PBXBuildFile; fileRef = B1E0D0000000000000000012 /* SDL_cursor_names.c */; };
 		A7D8AC0F23E2514100DCD162 /* SDL_video.c in Sources */ = {isa = PBXBuildFile; fileRef = A7D8A60E23E2513D00DCD162 /* SDL_video.c */; };
+		B1E0D0000000000000000022 /* SDL_video_textinput.c in Sources */ = {isa = PBXBuildFile; fileRef = B1E0D0000000000000000023 /* SDL_video_textinput.c */; };
 		A7D8AC2D23E2514100DCD162 /* SDL_surface.c in Sources */ = {isa = PBXBuildFile; fileRef = A7D8A61423E2513D00DCD162 /* SDL_surface.c */; };
 		A7D8AC3323E2514100DCD162 /* SDL_RLEaccel.c in Sources */ = {isa = PBXBuildFile; fileRef = A7D8A61523E2513D00DCD162 /* SDL_RLEaccel.c */; };
 		A7D8AC3923E2514100DCD162 /* SDL_blit_copy.c in Sources */ = {isa = PBXBuildFile; fileRef = A7D8A61623E2513D00DCD162 /* SDL_blit_copy.c */; };
@@ -385,6 +386,7 @@
 		E4F257952C81903800FCEAFC /* SDL_gpu_vulkan.c in Sources */ = {isa = PBXBuildFile; fileRef = E4F257832C81903800FCEAFC /* SDL_gpu_vulkan.c */; };
 		E4F257962C81903800FCEAFC /* SDL_gpu.c in Sources */ = {isa = PBXBuildFile; fileRef = E4F257852C81903800FCEAFC /* SDL_gpu.c */; };
 		B1E0D0000000000000000015 /* SDL_gpu_blit.c in Sources */ = {isa = PBXBuildFile; fileRef = B1E0D0000000000000000016 /* SDL_gpu_blit.c */; };
+		B1E0D0000000000000000020 /* SDL_gpu_copy.c in Sources */ = {isa = PBXBuildFile; fileRef = B1E0D0000000000000000021 /* SDL_gpu_copy.c */; };
 		B1E0D0000000000000000017 /* SDL_gpu_device.c in Sources */ = {isa = PBXBuildFile; fileRef = B1E0D0000000000000000018 /* SDL_gpu_device.c */; };
 		E4F2579A2C81903800FCEAFC /* SDL_gpu_format.c in Sources */ = {isa = PBXBuildFile; fileRef = E4F2578E2C81903800FCEAFC /* SDL_gpu_format.c */; };
 		E4F257972C81903800FCEAFC /* SDL_sysgpu.h in Headers */ = {isa = PBXBuildFile; fileRef = E4F257862C81903800FCEAFC /* SDL_sysgpu.h */; };
@@ -744,6 +746,7 @@
 		A7D8A60C23E2513D00DCD162 /* SDL_rect_c.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SDL_rect_c.h; sourceTree = "<group>"; };
 		B1E0D0000000000000000012 /* SDL_cursor_names.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_cursor_names.c; sourceTree = "<group>"; };
 		A7D8A60E23E2513D00DCD162 /* SDL_video.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_video.c; sourceTree = "<group>"; };
+		B1E0D0000000000000000023 /* SDL_video_textinput.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_video_textinput.c; sourceTree = "<group>"; };
 		A7D8A61423E2513D00DCD162 /* SDL_surface.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_surface.c; sourceTree = "<group>"; };
 		A7D8A61523E2513D00DCD162 /* SDL_RLEaccel.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_RLEaccel.c; sourceTree = "<group>"; };
 		A7D8A61623E2513D00DCD162 /* SDL_blit_copy.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_blit_copy.c; sourceTree = "<group>"; };
@@ -990,6 +993,7 @@
 		E4F257832C81903800FCEAFC /* SDL_gpu_vulkan.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_gpu_vulkan.c; sourceTree = "<group>"; };
 		E4F257852C81903800FCEAFC /* SDL_gpu.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_gpu.c; sourceTree = "<group>"; };
 		B1E0D0000000000000000016 /* SDL_gpu_blit.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_gpu_blit.c; sourceTree = "<group>"; };
+		B1E0D0000000000000000021 /* SDL_gpu_copy.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_gpu_copy.c; sourceTree = "<group>"; };
 		B1E0D0000000000000000018 /* SDL_gpu_device.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_gpu_device.c; sourceTree = "<group>"; };
 		E4F2578E2C81903800FCEAFC /* SDL_gpu_format.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_gpu_format.c; sourceTree = "<group>"; };
 		E4F257862C81903800FCEAFC /* SDL_sysgpu.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SDL_sysgpu.h; sourceTree = "<group>"; };
@@ -1773,6 +1777,7 @@
 				A7D8A61723E2513D00DCD162 /* SDL_sysvideo.h */,
 				B1E0D0000000000000000012 /* SDL_cursor_names.c */,
 				A7D8A60E23E2513D00DCD162 /* SDL_video.c */,
+				B1E0D0000000000000000023 /* SDL_video_textinput.c */,
 				F3DDCC522AFD42B600B0842B /* SDL_video_c.h */,
 				E4F7981F2AD8D87F00669F54 /* SDL_video_unsupported.c */,
 				A7D8A63E23E2513D00DCD162 /* SDL_vulkan_internal.h */,
@@ -2477,6 +2482,7 @@
 				E4F2578B2C81903800FCEAFC /* xr */,
 				E4F257852C81903800FCEAFC /* SDL_gpu.c */,
 				B1E0D0000000000000000016 /* SDL_gpu_blit.c */,
+				B1E0D0000000000000000021 /* SDL_gpu_copy.c */,
 				B1E0D0000000000000000018 /* SDL_gpu_device.c */,
 				E4F2578E2C81903800FCEAFC /* SDL_gpu_format.c */,
 				E4F257862C81903800FCEAFC /* SDL_sysgpu.h */,
@@ -3096,6 +3102,7 @@
 				A7D8AB2B23E2514100DCD162 /* SDL_timer.c in Sources */,
 				E4F257962C81903800FCEAFC /* SDL_gpu.c in Sources */,
 				B1E0D0000000000000000015 /* SDL_gpu_blit.c in Sources */,
+				B1E0D0000000000000000020 /* SDL_gpu_copy.c in Sources */,
 				B1E0D0000000000000000017 /* SDL_gpu_device.c in Sources */,
 				E4F2579A2C81903800FCEAFC /* SDL_gpu_format.c in Sources */,
 				F3D60A8328C16A1900788A3A /* SDL_hidapi_wii.c in Sources */,
@@ -3252,6 +3259,7 @@
 				E4F7981E2AD8D86A00669F54 /* SDL_render_unsupported.c in Sources */,
 				B1E0D0000000000000000011 /* SDL_cursor_names.c in Sources */,
 				A7D8AC0F23E2514100DCD162 /* SDL_video.c in Sources */,
+				B1E0D0000000000000000022 /* SDL_video_textinput.c in Sources */,
 				A7D8BA5B23E2514400DCD162 /* SDL_shaders_gles2.c in Sources */,
 				A7D8B14023E2514200DCD162 /* SDL_blit_1.c in Sources */,
 				A7D8BBDB23E2574800DCD162 /* SDL_uikitmetalview.m in Sources */,

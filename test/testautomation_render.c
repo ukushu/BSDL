@@ -3046,6 +3046,63 @@ static const SDLTest_TestCaseReference renderTestSoftwareGeometryQuads = {
     render_testSoftwareGeometryQuads, "render_testSoftwareGeometryQuads", "Tests software geometry quad rendering and state restoration", TEST_ENABLED
 };
 
+static int SDLCALL render_testGeometryRawIndexWidths(void *arg)
+{
+    const float xy[] = { 1.0f, 1.0f, 14.0f, 1.0f, 1.0f, 14.0f };
+    const SDL_FColor color[] = {
+        { 1.0f, 0.0f, 0.0f, 1.0f },
+        { 1.0f, 0.0f, 0.0f, 1.0f },
+        { 1.0f, 0.0f, 0.0f, 1.0f }
+    };
+    const Uint8 valid8[] = { 0, 1, 2 }, invalid8[] = { 0, 1, 3 };
+    const Uint16 valid16[] = { 0, 1, 2 }, invalid16[] = { 0, 1, 3 };
+    const Uint32 valid32[] = { 0, 1, 2 }, invalid32[] = { 0, 1, 3 };
+    const void *valid[] = { valid8, valid16, valid32 };
+    const void *invalid[] = { invalid8, invalid16, invalid32 };
+    const int index_size[] = { 1, 2, 4 };
+    SDL_Surface *surface = SDL_CreateSurface(16, 16, SDL_PIXELFORMAT_RGBA32);
+    SDL_Renderer *software;
+
+    if (!SDLTest_AssertCheck(surface != NULL, "Create geometry surface: %s", SDL_GetError())) {
+        return TEST_ABORTED;
+    }
+    software = SDL_CreateSoftwareRenderer(surface);
+    if (!SDLTest_AssertCheck(software != NULL, "Create software renderer: %s", SDL_GetError())) {
+        SDL_DestroySurface(surface);
+        return TEST_ABORTED;
+    }
+
+    for (int i = 0; i < SDL_arraysize(index_size); ++i) {
+        Uint8 r = 0, g = 0, b = 0, a = 0;
+        SDLTest_AssertCheck(SDL_SetRenderDrawColor(software, 0, 0, 0, 255), "Set geometry background");
+        SDLTest_AssertCheck(SDL_RenderClear(software), "Clear geometry surface");
+        SDLTest_AssertCheck(SDL_RenderGeometryRaw(software, NULL, xy, 2 * sizeof(float),
+                                                  color, sizeof(SDL_FColor), NULL, 0, 3,
+                                                  valid[i], 3, index_size[i]),
+                            "Render geometry with %d-byte indices: %s", index_size[i], SDL_GetError());
+        SDLTest_AssertCheck(SDL_RenderPresent(software), "Present geometry with %d-byte indices", index_size[i]);
+        if (SDLTest_AssertCheck(SDL_ReadSurfacePixel(surface, 2, 2, &r, &g, &b, &a),
+                                "Read geometry pixel with %d-byte indices", index_size[i])) {
+            SDLTest_AssertCheck(r == 255 && g == 0 && b == 0, "Geometry pixel is red with %d-byte indices", index_size[i]);
+        }
+
+        SDL_ClearError();
+        SDLTest_AssertCheck(!SDL_RenderGeometryRaw(software, NULL, xy, 2 * sizeof(float),
+                                                    color, sizeof(SDL_FColor), NULL, 0, 3,
+                                                    invalid[i], 3, index_size[i]),
+                            "Reject out-of-range %d-byte index", index_size[i]);
+        SDLTest_AssertCheck(SDL_GetError()[0] != '\0', "Out-of-range %d-byte index sets an error", index_size[i]);
+    }
+
+    SDL_DestroyRenderer(software);
+    SDL_DestroySurface(surface);
+    return TEST_COMPLETED;
+}
+
+static const SDLTest_TestCaseReference renderTestGeometryRawIndexWidths = {
+    render_testGeometryRawIndexWidths, "render_testGeometryRawIndexWidths", "Checks geometry index widths and bounds", TEST_ENABLED
+};
+
 static const SDLTest_TestCaseReference renderTestSoftwareTexturePalette = {
     render_testSoftwareTexturePalette, "render_testSoftwareTexturePalette", "Tests queued draws across a texture palette change", TEST_ENABLED
 };
@@ -3095,6 +3152,7 @@ static const SDLTest_TestCaseReference *renderTests[] = {
     &renderTestLogicalLinesGeometry,
     &renderTestSoftwareTextureFallback,
     &renderTestSoftwareGeometryQuads,
+    &renderTestGeometryRawIndexWidths,
     &renderTestSoftwareTexturePalette,
     &renderTestDebugText,
     &renderTestSoftwareTextureLock,

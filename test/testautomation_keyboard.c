@@ -361,6 +361,31 @@ static int SDLCALL keyboard_startStopTextInput(void *arg)
     return TEST_COMPLETED;
 }
 
+static int SDLCALL keyboard_textInputStateAndArea(void *arg)
+{
+    SDL_Window *window = SDL_CreateWindow("Text input state", 64, 64, SDL_WINDOW_HIDDEN);
+    SDL_Rect expected = { 3, 5, 17, 19 }, actual = { 0, 0, 0, 0 };
+    int cursor = -1;
+
+    if (!SDLTest_AssertCheck(window != NULL, "Create text input window: %s", SDL_GetError())) {
+        return TEST_ABORTED;
+    }
+
+    SDLTest_AssertCheck(!SDL_TextInputActive(window), "Text input begins inactive");
+    SDLTest_AssertCheck(SDL_StartTextInput(window), "Start text input: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_TextInputActive(window), "Text input becomes active");
+    SDLTest_AssertCheck(SDL_SetTextInputArea(window, &expected, 2), "Set text input area: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_GetTextInputArea(window, &actual, &cursor), "Get text input area: %s", SDL_GetError());
+    SDLTest_AssertCheck(actual.x == expected.x && actual.y == expected.y &&
+                        actual.w == expected.w && actual.h == expected.h && cursor == 2,
+                        "Text input area and cursor round-trip");
+    SDLTest_AssertCheck(SDL_StopTextInput(window), "Stop text input: %s", SDL_GetError());
+    SDLTest_AssertCheck(!SDL_TextInputActive(window), "Text input becomes inactive");
+
+    SDL_DestroyWindow(window);
+    return TEST_COMPLETED;
+}
+
 /* Internal function to test SDL_SetTextInputArea */
 static void testSetTextInputArea(SDL_Window *window, SDL_Rect refRect)
 {
@@ -638,6 +663,9 @@ static const SDLTest_TestCaseReference keyboardTestGetSetModState = {
 static const SDLTest_TestCaseReference keyboardTestStartStopTextInput = {
     keyboard_startStopTextInput, "keyboard_startStopTextInput", "Check call to SDL_StartTextInput and SDL_StopTextInput", TEST_ENABLED
 };
+static const SDLTest_TestCaseReference keyboardTestTextInputStateAndArea = {
+    keyboard_textInputStateAndArea, "keyboard_textInputStateAndArea", "Text input state and area round-trip", TEST_ENABLED
+};
 
 static const SDLTest_TestCaseReference keyboardTestSetTextInputArea = {
     keyboard_setTextInputArea, "keyboard_setTextInputArea", "Check call to SDL_SetTextInputArea", TEST_ENABLED
@@ -672,6 +700,7 @@ static const SDLTest_TestCaseReference *keyboardTests[] = {
     &keyboardTestGetKeyName,
     &keyboardTestGetSetModState,
     &keyboardTestStartStopTextInput,
+    &keyboardTestTextInputStateAndArea,
     &keyboardTestSetTextInputArea,
     &keyboardTestSetTextInputAreaNegative,
     &keyboardTestGetScancodeFromName,

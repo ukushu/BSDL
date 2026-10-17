@@ -7334,6 +7334,7 @@
 │   │   │   ├── SDL_openxrdyn.h
 │   │   │   └── SDL_openxrsym.h
 │   │   ├── SDL_gpu_blit.c
+│   │   ├── SDL_gpu_copy.c
 │   │   ├── SDL_gpu_device.c
 │   │   ├── SDL_gpu_format.c
 │   │   ├── SDL_gpu.c
@@ -8759,6 +8760,7 @@
 │   │   ├── SDL_video_unsupported.c
 │   │   ├── SDL_video_unsupported.h
 │   │   ├── SDL_video.c
+│   │   ├── SDL_video_textinput.c
 │   │   ├── SDL_vulkan_internal.h
 │   │   ├── SDL_vulkan_utils.c
 │   │   ├── SDL_yuv_c.h

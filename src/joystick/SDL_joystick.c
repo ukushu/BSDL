@@ -828,6 +828,26 @@ static void SDL_InitializeJoystickAxisValues(SDL_Joystick *joystick)
     }
 }
 
+static bool SDL_AllocateJoystickStateArrays(SDL_Joystick *joystick)
+{
+    if (joystick->naxes > 0) {
+        joystick->axes = (SDL_JoystickAxisInfo *)SDL_calloc(joystick->naxes, sizeof(*joystick->axes));
+    }
+    if (joystick->nballs > 0) {
+        joystick->balls = (SDL_JoystickBallData *)SDL_calloc(joystick->nballs, sizeof(*joystick->balls));
+    }
+    if (joystick->nhats > 0) {
+        joystick->hats = (Uint8 *)SDL_calloc(joystick->nhats, sizeof(*joystick->hats));
+    }
+    if (joystick->nbuttons > 0) {
+        joystick->buttons = (bool *)SDL_calloc(joystick->nbuttons, sizeof(*joystick->buttons));
+    }
+    return !(((joystick->naxes > 0) && !joystick->axes) ||
+             ((joystick->nballs > 0) && !joystick->balls) ||
+             ((joystick->nhats > 0) && !joystick->hats) ||
+             ((joystick->nbuttons > 0) && !joystick->buttons));
+}
+
 /*
  * Open a joystick for use - the index passed as an argument refers to
  * the N'th joystick on the system.  This index is the value which will
@@ -902,22 +922,7 @@ SDL_Joystick *SDL_OpenJoystick(SDL_JoystickID instance_id)
 
     joystick->guid = driver->GetDeviceGUID(device_index);
 
-    if (joystick->naxes > 0) {
-        joystick->axes = (SDL_JoystickAxisInfo *)SDL_calloc(joystick->naxes, sizeof(*joystick->axes));
-    }
-    if (joystick->nballs > 0) {
-        joystick->balls = (SDL_JoystickBallData *)SDL_calloc(joystick->nballs, sizeof(*joystick->balls));
-    }
-    if (joystick->nhats > 0) {
-        joystick->hats = (Uint8 *)SDL_calloc(joystick->nhats, sizeof(*joystick->hats));
-    }
-    if (joystick->nbuttons > 0) {
-        joystick->buttons = (bool *)SDL_calloc(joystick->nbuttons, sizeof(*joystick->buttons));
-    }
-    if (((joystick->naxes > 0) && !joystick->axes) ||
-        ((joystick->nballs > 0) && !joystick->balls) ||
-        ((joystick->nhats > 0) && !joystick->hats) ||
-        ((joystick->nbuttons > 0) && !joystick->buttons)) {
+    if (!SDL_AllocateJoystickStateArrays(joystick)) {
         SDL_CloseJoystick(joystick);
         SDL_UnlockJoysticks();
         return NULL;

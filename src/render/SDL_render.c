@@ -4457,6 +4457,24 @@ static void ResolveAutoGeometryTextureAddressModes(const float *uv, int uv_strid
     }
 }
 
+static bool ValidateGeometryIndices(const void *indices, int num_indices, int size_indices, int num_vertices)
+{
+    for (int i = 0; i < num_indices; ++i) {
+        int j;
+        if (size_indices == 4) {
+            j = ((const Uint32 *)indices)[i];
+        } else if (size_indices == 2) {
+            j = ((const Uint16 *)indices)[i];
+        } else {
+            j = ((const Uint8 *)indices)[i];
+        }
+        if (j < 0 || j >= num_vertices) {
+            return SDL_SetError("Values of 'indices' out of bounds");
+        }
+    }
+    return true;
+}
+
 bool SDL_RenderGeometryRaw(SDL_Renderer *renderer,
                           SDL_Texture *texture,
                           const float *xy, int xy_stride,
@@ -4465,7 +4483,6 @@ bool SDL_RenderGeometryRaw(SDL_Renderer *renderer,
                           int num_vertices,
                           const void *indices, int num_indices, int size_indices)
 {
-    int i;
     int count = indices ? num_indices : num_vertices;
     SDL_TextureAddressMode texture_address_mode_u = SDL_TEXTURE_ADDRESS_CLAMP;
     SDL_TextureAddressMode texture_address_mode_v = SDL_TEXTURE_ADDRESS_CLAMP;
@@ -4538,20 +4555,8 @@ bool SDL_RenderGeometryRaw(SDL_Renderer *renderer,
         ResolveAutoGeometryTextureAddressModes(uv, uv_stride, num_vertices, &texture_address_mode_u, &texture_address_mode_v);
     }
 
-    if (indices) {
-        for (i = 0; i < num_indices; ++i) {
-            int j;
-            if (size_indices == 4) {
-                j = ((const Uint32 *)indices)[i];
-            } else if (size_indices == 2) {
-                j = ((const Uint16 *)indices)[i];
-            } else {
-                j = ((const Uint8 *)indices)[i];
-            }
-            if (j < 0 || j >= num_vertices) {
-                return SDL_SetError("Values of 'indices' out of bounds");
-            }
-        }
+    if (indices && !ValidateGeometryIndices(indices, num_indices, size_indices, num_vertices)) {
+        return false;
     }
 
     if (texture) {

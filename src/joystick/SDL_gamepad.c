@@ -1685,33 +1685,13 @@ static char *SDL_PrivateGetGamepadMappingFromMappingString(const char *pMapping)
     return result;
 }
 
-/*
- * Helper function to add a mapping for a guid
- */
-static GamepadMapping_t *SDL_PrivateAddMappingForGUID(SDL_GUID jGUID, const char *mappingString, bool *existing, SDL_GamepadMappingPriority priority)
+static Uint16 SDL_NormalizeGamepadMappingCRC(SDL_GUID *guid, char **mapping)
 {
-    char *pchName;
-    char *pchMapping;
-    GamepadMapping_t *pGamepadMapping;
+    char *pchMapping = *mapping;
     Uint16 crc;
 
-    SDL_AssertJoysticksLocked();
-
-    pchName = SDL_PrivateGetGamepadNameFromMappingString(mappingString);
-    if (!pchName) {
-        SDL_SetError("Couldn't parse name from %s", mappingString);
-        return NULL;
-    }
-
-    pchMapping = SDL_PrivateGetGamepadMappingFromMappingString(mappingString);
-    if (!pchMapping) {
-        SDL_free(pchName);
-        SDL_SetError("Couldn't parse %s", mappingString);
-        return NULL;
-    }
-
     // Fix up the GUID and the mapping with the CRC, if needed
-    SDL_GetJoystickGUIDInfo(jGUID, NULL, NULL, NULL, &crc);
+    SDL_GetJoystickGUIDInfo(*guid, NULL, NULL, NULL, &crc);
     if (crc) {
         // Make sure the mapping has the CRC
         char *new_mapping;
@@ -1747,10 +1727,41 @@ static GamepadMapping_t *SDL_PrivateAddMappingForGUID(SDL_GUID jGUID, const char
         if (crc_string) {
             crc = (Uint16)SDL_strtol(crc_string + SDL_GAMEPAD_CRC_FIELD_SIZE, NULL, 16);
             if (crc) {
-                SDL_SetJoystickGUIDCRC(&jGUID, crc);
+                SDL_SetJoystickGUIDCRC(guid, crc);
             }
         }
     }
+
+    *mapping = pchMapping;
+    return crc;
+}
+
+/*
+ * Helper function to add a mapping for a guid
+ */
+static GamepadMapping_t *SDL_PrivateAddMappingForGUID(SDL_GUID jGUID, const char *mappingString, bool *existing, SDL_GamepadMappingPriority priority)
+{
+    char *pchName;
+    char *pchMapping;
+    GamepadMapping_t *pGamepadMapping;
+    Uint16 crc;
+
+    SDL_AssertJoysticksLocked();
+
+    pchName = SDL_PrivateGetGamepadNameFromMappingString(mappingString);
+    if (!pchName) {
+        SDL_SetError("Couldn't parse name from %s", mappingString);
+        return NULL;
+    }
+
+    pchMapping = SDL_PrivateGetGamepadMappingFromMappingString(mappingString);
+    if (!pchMapping) {
+        SDL_free(pchName);
+        SDL_SetError("Couldn't parse %s", mappingString);
+        return NULL;
+    }
+
+    crc = SDL_NormalizeGamepadMappingCRC(&jGUID, &pchMapping);
 
     PushMappingChangeTracking();
 
@@ -1811,20 +1822,6 @@ static GamepadMapping_t *SDL_PrivateAddMappingForGUID(SDL_GUID jGUID, const char
     PopMappingChangeTracking();
 
     return pGamepadMapping;
-}
-
-/*
- * Helper function to determine pre-calculated offset to certain joystick mappings
- */
-static GamepadMapping_t *SDL_PrivateGetGamepadMappingForNameAndGUID(const char *name, SDL_GUID guid)
-{
-    GamepadMapping_t *mapping;
-
-    SDL_AssertJoysticksLocked();
-
-    mapping = SDL_PrivateGetGamepadMappingForGUID(guid, false);
-
-    return mapping;
 }
 
 static void SDL_PrivateAppendToMappingString(char *mapping_string,
@@ -1933,7 +1930,7 @@ static GamepadMapping_t *SDL_PrivateGetGamepadMapping(SDL_JoystickID instance_id
 
     name = SDL_GetJoystickNameForID(instance_id);
     guid = SDL_GetJoystickGUIDForID(instance_id);
-    mapping = SDL_PrivateGetGamepadMappingForNameAndGUID(name, guid);
+    mapping = SDL_PrivateGetGamepadMappingForGUID(guid, false);
     if (!mapping && create_mapping) {
         SDL_GamepadMapping raw_map;
 
@@ -2715,26 +2712,6 @@ char *SDL_GetGamepadMappingForID(SDL_JoystickID instance_id)
             SDL_GUID guid = SDL_GetJoystickGUIDForID(instance_id);
             SDL_GUIDToString(guid, pchGUID, sizeof(pchGUID));
             SDL_asprintf(&result, "%s,%s,%s", pchGUID, mapping->name, mapping->mapping);
-        }
-    }
-    SDL_UnlockJoysticks();
-
-    return result;
-}
-
-/*
- * Return true if the joystick with this name and GUID is a supported gamepad
- */
-bool SDL_IsGamepadNameAndGUID(const char *name, SDL_GUID guid)
-{
-    bool result;
-
-    SDL_LockJoysticks();
-    {
-        if (s_pDefaultMapping || SDL_PrivateGetGamepadMappingForNameAndGUID(name, guid) != NULL) {
-            result = true;
-        } else {
-            result = false;
         }
     }
     SDL_UnlockJoysticks();

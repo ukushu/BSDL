@@ -1520,6 +1520,51 @@ cleanup:
     SDL_CloseAudioDevice(device);
     return TEST_COMPLETED;
 }
+
+static int SDLCALL audio_reopenPhysicalDeviceWithHigherSpec(void *arg)
+{
+    const SDL_AudioSpec low = { SDL_AUDIO_S16, 1, 22050 };
+    SDL_AudioSpec high;
+    SDL_AudioSpec actual;
+    SDL_AudioDeviceID first;
+    SDL_AudioDeviceID second;
+    const char *driver = SDL_GetCurrentAudioDriver();
+
+    if (!driver || SDL_strcmp(driver, "dummy") != 0) {
+        SDLTest_AssertPass("Reopen test requires the dummy audio driver");
+        return TEST_COMPLETED;
+    }
+
+    first = SDL_OpenAudioDevice(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &low);
+    if (!SDLTest_AssertCheck(first != 0, "Open low-spec logical device: %s", SDL_GetError())) {
+        return TEST_ABORTED;
+    }
+    if (!SDLTest_AssertCheck(SDL_GetAudioDeviceFormat(first, &actual, NULL), "Get initial physical device format")) {
+        SDL_CloseAudioDevice(first);
+        return TEST_ABORTED;
+    }
+    high = actual;
+    high.freq += 1000;
+
+    second = SDL_OpenAudioDevice(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &high);
+    if (!SDLTest_AssertCheck(second != 0, "Open high-spec logical device: %s", SDL_GetError())) {
+        SDL_CloseAudioDevice(first);
+        return TEST_ABORTED;
+    }
+    if (SDLTest_AssertCheck(SDL_GetAudioDeviceFormat(first, &actual, NULL), "Get reopened physical device format")) {
+        SDLTest_AssertCheck(actual.format == high.format && actual.channels == high.channels && actual.freq == high.freq,
+                            "Both logical devices use the higher physical spec");
+    }
+    if (SDLTest_AssertCheck(SDL_GetAudioDeviceFormat(second, &actual, NULL), "Get second logical device format")) {
+        SDLTest_AssertCheck(actual.format == high.format && actual.channels == high.channels && actual.freq == high.freq,
+                            "Second logical device uses the higher physical spec");
+    }
+
+    SDL_CloseAudioDevice(second);
+    SDL_CloseAudioDevice(first);
+    return TEST_COMPLETED;
+}
+
 /* ================= Test Case References ================== */
 
 /* Audio test cases */
@@ -1609,6 +1654,10 @@ static const SDLTest_TestCaseReference audioTestBindStreams = {
     audio_bindStreamsAtomically, "audio_bindStreamsAtomically", "Check batch audio stream binding and failure atomicity.", TEST_ENABLED
 };
 
+static const SDLTest_TestCaseReference audioTestReopenHigherSpec = {
+    audio_reopenPhysicalDeviceWithHigherSpec, "audio_reopenPhysicalDeviceWithHigherSpec", "Check physical device reopen for a higher logical spec.", TEST_ENABLED
+};
+
 /* Sequence of Audio test cases */
 static const SDLTest_TestCaseReference *audioTests[] = {
     &audioTestGetAudioFormatName,
@@ -1616,7 +1665,7 @@ static const SDLTest_TestCaseReference *audioTests[] = {
     &audioTest1, &audioTest2, &audioTest3, &audioTest4, &audioTest5, &audioTest6,
     &audioTest7, &audioTest8, &audioTest9, &audioTest10, &audioTest11,
     &audioTest12, &audioTest13, &audioTest14, &audioTest15, &audioTest16,
-    &audioTest17, &audioTest18, &audioTestBindStreams, NULL
+    &audioTest17, &audioTest18, &audioTestBindStreams, &audioTestReopenHigherSpec, NULL
 };
 
 /* Audio test suite (global) */

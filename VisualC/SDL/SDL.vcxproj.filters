@@ -1777,6 +1777,9 @@
     <ClCompile Include="..\..\src\video\SDL_video.c">
       <Filter>video</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\src\video\SDL_video_textinput.c">
+      <Filter>video</Filter>
+    </ClCompile>
     <ClCompile Include="..\..\src\video\SDL_video_unsupported.c">
       <Filter>video</Filter>
     </ClCompile>
@@ -2035,6 +2038,9 @@
       <Filter>gpu</Filter>
     </ClCompile>
     <ClCompile Include="..\..\src\gpu\SDL_gpu_blit.c">
+      <Filter>gpu</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\gpu\SDL_gpu_copy.c">
       <Filter>gpu</Filter>
     </ClCompile>
     <ClCompile Include="..\..\src\gpu\SDL_gpu_device.c">

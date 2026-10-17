@@ -2869,6 +2869,23 @@ static int SDLCALL video_gpuDeviceLifecycle(void *arg)
                         "Vulkan device supports SPIR-V");
     name = SDL_GetStringProperty(SDL_GetGPUDeviceProperties(device), SDL_PROP_GPU_DEVICE_NAME_STRING, NULL);
     SDLTest_AssertCheck(name != NULL && name[0] != '\0', "Vulkan device reports its name");
+    name = SDL_GetStringProperty(SDL_GetGPUDeviceProperties(device), SDL_PROP_GPU_DEVICE_DRIVER_VERSION_STRING, NULL);
+    SDLTest_AssertCheck(name != NULL && name[0] != '\0', "Vulkan device reports its driver version");
+
+    SDL_ClearError();
+    for (int i = 0; i < 2; ++i) {
+        SDL_GPUCommandBuffer *command_buffer = SDL_AcquireGPUCommandBuffer(device);
+        SDL_GPUFence *fence;
+        if (!SDLTest_AssertCheck(command_buffer != NULL, "Acquire Vulkan command buffer %d: %s", i, SDL_GetError())) {
+            break;
+        }
+        fence = SDL_SubmitGPUCommandBufferAndAcquireFence(command_buffer);
+        if (!SDLTest_AssertCheck(fence != NULL, "Submit Vulkan command buffer %d: %s", i, SDL_GetError())) {
+            break;
+        }
+        SDLTest_AssertCheck(SDL_WaitForGPUFences(device, true, &fence, 1), "Wait for Vulkan fence %d: %s", i, SDL_GetError());
+        SDL_ReleaseGPUFence(device, fence);
+    }
 
     SDL_DestroyGPUDevice(device);
     return TEST_COMPLETED;
@@ -2876,6 +2893,99 @@ static int SDLCALL video_gpuDeviceLifecycle(void *arg)
 
 static const SDLTest_TestCaseReference videoTestGPUDeviceLifecycle = {
     video_gpuDeviceLifecycle, "video_gpuDeviceLifecycle", "Create, inspect, and destroy a Vulkan GPU device", TEST_ENABLED
+};
+
+static int SDLCALL video_gpuBufferCopyPass(void *arg)
+{
+    const Uint8 expected[] = { 0x12, 0x34, 0x56, 0x78 };
+    SDL_GPUDevice *device;
+    SDL_GPUBuffer *buffer = NULL;
+    SDL_GPUTransferBuffer *upload = NULL, *download = NULL;
+    SDL_GPUBufferCreateInfo buffer_info = { SDL_GPU_BUFFERUSAGE_VERTEX, sizeof(expected), 0 };
+    SDL_GPUTransferBufferCreateInfo transfer_info = { SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, sizeof(expected), 0 };
+    SDL_GPUBufferRegion region;
+    SDL_GPUTransferBufferLocation location;
+    void *mapped;
+
+    if (!SDL_GPUSupportsShaderFormats(SDL_GPU_SHADERFORMAT_SPIRV, "vulkan")) {
+        SDLTest_Log("Skipping Vulkan buffer copy: %s", SDL_GetError());
+        SDLTest_AssertPass("Vulkan backend is unavailable with this video driver");
+        return TEST_COMPLETED;
+    }
+
+    device = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_SPIRV, false, "vulkan");
+    if (!SDLTest_AssertCheck(device != NULL, "Create Vulkan device for buffer copy: %s", SDL_GetError())) {
+        return TEST_ABORTED;
+    }
+
+    buffer = SDL_CreateGPUBuffer(device, &buffer_info);
+    upload = SDL_CreateGPUTransferBuffer(device, &transfer_info);
+    transfer_info.usage = SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD;
+    download = SDL_CreateGPUTransferBuffer(device, &transfer_info);
+    if (!SDLTest_AssertCheck(buffer && upload && download, "Create GPU copy buffers: %s", SDL_GetError())) {
+        goto done;
+    }
+
+    mapped = SDL_MapGPUTransferBuffer(device, upload, false);
+    if (!SDLTest_AssertCheck(mapped != NULL, "Map upload buffer: %s", SDL_GetError())) {
+        goto done;
+    }
+    SDL_memcpy(mapped, expected, sizeof(expected));
+    SDL_UnmapGPUTransferBuffer(device, upload);
+
+    region.buffer = buffer;
+    region.offset = 0;
+    region.size = sizeof(expected);
+    location.offset = 0;
+
+    for (int i = 0; i < 2; ++i) {
+        SDL_GPUCommandBuffer *command_buffer = SDL_AcquireGPUCommandBuffer(device);
+        SDL_GPUCopyPass *copy_pass;
+        SDL_GPUFence *fence;
+        if (!SDLTest_AssertCheck(command_buffer != NULL, "Acquire copy command buffer %d: %s", i, SDL_GetError())) {
+            break;
+        }
+        copy_pass = SDL_BeginGPUCopyPass(command_buffer);
+        if (!SDLTest_AssertCheck(copy_pass != NULL, "Begin copy pass %d: %s", i, SDL_GetError())) {
+            SDL_CancelGPUCommandBuffer(command_buffer);
+            break;
+        }
+        location.transfer_buffer = i == 0 ? upload : download;
+        if (i == 0) {
+            SDL_UploadToGPUBuffer(copy_pass, &location, &region, false);
+        } else {
+            SDL_DownloadFromGPUBuffer(copy_pass, &region, &location);
+        }
+        SDL_EndGPUCopyPass(copy_pass);
+        fence = SDL_SubmitGPUCommandBufferAndAcquireFence(command_buffer);
+        if (!SDLTest_AssertCheck(fence != NULL, "Submit copy pass %d: %s", i, SDL_GetError())) {
+            break;
+        }
+        const bool waited = SDL_WaitForGPUFences(device, true, &fence, 1);
+        SDLTest_AssertCheck(waited, "Wait for copy pass %d: %s", i, SDL_GetError());
+        SDL_ReleaseGPUFence(device, fence);
+        if (!waited) {
+            break;
+        }
+        if (i == 1) {
+            mapped = SDL_MapGPUTransferBuffer(device, download, false);
+            if (SDLTest_AssertCheck(mapped != NULL, "Map download buffer: %s", SDL_GetError())) {
+                SDLTest_AssertCheck(SDL_memcmp(mapped, expected, sizeof(expected)) == 0, "GPU buffer copy preserves bytes");
+                SDL_UnmapGPUTransferBuffer(device, download);
+            }
+        }
+    }
+
+done:
+    if (download) SDL_ReleaseGPUTransferBuffer(device, download);
+    if (upload) SDL_ReleaseGPUTransferBuffer(device, upload);
+    if (buffer) SDL_ReleaseGPUBuffer(device, buffer);
+    SDL_DestroyGPUDevice(device);
+    return TEST_COMPLETED;
+}
+
+static const SDLTest_TestCaseReference videoTestGPUBufferCopyPass = {
+    video_gpuBufferCopyPass, "video_gpuBufferCopyPass", "Upload and download bytes through Vulkan copy passes", TEST_ENABLED
 };
 
 /* Sequence of Video test cases */
@@ -2908,6 +3018,7 @@ static const SDLTest_TestCaseReference *videoTests[] = {
     &videoTestRaiseWindow,
     &videoTestGPUDriverEnumeration,
     &videoTestGPUDeviceLifecycle,
+    &videoTestGPUBufferCopyPass,
     NULL
 };
 

@@ -10831,6 +10831,48 @@ static void VULKAN_INTERNAL_ReleaseCommandBuffer(VulkanCommandBuffer *vulkanComm
     renderer->submittedCommandBufferCount += 1;
 }
 
+static void VULKAN_INTERNAL_PerformSubmitCleanups(VulkanRenderer *renderer)
+{
+    VkResult vulkanResult;
+    VulkanMemorySubAllocator *allocator;
+
+    for (Sint32 i = renderer->submittedCommandBufferCount - 1; i >= 0; i -= 1) {
+        vulkanResult = renderer->vkGetFenceStatus(
+            renderer->logicalDevice,
+            renderer->submittedCommandBuffers[i]->inFlightFence->fence);
+
+        if (vulkanResult == VK_SUCCESS) {
+            VULKAN_INTERNAL_CleanCommandBuffer(
+                renderer,
+                renderer->submittedCommandBuffers[i],
+                false);
+        }
+    }
+
+    if (renderer->checkEmptyAllocations) {
+        SDL_LockMutex(renderer->allocatorLock);
+
+        for (Uint32 i = 0; i < VK_MAX_MEMORY_TYPES; i += 1) {
+            allocator = &renderer->memoryAllocator->subAllocators[i];
+
+            for (Sint32 j = allocator->allocationCount - 1; j >= 0; j -= 1) {
+                if (allocator->allocations[j]->usedRegionCount == 0) {
+                    VULKAN_INTERNAL_DeallocateMemory(
+                        renderer,
+                        allocator,
+                        j);
+                }
+            }
+        }
+
+        renderer->checkEmptyAllocations = false;
+
+        SDL_UnlockMutex(renderer->allocatorLock);
+    }
+
+    VULKAN_INTERNAL_PerformPendingDestroys(renderer);
+}
+
 static bool VULKAN_Submit(
     SDL_GPUCommandBuffer *commandBuffer)
 {
@@ -10843,7 +10885,6 @@ static bool VULKAN_Submit(
     VkPipelineStageFlags waitStages[MAX_PRESENT_COUNT];
     Uint32 swapchainImageIndex;
     VulkanTextureSubresource *swapchainTextureSubresource;
-    VulkanMemorySubAllocator *allocator;
     bool performCleanups =
         (renderer->claimedWindowCount > 0 && vulkanCommandBuffer->swapchainRequested) ||
         renderer->claimedWindowCount == 0;
@@ -10963,41 +11004,7 @@ static bool VULKAN_Submit(
     }
 
     if (performCleanups) {
-        for (Sint32 i = renderer->submittedCommandBufferCount - 1; i >= 0; i -= 1) {
-            vulkanResult = renderer->vkGetFenceStatus(
-                renderer->logicalDevice,
-                renderer->submittedCommandBuffers[i]->inFlightFence->fence);
-
-            if (vulkanResult == VK_SUCCESS) {
-                VULKAN_INTERNAL_CleanCommandBuffer(
-                    renderer,
-                    renderer->submittedCommandBuffers[i],
-                    false);
-            }
-        }
-
-        if (renderer->checkEmptyAllocations) {
-            SDL_LockMutex(renderer->allocatorLock);
-
-            for (Uint32 i = 0; i < VK_MAX_MEMORY_TYPES; i += 1) {
-                allocator = &renderer->memoryAllocator->subAllocators[i];
-
-                for (Sint32 j = allocator->allocationCount - 1; j >= 0; j -= 1) {
-                    if (allocator->allocations[j]->usedRegionCount == 0) {
-                        VULKAN_INTERNAL_DeallocateMemory(
-                            renderer,
-                            allocator,
-                            j);
-                    }
-                }
-            }
-
-            renderer->checkEmptyAllocations = false;
-
-            SDL_UnlockMutex(renderer->allocatorLock);
-        }
-
-        VULKAN_INTERNAL_PerformPendingDestroys(renderer);
+        VULKAN_INTERNAL_PerformSubmitCleanups(renderer);
     }
 
     // Mark command buffer as submitted
@@ -13320,13 +13327,260 @@ static XrResult VULKAN_CreateXRSession(
 #endif
 }
 
+static void VULKAN_INTERNAL_RecordDeviceProperties(VulkanRenderer *renderer, bool verboseLogs)
+{
+    renderer->props = SDL_CreateProperties();
+    if (verboseLogs) {
+        SDL_LogInfo(SDL_LOG_CATEGORY_GPU, "SDL_GPU Driver: Vulkan");
+    }
+
+    // Record device name
+    const char *deviceName = renderer->physicalDeviceProperties.properties.deviceName;
+    SDL_SetStringProperty(
+        renderer->props,
+        SDL_PROP_GPU_DEVICE_NAME_STRING,
+        deviceName);
+    if (verboseLogs) {
+        SDL_LogInfo(SDL_LOG_CATEGORY_GPU, "Vulkan Device: %s", deviceName);
+    }
+
+    // Record driver version. This is provided as a backup if
+    // VK_KHR_driver_properties is not available but as most drivers support it
+    // this property should be rarely used.
+    //
+    // This uses a vendor-specific encoding and it isn't well documented. The
+    // vendor ID is the registered PCI ID of the vendor and can be found in
+    // online databases.
+    char driverVer[64];
+    Uint32 rawDriverVer = renderer->physicalDeviceProperties.properties.driverVersion;
+    Uint32 vendorId = renderer->physicalDeviceProperties.properties.vendorID;
+    if (vendorId == 0x10de) {
+        // Nvidia uses 10|8|8|6 encoding.
+        (void)SDL_snprintf(
+            driverVer,
+            SDL_arraysize(driverVer),
+            "%d.%d.%d.%d",
+            (rawDriverVer >> 22) & 0x3ff,
+            (rawDriverVer >> 14) & 0xff,
+            (rawDriverVer >> 6) & 0xff,
+            rawDriverVer & 0x3f);
+    }
+#ifdef SDL_PLATFORM_WINDOWS
+    else if (vendorId == 0x8086) {
+        // Intel uses 18|14 encoding on Windows only.
+        (void)SDL_snprintf(
+            driverVer,
+            SDL_arraysize(driverVer),
+            "%d.%d",
+            (rawDriverVer >> 14) & 0x3ffff,
+            rawDriverVer & 0x3fff);
+    }
+#endif
+    else {
+        // Assume standard Vulkan 10|10|12 encoding for everything else. AMD and
+        // Mesa are known to use this encoding.
+        (void)SDL_snprintf(
+            driverVer,
+            SDL_arraysize(driverVer),
+            "%d.%d.%d",
+            (rawDriverVer >> 22) & 0x3ff,
+            (rawDriverVer >> 12) & 0x3ff,
+            rawDriverVer & 0xfff);
+    }
+    SDL_SetStringProperty(
+        renderer->props,
+        SDL_PROP_GPU_DEVICE_DRIVER_VERSION_STRING,
+        driverVer);
+    // Log this only if VK_KHR_driver_properties is not available.
+
+    if (renderer->supports.KHR_driver_properties) {
+        // Record driver name and version
+        const char *driverName = renderer->physicalDeviceDriverProperties.driverName;
+        const char *driverInfo = renderer->physicalDeviceDriverProperties.driverInfo;
+        SDL_SetStringProperty(
+            renderer->props,
+            SDL_PROP_GPU_DEVICE_DRIVER_NAME_STRING,
+            driverName);
+        SDL_SetStringProperty(
+            renderer->props,
+            SDL_PROP_GPU_DEVICE_DRIVER_INFO_STRING,
+            driverInfo);
+        if (verboseLogs) {
+            // FIXME: driverInfo can be a multiline string.
+            SDL_LogInfo(SDL_LOG_CATEGORY_GPU, "Vulkan Driver: %s %s", driverName, driverInfo);
+        }
+
+        // Record conformance level
+        if (verboseLogs) {
+            char conformance[64];
+            (void)SDL_snprintf(
+                conformance,
+                SDL_arraysize(conformance),
+                "%u.%u.%u.%u",
+                renderer->physicalDeviceDriverProperties.conformanceVersion.major,
+                renderer->physicalDeviceDriverProperties.conformanceVersion.minor,
+                renderer->physicalDeviceDriverProperties.conformanceVersion.subminor,
+                renderer->physicalDeviceDriverProperties.conformanceVersion.patch);
+            SDL_LogInfo(SDL_LOG_CATEGORY_GPU, "Vulkan Conformance: %s", conformance);
+        }
+    } else {
+        if (verboseLogs) {
+            SDL_LogInfo(SDL_LOG_CATEGORY_GPU, "Vulkan Driver: %s", driverVer);
+        }
+    }
+}
+
+static void VULKAN_INTERNAL_InitializeMemoryPools(VulkanRenderer *renderer)
+{
+    Uint32 i;
+
+    // Memory Allocator
+
+    renderer->memoryAllocator = (VulkanMemoryAllocator *)SDL_malloc(
+        sizeof(VulkanMemoryAllocator));
+
+    for (i = 0; i < VK_MAX_MEMORY_TYPES; i += 1) {
+        renderer->memoryAllocator->subAllocators[i].memoryTypeIndex = i;
+        renderer->memoryAllocator->subAllocators[i].allocations = NULL;
+        renderer->memoryAllocator->subAllocators[i].allocationCount = 0;
+        renderer->memoryAllocator->subAllocators[i].sortedFreeRegions = SDL_malloc(
+            sizeof(VulkanMemoryFreeRegion *) * 4);
+        renderer->memoryAllocator->subAllocators[i].sortedFreeRegionCount = 0;
+        renderer->memoryAllocator->subAllocators[i].sortedFreeRegionCapacity = 4;
+    }
+
+    // Create uniform buffer pool
+
+    renderer->uniformBufferPoolCount = 32;
+    renderer->uniformBufferPoolCapacity = 32;
+    renderer->uniformBufferPool = SDL_malloc(
+        renderer->uniformBufferPoolCapacity * sizeof(VulkanUniformBuffer *));
+
+    for (i = 0; i < renderer->uniformBufferPoolCount; i += 1) {
+        renderer->uniformBufferPool[i] = VULKAN_INTERNAL_CreateUniformBuffer(
+            renderer,
+            UNIFORM_BUFFER_SIZE);
+    }
+
+    renderer->descriptorSetCachePoolCapacity = 8;
+    renderer->descriptorSetCachePoolCount = 0;
+    renderer->descriptorSetCachePool = SDL_calloc(renderer->descriptorSetCachePoolCapacity, sizeof(DescriptorSetCache *));
+
+    SDL_SetAtomicInt(&renderer->layoutResourceID, 0);
+}
+
+static void VULKAN_INTERNAL_InitializeDeviceCaches(VulkanRenderer *renderer)
+{
+    // Initialize caches
+
+    renderer->commandPoolHashTable = SDL_CreateHashTable(
+        0,  // !!! FIXME: a real guess here, for a _minimum_ if not a maximum, could be useful.
+        false,  // manually synchronized due to submission timing
+        VULKAN_INTERNAL_CommandPoolHashFunction,
+        VULKAN_INTERNAL_CommandPoolHashKeyMatch,
+        VULKAN_INTERNAL_CommandPoolHashDestroy,
+        (void *)renderer);
+
+    renderer->renderPassHashTable = SDL_CreateHashTable(
+        0,  // !!! FIXME: a real guess here, for a _minimum_ if not a maximum, could be useful.
+        false,  // manually synchronized due to lookup timing
+        VULKAN_INTERNAL_RenderPassHashFunction,
+        VULKAN_INTERNAL_RenderPassHashKeyMatch,
+        VULKAN_INTERNAL_RenderPassHashDestroy,
+        (void *)renderer);
+
+    renderer->framebufferHashTable = SDL_CreateHashTable(
+        0,  // !!! FIXME: a real guess here, for a _minimum_ if not a maximum, could be useful.
+        false,  // manually synchronized due to iteration
+        VULKAN_INTERNAL_FramebufferHashFunction,
+        VULKAN_INTERNAL_FramebufferHashKeyMatch,
+        VULKAN_INTERNAL_FramebufferHashDestroy,
+        (void *)renderer);
+
+    renderer->graphicsPipelineResourceLayoutHashTable = SDL_CreateHashTable(
+        0,  // !!! FIXME: a real guess here, for a _minimum_ if not a maximum, could be useful.
+        false,  // manually synchronized due to lookup timing
+        VULKAN_INTERNAL_GraphicsPipelineResourceLayoutHashFunction,
+        VULKAN_INTERNAL_GraphicsPipelineResourceLayoutHashKeyMatch,
+        VULKAN_INTERNAL_GraphicsPipelineResourceLayoutHashDestroy,
+        (void *)renderer);
+
+    renderer->computePipelineResourceLayoutHashTable = SDL_CreateHashTable(
+        0,  // !!! FIXME: a real guess here, for a _minimum_ if not a maximum, could be useful.
+        false,  // manually synchronized due to lookup timing
+        VULKAN_INTERNAL_ComputePipelineResourceLayoutHashFunction,
+        VULKAN_INTERNAL_ComputePipelineResourceLayoutHashKeyMatch,
+        VULKAN_INTERNAL_ComputePipelineResourceLayoutHashDestroy,
+        (void *)renderer);
+
+    renderer->descriptorSetLayoutHashTable = SDL_CreateHashTable(
+        0,  // !!! FIXME: a real guess here, for a _minimum_ if not a maximum, could be useful.
+        false,  // manually synchronized due to lookup timing
+        VULKAN_INTERNAL_DescriptorSetLayoutHashFunction,
+        VULKAN_INTERNAL_DescriptorSetLayoutHashKeyMatch,
+        VULKAN_INTERNAL_DescriptorSetLayoutHashDestroy,
+        (void *)renderer);
+}
+
+static void VULKAN_INTERNAL_InitializeDeferredResourceStorage(VulkanRenderer *renderer)
+{
+    // Deferred destroy storage
+
+    renderer->texturesToDestroyCapacity = 16;
+    renderer->texturesToDestroyCount = 0;
+
+    renderer->texturesToDestroy = (VulkanTexture **)SDL_malloc(
+        sizeof(VulkanTexture *) *
+        renderer->texturesToDestroyCapacity);
+
+    renderer->buffersToDestroyCapacity = 16;
+    renderer->buffersToDestroyCount = 0;
+
+    renderer->buffersToDestroy = SDL_malloc(
+        sizeof(VulkanBuffer *) *
+        renderer->buffersToDestroyCapacity);
+
+    renderer->samplersToDestroyCapacity = 16;
+    renderer->samplersToDestroyCount = 0;
+
+    renderer->samplersToDestroy = SDL_malloc(
+        sizeof(VulkanSampler *) *
+        renderer->samplersToDestroyCapacity);
+
+    renderer->graphicsPipelinesToDestroyCapacity = 16;
+    renderer->graphicsPipelinesToDestroyCount = 0;
+
+    renderer->graphicsPipelinesToDestroy = SDL_malloc(
+        sizeof(VulkanGraphicsPipeline *) *
+        renderer->graphicsPipelinesToDestroyCapacity);
+
+    renderer->computePipelinesToDestroyCapacity = 16;
+    renderer->computePipelinesToDestroyCount = 0;
+
+    renderer->computePipelinesToDestroy = SDL_malloc(
+        sizeof(VulkanComputePipeline *) *
+        renderer->computePipelinesToDestroyCapacity);
+
+    renderer->shadersToDestroyCapacity = 16;
+    renderer->shadersToDestroyCount = 0;
+
+    renderer->shadersToDestroy = SDL_malloc(
+        sizeof(VulkanShader *) *
+        renderer->shadersToDestroyCapacity);
+
+    renderer->framebuffersToDestroyCapacity = 16;
+    renderer->framebuffersToDestroyCount = 0;
+    renderer->framebuffersToDestroy = SDL_malloc(
+        sizeof(VulkanFramebuffer *) *
+        renderer->framebuffersToDestroyCapacity);
+}
+
 static SDL_GPUDevice *VULKAN_CreateDevice(bool debugMode, bool preferLowPower, SDL_PropertiesID props)
 {
     VulkanRenderer *renderer;
     VulkanFeatures features;
 
     SDL_GPUDevice *result;
-    Uint32 i;
 
     bool verboseLogs = SDL_GetBooleanProperty(
         props,
@@ -13429,105 +13683,7 @@ static SDL_GPUDevice *VULKAN_CreateDevice(bool debugMode, bool preferLowPower, S
         return NULL;
     }
 
-    renderer->props = SDL_CreateProperties();
-    if (verboseLogs) {
-        SDL_LogInfo(SDL_LOG_CATEGORY_GPU, "SDL_GPU Driver: Vulkan");
-    }
-
-    // Record device name
-    const char *deviceName = renderer->physicalDeviceProperties.properties.deviceName;
-    SDL_SetStringProperty(
-        renderer->props,
-        SDL_PROP_GPU_DEVICE_NAME_STRING,
-        deviceName);
-    if (verboseLogs) {
-        SDL_LogInfo(SDL_LOG_CATEGORY_GPU, "Vulkan Device: %s", deviceName);
-    }
-
-    // Record driver version. This is provided as a backup if
-    // VK_KHR_driver_properties is not available but as most drivers support it
-    // this property should be rarely used.
-    //
-    // This uses a vendor-specific encoding and it isn't well documented. The
-    // vendor ID is the registered PCI ID of the vendor and can be found in
-    // online databases.
-    char driverVer[64];
-    Uint32 rawDriverVer = renderer->physicalDeviceProperties.properties.driverVersion;
-    Uint32 vendorId = renderer->physicalDeviceProperties.properties.vendorID;
-    if (vendorId == 0x10de) {
-        // Nvidia uses 10|8|8|6 encoding.
-        (void)SDL_snprintf(
-            driverVer,
-            SDL_arraysize(driverVer),
-            "%d.%d.%d.%d",
-            (rawDriverVer >> 22) & 0x3ff,
-            (rawDriverVer >> 14) & 0xff,
-            (rawDriverVer >> 6) & 0xff,
-            rawDriverVer & 0x3f);
-    }
-#ifdef SDL_PLATFORM_WINDOWS
-    else if (vendorId == 0x8086) {
-        // Intel uses 18|14 encoding on Windows only.
-        (void)SDL_snprintf(
-            driverVer,
-            SDL_arraysize(driverVer),
-            "%d.%d",
-            (rawDriverVer >> 14) & 0x3ffff,
-            rawDriverVer & 0x3fff);
-    }
-#endif
-    else {
-        // Assume standard Vulkan 10|10|12 encoding for everything else. AMD and
-        // Mesa are known to use this encoding.
-        (void)SDL_snprintf(
-            driverVer,
-            SDL_arraysize(driverVer),
-            "%d.%d.%d",
-            (rawDriverVer >> 22) & 0x3ff,
-            (rawDriverVer >> 12) & 0x3ff,
-            rawDriverVer & 0xfff);
-    }
-    SDL_SetStringProperty(
-        renderer->props,
-        SDL_PROP_GPU_DEVICE_DRIVER_VERSION_STRING,
-        driverVer);
-    // Log this only if VK_KHR_driver_properties is not available.
-
-    if (renderer->supports.KHR_driver_properties) {
-        // Record driver name and version
-        const char *driverName = renderer->physicalDeviceDriverProperties.driverName;
-        const char *driverInfo = renderer->physicalDeviceDriverProperties.driverInfo;
-        SDL_SetStringProperty(
-            renderer->props,
-            SDL_PROP_GPU_DEVICE_DRIVER_NAME_STRING,
-            driverName);
-        SDL_SetStringProperty(
-            renderer->props,
-            SDL_PROP_GPU_DEVICE_DRIVER_INFO_STRING,
-            driverInfo);
-        if (verboseLogs) {
-            // FIXME: driverInfo can be a multiline string.
-            SDL_LogInfo(SDL_LOG_CATEGORY_GPU, "Vulkan Driver: %s %s", driverName, driverInfo);
-        }
-
-        // Record conformance level
-        if (verboseLogs) {
-            char conformance[64];
-            (void)SDL_snprintf(
-                conformance,
-                SDL_arraysize(conformance),
-                "%u.%u.%u.%u",
-                renderer->physicalDeviceDriverProperties.conformanceVersion.major,
-                renderer->physicalDeviceDriverProperties.conformanceVersion.minor,
-                renderer->physicalDeviceDriverProperties.conformanceVersion.subminor,
-                renderer->physicalDeviceDriverProperties.conformanceVersion.patch);
-            SDL_LogInfo(SDL_LOG_CATEGORY_GPU, "Vulkan Conformance: %s", conformance);
-        }
-    } else {
-        if (verboseLogs) {
-            SDL_LogInfo(SDL_LOG_CATEGORY_GPU, "Vulkan Driver: %s", driverVer);
-        }
-    }
+    VULKAN_INTERNAL_RecordDeviceProperties(renderer, verboseLogs);
 
     if (!VULKAN_INTERNAL_CreateLogicalDevice(renderer, &features)) {
         SET_STRING_ERROR("Failed to create logical device!");
@@ -13574,93 +13730,13 @@ static SDL_GPUDevice *VULKAN_CreateDevice(bool debugMode, bool preferLowPower, S
     renderer->submittedCommandBufferCount = 0;
     renderer->submittedCommandBuffers = SDL_malloc(sizeof(VulkanCommandBuffer *) * renderer->submittedCommandBufferCapacity);
 
-    // Memory Allocator
-
-    renderer->memoryAllocator = (VulkanMemoryAllocator *)SDL_malloc(
-        sizeof(VulkanMemoryAllocator));
-
-    for (i = 0; i < VK_MAX_MEMORY_TYPES; i += 1) {
-        renderer->memoryAllocator->subAllocators[i].memoryTypeIndex = i;
-        renderer->memoryAllocator->subAllocators[i].allocations = NULL;
-        renderer->memoryAllocator->subAllocators[i].allocationCount = 0;
-        renderer->memoryAllocator->subAllocators[i].sortedFreeRegions = SDL_malloc(
-            sizeof(VulkanMemoryFreeRegion *) * 4);
-        renderer->memoryAllocator->subAllocators[i].sortedFreeRegionCount = 0;
-        renderer->memoryAllocator->subAllocators[i].sortedFreeRegionCapacity = 4;
-    }
-
-    // Create uniform buffer pool
-
-    renderer->uniformBufferPoolCount = 32;
-    renderer->uniformBufferPoolCapacity = 32;
-    renderer->uniformBufferPool = SDL_malloc(
-        renderer->uniformBufferPoolCapacity * sizeof(VulkanUniformBuffer *));
-
-    for (i = 0; i < renderer->uniformBufferPoolCount; i += 1) {
-        renderer->uniformBufferPool[i] = VULKAN_INTERNAL_CreateUniformBuffer(
-            renderer,
-            UNIFORM_BUFFER_SIZE);
-    }
-
-    renderer->descriptorSetCachePoolCapacity = 8;
-    renderer->descriptorSetCachePoolCount = 0;
-    renderer->descriptorSetCachePool = SDL_calloc(renderer->descriptorSetCachePoolCapacity, sizeof(DescriptorSetCache *));
-
-    SDL_SetAtomicInt(&renderer->layoutResourceID, 0);
+    VULKAN_INTERNAL_InitializeMemoryPools(renderer);
 
     // Device limits
 
     renderer->minUBOAlignment = (Uint32)renderer->physicalDeviceProperties.properties.limits.minUniformBufferOffsetAlignment;
 
-    // Initialize caches
-
-    renderer->commandPoolHashTable = SDL_CreateHashTable(
-        0,  // !!! FIXME: a real guess here, for a _minimum_ if not a maximum, could be useful.
-        false,  // manually synchronized due to submission timing
-        VULKAN_INTERNAL_CommandPoolHashFunction,
-        VULKAN_INTERNAL_CommandPoolHashKeyMatch,
-        VULKAN_INTERNAL_CommandPoolHashDestroy,
-        (void *)renderer);
-
-    renderer->renderPassHashTable = SDL_CreateHashTable(
-        0,  // !!! FIXME: a real guess here, for a _minimum_ if not a maximum, could be useful.
-        false,  // manually synchronized due to lookup timing
-        VULKAN_INTERNAL_RenderPassHashFunction,
-        VULKAN_INTERNAL_RenderPassHashKeyMatch,
-        VULKAN_INTERNAL_RenderPassHashDestroy,
-        (void *)renderer);
-
-    renderer->framebufferHashTable = SDL_CreateHashTable(
-        0,  // !!! FIXME: a real guess here, for a _minimum_ if not a maximum, could be useful.
-        false,  // manually synchronized due to iteration
-        VULKAN_INTERNAL_FramebufferHashFunction,
-        VULKAN_INTERNAL_FramebufferHashKeyMatch,
-        VULKAN_INTERNAL_FramebufferHashDestroy,
-        (void *)renderer);
-
-    renderer->graphicsPipelineResourceLayoutHashTable = SDL_CreateHashTable(
-        0,  // !!! FIXME: a real guess here, for a _minimum_ if not a maximum, could be useful.
-        false,  // manually synchronized due to lookup timing
-        VULKAN_INTERNAL_GraphicsPipelineResourceLayoutHashFunction,
-        VULKAN_INTERNAL_GraphicsPipelineResourceLayoutHashKeyMatch,
-        VULKAN_INTERNAL_GraphicsPipelineResourceLayoutHashDestroy,
-        (void *)renderer);
-
-    renderer->computePipelineResourceLayoutHashTable = SDL_CreateHashTable(
-        0,  // !!! FIXME: a real guess here, for a _minimum_ if not a maximum, could be useful.
-        false,  // manually synchronized due to lookup timing
-        VULKAN_INTERNAL_ComputePipelineResourceLayoutHashFunction,
-        VULKAN_INTERNAL_ComputePipelineResourceLayoutHashKeyMatch,
-        VULKAN_INTERNAL_ComputePipelineResourceLayoutHashDestroy,
-        (void *)renderer);
-
-    renderer->descriptorSetLayoutHashTable = SDL_CreateHashTable(
-        0,  // !!! FIXME: a real guess here, for a _minimum_ if not a maximum, could be useful.
-        false,  // manually synchronized due to lookup timing
-        VULKAN_INTERNAL_DescriptorSetLayoutHashFunction,
-        VULKAN_INTERNAL_DescriptorSetLayoutHashKeyMatch,
-        VULKAN_INTERNAL_DescriptorSetLayoutHashDestroy,
-        (void *)renderer);
+    VULKAN_INTERNAL_InitializeDeviceCaches(renderer);
 
     // Initialize fence pool
 
@@ -13671,55 +13747,7 @@ static SDL_GPUDevice *VULKAN_CreateDevice(bool debugMode, bool preferLowPower, S
     renderer->fencePool.availableFences = SDL_malloc(
         renderer->fencePool.availableFenceCapacity * sizeof(VulkanFenceHandle *));
 
-    // Deferred destroy storage
-
-    renderer->texturesToDestroyCapacity = 16;
-    renderer->texturesToDestroyCount = 0;
-
-    renderer->texturesToDestroy = (VulkanTexture **)SDL_malloc(
-        sizeof(VulkanTexture *) *
-        renderer->texturesToDestroyCapacity);
-
-    renderer->buffersToDestroyCapacity = 16;
-    renderer->buffersToDestroyCount = 0;
-
-    renderer->buffersToDestroy = SDL_malloc(
-        sizeof(VulkanBuffer *) *
-        renderer->buffersToDestroyCapacity);
-
-    renderer->samplersToDestroyCapacity = 16;
-    renderer->samplersToDestroyCount = 0;
-
-    renderer->samplersToDestroy = SDL_malloc(
-        sizeof(VulkanSampler *) *
-        renderer->samplersToDestroyCapacity);
-
-    renderer->graphicsPipelinesToDestroyCapacity = 16;
-    renderer->graphicsPipelinesToDestroyCount = 0;
-
-    renderer->graphicsPipelinesToDestroy = SDL_malloc(
-        sizeof(VulkanGraphicsPipeline *) *
-        renderer->graphicsPipelinesToDestroyCapacity);
-
-    renderer->computePipelinesToDestroyCapacity = 16;
-    renderer->computePipelinesToDestroyCount = 0;
-
-    renderer->computePipelinesToDestroy = SDL_malloc(
-        sizeof(VulkanComputePipeline *) *
-        renderer->computePipelinesToDestroyCapacity);
-
-    renderer->shadersToDestroyCapacity = 16;
-    renderer->shadersToDestroyCount = 0;
-
-    renderer->shadersToDestroy = SDL_malloc(
-        sizeof(VulkanShader *) *
-        renderer->shadersToDestroyCapacity);
-
-    renderer->framebuffersToDestroyCapacity = 16;
-    renderer->framebuffersToDestroyCount = 0;
-    renderer->framebuffersToDestroy = SDL_malloc(
-        sizeof(VulkanFramebuffer *) *
-        renderer->framebuffersToDestroyCapacity);
+    VULKAN_INTERNAL_InitializeDeferredResourceStorage(renderer);
 
     // Defrag state
 

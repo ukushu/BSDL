@@ -633,6 +633,45 @@ static int SDLCALL joystick_testMissingAxes(void *arg)
 
 /* ================= Test References ================== */
 
+static int SDLCALL joystick_openReuse(void *arg)
+{
+    SDL_VirtualJoystickDesc desc;
+    SDL_JoystickID id;
+    SDL_Joystick *first, *second;
+
+    SDL_INIT_INTERFACE(&desc);
+    desc.type = SDL_JOYSTICK_TYPE_UNKNOWN;
+    desc.naxes = 2;
+    desc.nbuttons = 1;
+    desc.nhats = 1;
+    id = SDL_AttachVirtualJoystick(&desc);
+    if (!SDLTest_AssertCheck(id > 0, "Attach virtual joystick for open reuse: %s", SDL_GetError())) {
+        return TEST_ABORTED;
+    }
+
+    first = SDL_OpenJoystick(id);
+    if (!SDLTest_AssertCheck(first != NULL, "Open virtual joystick: %s", SDL_GetError())) {
+        SDL_DetachVirtualJoystick(id);
+        return TEST_ABORTED;
+    }
+    second = SDL_OpenJoystick(id);
+    SDLTest_AssertCheck(second == first, "Opening an active joystick reuses the same object");
+    SDL_CloseJoystick(first);
+    if (second) {
+        SDLTest_AssertCheck(SDL_JoystickConnected(second), "Second reference remains connected");
+        SDLTest_AssertCheck(SDL_GetNumJoystickAxes(second) == 2, "Axis state remains available");
+        SDLTest_AssertCheck(SDL_GetNumJoystickButtons(second) == 1, "Button state remains available");
+        SDLTest_AssertCheck(SDL_GetNumJoystickHats(second) == 1, "Hat state remains available");
+        SDL_CloseJoystick(second);
+    }
+    SDLTest_AssertCheck(SDL_DetachVirtualJoystick(id), "Detach virtual joystick after closing both references: %s", SDL_GetError());
+    return TEST_COMPLETED;
+}
+
+static const SDLTest_TestCaseReference joystickTestOpenReuse = {
+    joystick_openReuse, "joystick_openReuse", "Opening a joystick twice preserves its input state until both closes", TEST_ENABLED
+};
+
 /* Joystick routine test cases */
 static const SDLTest_TestCaseReference joystickTest1 = {
     joystick_testVirtual, "joystick_testVirtual", "Test virtual joystick functionality", TEST_ENABLED
@@ -668,6 +707,7 @@ static const SDLTest_TestCaseReference joystickTest3 = {
 /* Sequence of Joystick routine test cases */
 static const SDLTest_TestCaseReference *joystickTests[] = {
     &joystickTest1,
+    &joystickTestOpenReuse,
     &joystickTestInitialState,
     &joystickTestVirtualGUIDFields,
     &joystickTestTypeClassification,
