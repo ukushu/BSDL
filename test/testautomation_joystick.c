@@ -416,6 +416,100 @@ static int SDLCALL joystick_testMappings(void *arg)
     return TEST_COMPLETED;
 }
 
+static int SDLCALL joystick_mappingElementParsing(void *arg)
+{
+    SDL_VirtualJoystickDesc desc;
+    SDL_JoystickID id;
+    SDL_Gamepad *gamepad = NULL;
+    SDL_GamepadBinding **bindings = NULL;
+    char guid[33];
+    char mapping[256];
+    int count = 0;
+    bool leftx = false, trigger = false, button = false, hat = false;
+
+    SDL_INIT_INTERFACE(&desc);
+    desc.type = SDL_JOYSTICK_TYPE_GAMEPAD;
+    desc.naxes = 2;
+    desc.nbuttons = 1;
+    desc.nhats = 1;
+    desc.vendor_id = 0xF00D;
+    desc.product_id = 0xBEEF;
+    desc.name = "Mapping Parser Virtual Gamepad";
+    id = SDL_AttachVirtualJoystick(&desc);
+    if (!SDLTest_AssertCheck(id > 0, "Attach mapping parser joystick: %s", SDL_GetError())) {
+        return TEST_ABORTED;
+    }
+
+    SDL_GUIDToString(SDL_GetJoystickGUIDForID(id), guid, sizeof(guid));
+    SDL_snprintf(mapping, sizeof(mapping), "%s,Mapping Parser,leftx:+a0~,righttrigger:-a1,a:b0,b:h0.1,", guid);
+    if (!SDLTest_AssertCheck(SDL_AddGamepadMapping(mapping) >= 0, "Add axis, button, and hat mapping: %s", SDL_GetError())) {
+        goto done;
+    }
+    gamepad = SDL_OpenGamepad(id);
+    if (!SDLTest_AssertCheck(gamepad != NULL, "Open mapping parser gamepad: %s", SDL_GetError())) {
+        goto done;
+    }
+    bindings = SDL_GetGamepadBindings(gamepad, &count);
+    if (!SDLTest_AssertCheck(bindings != NULL, "Read parsed gamepad bindings: %s", SDL_GetError())) {
+        goto done;
+    }
+    for (int i = 0; i < count; ++i) {
+        const SDL_GamepadBinding *bind = bindings[i];
+        if (bind->output_type == SDL_GAMEPAD_BINDTYPE_AXIS && bind->output.axis.axis == SDL_GAMEPAD_AXIS_LEFTX) {
+            leftx = bind->input_type == SDL_GAMEPAD_BINDTYPE_AXIS && bind->input.axis.axis == 0 &&
+                    bind->input.axis.axis_min == SDL_JOYSTICK_AXIS_MAX && bind->input.axis.axis_max == 0;
+        } else if (bind->output_type == SDL_GAMEPAD_BINDTYPE_AXIS && bind->output.axis.axis == SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) {
+            trigger = bind->input_type == SDL_GAMEPAD_BINDTYPE_AXIS && bind->input.axis.axis == 1 &&
+                      bind->input.axis.axis_min == 0 && bind->input.axis.axis_max == SDL_JOYSTICK_AXIS_MIN;
+        } else if (bind->output_type == SDL_GAMEPAD_BINDTYPE_BUTTON && bind->output.button == SDL_GAMEPAD_BUTTON_SOUTH) {
+            button = bind->input_type == SDL_GAMEPAD_BINDTYPE_BUTTON && bind->input.button == 0;
+        } else if (bind->output_type == SDL_GAMEPAD_BINDTYPE_BUTTON && bind->output.button == SDL_GAMEPAD_BUTTON_EAST) {
+            hat = bind->input_type == SDL_GAMEPAD_BINDTYPE_HAT && bind->input.hat.hat == 0 && bind->input.hat.hat_mask == 1;
+        }
+    }
+    SDLTest_AssertCheck(leftx && trigger && button && hat,
+                        "Parser preserves half-axis inversion, negative half-axis, button, and hat bindings");
+
+done:
+    SDL_free(bindings);
+    SDL_CloseGamepad(gamepad);
+    SDLTest_AssertCheck(SDL_DetachVirtualJoystick(id), "Detach mapping parser joystick: %s", SDL_GetError());
+    return TEST_COMPLETED;
+}
+
+static int SDLCALL joystick_sinputMapping(void *arg)
+{
+    SDL_GUID guid;
+    char *mapping;
+    const Uint16 version = 8639; // Both sticks, two bumpers, dual-stage triggers, four paddles, three meta buttons, two touchpads, four misc buttons.
+
+    SDL_zero(guid);
+    guid.data[0] = 3; // USB bus
+    guid.data[4] = (Uint8)(USB_VENDOR_RASPBERRYPI & 0xff);
+    guid.data[5] = (Uint8)(USB_VENDOR_RASPBERRYPI >> 8);
+    guid.data[8] = (Uint8)(USB_PRODUCT_HANDHELDLEGEND_SINPUT_GENERIC & 0xff);
+    guid.data[9] = (Uint8)(USB_PRODUCT_HANDHELDLEGEND_SINPUT_GENERIC >> 8);
+    guid.data[12] = (Uint8)(version & 0xff);
+    guid.data[13] = (Uint8)(version >> 8);
+    guid.data[14] = 'h'; // HIDAPI
+    guid.data[15] = 4 << 5; // Sony face style
+
+    mapping = SDL_GetGamepadMappingForGUID(guid);
+    if (SDLTest_AssertCheck(mapping != NULL, "Generate SInput mapping: %s", SDL_GetError())) {
+        SDLTest_AssertCheck(SDL_strstr(mapping, "face:sony,") != NULL, "SInput face style is preserved");
+        SDLTest_AssertCheck(SDL_strstr(mapping, "leftx:a0,lefty:a1,rightx:a2,righty:a3,") != NULL,
+                            "SInput analog sticks retain axis order");
+        SDLTest_AssertCheck(SDL_strstr(mapping, "lefttrigger:a4,righttrigger:a5,") != NULL,
+                            "SInput dual-stage triggers retain analog axes");
+        SDLTest_AssertCheck(SDL_strstr(mapping, "paddle2:") && SDL_strstr(mapping, "paddle1:") &&
+                            SDL_strstr(mapping, "paddle4:") && SDL_strstr(mapping, "paddle3:") &&
+                            SDL_strstr(mapping, "touchpad:") && SDL_strstr(mapping, "guide:"),
+                            "SInput digital controls are present");
+    }
+    SDL_free(mapping);
+    return TEST_COMPLETED;
+}
+
 static int SDLCALL joystick_gamepadNameConversions(void *arg)
 {
     for (int i = SDL_GAMEPAD_TYPE_STANDARD; i < SDL_GAMEPAD_TYPE_COUNT; ++i) {
@@ -555,6 +649,12 @@ static const SDLTest_TestCaseReference joystickTestTypeClassification = {
 static const SDLTest_TestCaseReference joystickTest2 = {
     joystick_testMappings, "joystick_testMappings", "Test gamepad mapping functionality", TEST_ENABLED
 };
+static const SDLTest_TestCaseReference joystickTestMappingElementParsing = {
+    joystick_mappingElementParsing, "joystick_mappingElementParsing", "Parse half axes, button, and hat bindings", TEST_ENABLED
+};
+static const SDLTest_TestCaseReference joystickTestSInputMapping = {
+    joystick_sinputMapping, "joystick_sinputMapping", "Decode SInput styles into a gamepad mapping", TEST_ENABLED
+};
 static const SDLTest_TestCaseReference joystickTestMappingLabelHints = {
     joystick_mappingLabelHints, "joystick_mappingLabelHints", "Legacy label hints map buttons to positions", TEST_ENABLED
 };
@@ -572,6 +672,8 @@ static const SDLTest_TestCaseReference *joystickTests[] = {
     &joystickTestVirtualGUIDFields,
     &joystickTestTypeClassification,
     &joystickTest2,
+    &joystickTestMappingElementParsing,
+    &joystickTestSInputMapping,
     &joystickTestGamepadNameConversions,
     &joystickTestMappingLabelHints,
     &joystickTest3,

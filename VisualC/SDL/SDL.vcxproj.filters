@@ -1534,6 +1534,9 @@
     <ClCompile Include="..\..\src\joystick\SDL_gamepad_names.c">
       <Filter>joystick</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\src\joystick\SDL_gamepad_sinput.c">
+      <Filter>joystick</Filter>
+    </ClCompile>
     <ClCompile Include="..\..\src\joystick\SDL_joystick.c">
       <Filter>joystick</Filter>
     </ClCompile>
@@ -1742,6 +1745,9 @@
       <Filter>video</Filter>
     </ClCompile>
     <ClCompile Include="..\..\src\video\SDL_clipboard.c">
+      <Filter>video</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\video\SDL_cursor_names.c">
       <Filter>video</Filter>
     </ClCompile>
     <ClCompile Include="..\..\src\video\SDL_egl.c">
@@ -2026,6 +2032,12 @@
       <Filter>video\offscreen</Filter>
     </ClCompile>
     <ClCompile Include="..\..\src\gpu\SDL_gpu.c">
+      <Filter>gpu</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\gpu\SDL_gpu_blit.c">
+      <Filter>gpu</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\gpu\SDL_gpu_device.c">
       <Filter>gpu</Filter>
     </ClCompile>
     <ClCompile Include="..\..\src\gpu\SDL_gpu_format.c">

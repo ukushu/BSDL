@@ -141,6 +141,7 @@
 		A7D8ABF723E2514100DCD162 /* SDL_nullvideo.h in Headers */ = {isa = PBXBuildFile; fileRef = A7D8A60A23E2513D00DCD162 /* SDL_nullvideo.h */; };
 		A7D8ABFD23E2514100DCD162 /* SDL_nullevents_c.h in Headers */ = {isa = PBXBuildFile; fileRef = A7D8A60B23E2513D00DCD162 /* SDL_nullevents_c.h */; };
 		A7D8AC0323E2514100DCD162 /* SDL_rect_c.h in Headers */ = {isa = PBXBuildFile; fileRef = A7D8A60C23E2513D00DCD162 /* SDL_rect_c.h */; };
+		B1E0D0000000000000000011 /* SDL_cursor_names.c in Sources */ = {isa = PBXBuildFile; fileRef = B1E0D0000000000000000012 /* SDL_cursor_names.c */; };
 		A7D8AC0F23E2514100DCD162 /* SDL_video.c in Sources */ = {isa = PBXBuildFile; fileRef = A7D8A60E23E2513D00DCD162 /* SDL_video.c */; };
 		A7D8AC2D23E2514100DCD162 /* SDL_surface.c in Sources */ = {isa = PBXBuildFile; fileRef = A7D8A61423E2513D00DCD162 /* SDL_surface.c */; };
 		A7D8AC3323E2514100DCD162 /* SDL_RLEaccel.c in Sources */ = {isa = PBXBuildFile; fileRef = A7D8A61523E2513D00DCD162 /* SDL_RLEaccel.c */; };
@@ -237,6 +238,7 @@
 		B1E0D0000000000000000003 /* SDL_joystick_guid.c in Sources */ = {isa = PBXBuildFile; fileRef = B1E0D0000000000000000004 /* SDL_joystick_guid.c */; };
 		A7D8B4EE23E2514300DCD162 /* SDL_gamepad.c in Sources */ = {isa = PBXBuildFile; fileRef = A7D8A7AD23E2513E00DCD162 /* SDL_gamepad.c */; };
 		B1E0D000000000000000000F /* SDL_gamepad_names.c in Sources */ = {isa = PBXBuildFile; fileRef = B1E0D0000000000000000010 /* SDL_gamepad_names.c */; };
+		B1E0D0000000000000000013 /* SDL_gamepad_sinput.c in Sources */ = {isa = PBXBuildFile; fileRef = B1E0D0000000000000000014 /* SDL_gamepad_sinput.c */; };
 		A7D8B53923E2514300DCD162 /* SDL_hidapi_xbox360.c in Sources */ = {isa = PBXBuildFile; fileRef = A7D8A7C223E2513E00DCD162 /* SDL_hidapi_xbox360.c */; };
 		A7D8B53F23E2514300DCD162 /* SDL_hidapi_ps4.c in Sources */ = {isa = PBXBuildFile; fileRef = A7D8A7C323E2513E00DCD162 /* SDL_hidapi_ps4.c */; };
 		A7D8B54523E2514300DCD162 /* SDL_hidapijoystick.c in Sources */ = {isa = PBXBuildFile; fileRef = A7D8A7C423E2513E00DCD162 /* SDL_hidapijoystick.c */; };
@@ -382,6 +384,8 @@
 		E4F257942C81903800FCEAFC /* SDL_gpu_vulkan_vkfuncs.h in Headers */ = {isa = PBXBuildFile; fileRef = E4F257822C81903800FCEAFC /* SDL_gpu_vulkan_vkfuncs.h */; };
 		E4F257952C81903800FCEAFC /* SDL_gpu_vulkan.c in Sources */ = {isa = PBXBuildFile; fileRef = E4F257832C81903800FCEAFC /* SDL_gpu_vulkan.c */; };
 		E4F257962C81903800FCEAFC /* SDL_gpu.c in Sources */ = {isa = PBXBuildFile; fileRef = E4F257852C81903800FCEAFC /* SDL_gpu.c */; };
+		B1E0D0000000000000000015 /* SDL_gpu_blit.c in Sources */ = {isa = PBXBuildFile; fileRef = B1E0D0000000000000000016 /* SDL_gpu_blit.c */; };
+		B1E0D0000000000000000017 /* SDL_gpu_device.c in Sources */ = {isa = PBXBuildFile; fileRef = B1E0D0000000000000000018 /* SDL_gpu_device.c */; };
 		E4F2579A2C81903800FCEAFC /* SDL_gpu_format.c in Sources */ = {isa = PBXBuildFile; fileRef = E4F2578E2C81903800FCEAFC /* SDL_gpu_format.c */; };
 		E4F257972C81903800FCEAFC /* SDL_sysgpu.h in Headers */ = {isa = PBXBuildFile; fileRef = E4F257862C81903800FCEAFC /* SDL_sysgpu.h */; };
 		E4F257982C81903800FCEAFC /* SDL_gpu_openxr.c in Sources */ = {isa = PBXBuildFile; fileRef = E4F257882C81903800FCEAFC /* SDL_gpu_openxr.c */; };
@@ -738,6 +742,7 @@
 		A7D8A60A23E2513D00DCD162 /* SDL_nullvideo.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SDL_nullvideo.h; sourceTree = "<group>"; };
 		A7D8A60B23E2513D00DCD162 /* SDL_nullevents_c.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SDL_nullevents_c.h; sourceTree = "<group>"; };
 		A7D8A60C23E2513D00DCD162 /* SDL_rect_c.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SDL_rect_c.h; sourceTree = "<group>"; };
+		B1E0D0000000000000000012 /* SDL_cursor_names.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_cursor_names.c; sourceTree = "<group>"; };
 		A7D8A60E23E2513D00DCD162 /* SDL_video.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_video.c; sourceTree = "<group>"; };
 		A7D8A61423E2513D00DCD162 /* SDL_surface.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_surface.c; sourceTree = "<group>"; };
 		A7D8A61523E2513D00DCD162 /* SDL_RLEaccel.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_RLEaccel.c; sourceTree = "<group>"; };
@@ -860,6 +865,7 @@
 		B1E0D0000000000000000004 /* SDL_joystick_guid.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_joystick_guid.c; sourceTree = "<group>"; };
 		A7D8A7AD23E2513E00DCD162 /* SDL_gamepad.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_gamepad.c; sourceTree = "<group>"; };
 		B1E0D0000000000000000010 /* SDL_gamepad_names.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_gamepad_names.c; sourceTree = "<group>"; };
+		B1E0D0000000000000000014 /* SDL_gamepad_sinput.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_gamepad_sinput.c; sourceTree = "<group>"; };
 		A7D8A7C223E2513E00DCD162 /* SDL_hidapi_xbox360.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_hidapi_xbox360.c; sourceTree = "<group>"; };
 		A7D8A7C323E2513E00DCD162 /* SDL_hidapi_ps4.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_hidapi_ps4.c; sourceTree = "<group>"; };
 		A7D8A7C423E2513E00DCD162 /* SDL_hidapijoystick.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_hidapijoystick.c; sourceTree = "<group>"; };
@@ -983,6 +989,8 @@
 		E4F257822C81903800FCEAFC /* SDL_gpu_vulkan_vkfuncs.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SDL_gpu_vulkan_vkfuncs.h; sourceTree = "<group>"; };
 		E4F257832C81903800FCEAFC /* SDL_gpu_vulkan.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_gpu_vulkan.c; sourceTree = "<group>"; };
 		E4F257852C81903800FCEAFC /* SDL_gpu.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_gpu.c; sourceTree = "<group>"; };
+		B1E0D0000000000000000016 /* SDL_gpu_blit.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_gpu_blit.c; sourceTree = "<group>"; };
+		B1E0D0000000000000000018 /* SDL_gpu_device.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_gpu_device.c; sourceTree = "<group>"; };
 		E4F2578E2C81903800FCEAFC /* SDL_gpu_format.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_gpu_format.c; sourceTree = "<group>"; };
 		E4F257862C81903800FCEAFC /* SDL_sysgpu.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SDL_sysgpu.h; sourceTree = "<group>"; };
 		E4F257882C81903800FCEAFC /* SDL_gpu_openxr.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_gpu_openxr.c; sourceTree = "<group>"; };
@@ -1763,6 +1771,7 @@
 				A7D8A61423E2513D00DCD162 /* SDL_surface.c */,
 				F3EFA5EB2D5AB97300BCF22F /* SDL_surface_c.h */,
 				A7D8A61723E2513D00DCD162 /* SDL_sysvideo.h */,
+				B1E0D0000000000000000012 /* SDL_cursor_names.c */,
 				A7D8A60E23E2513D00DCD162 /* SDL_video.c */,
 				F3DDCC522AFD42B600B0842B /* SDL_video_c.h */,
 				E4F7981F2AD8D87F00669F54 /* SDL_video_unsupported.c */,
@@ -2017,6 +2026,7 @@
 				A7D8A79E23E2513E00DCD162 /* SDL_gamepad_db.h */,
 				A7D8A7AD23E2513E00DCD162 /* SDL_gamepad.c */,
 				B1E0D0000000000000000010 /* SDL_gamepad_names.c */,
+				B1E0D0000000000000000014 /* SDL_gamepad_sinput.c */,
 				A7D8A7D023E2513E00DCD162 /* SDL_joystick_c.h */,
 				A7D8A7A923E2513E00DCD162 /* SDL_joystick.c */,
 				B1E0D0000000000000000006 /* SDL_joystick_classify.c */,
@@ -2466,6 +2476,8 @@
 				E4F257842C81903800FCEAFC /* vulkan */,
 				E4F2578B2C81903800FCEAFC /* xr */,
 				E4F257852C81903800FCEAFC /* SDL_gpu.c */,
+				B1E0D0000000000000000016 /* SDL_gpu_blit.c */,
+				B1E0D0000000000000000018 /* SDL_gpu_device.c */,
 				E4F2578E2C81903800FCEAFC /* SDL_gpu_format.c */,
 				E4F257862C81903800FCEAFC /* SDL_sysgpu.h */,
 			);
@@ -3083,12 +3095,15 @@
 				F3973FAB28A59BDD00B84553 /* SDL_crc16.c in Sources */,
 				A7D8AB2B23E2514100DCD162 /* SDL_timer.c in Sources */,
 				E4F257962C81903800FCEAFC /* SDL_gpu.c in Sources */,
+				B1E0D0000000000000000015 /* SDL_gpu_blit.c in Sources */,
+				B1E0D0000000000000000017 /* SDL_gpu_device.c in Sources */,
 				E4F2579A2C81903800FCEAFC /* SDL_gpu_format.c in Sources */,
 				F3D60A8328C16A1900788A3A /* SDL_hidapi_wii.c in Sources */,
 				A7D8B9DD23E2514400DCD162 /* SDL_blendpoint.c in Sources */,
 				F3DB66342EA9ACC300568044 /* SDL_rotate.c in Sources */,
 				A7D8B4EE23E2514300DCD162 /* SDL_gamepad.c in Sources */,
 				B1E0D000000000000000000F /* SDL_gamepad_names.c in Sources */,
+				B1E0D0000000000000000013 /* SDL_gamepad_sinput.c in Sources */,
 				E4A568B62AF763940062EEC4 /* SDL_sysmain_callbacks.c in Sources */,
 				F316ABD82B5C3185002EF551 /* SDL_memset.c in Sources */,
 				A7D8BA1323E2514400DCD162 /* SDL_render_sw.c in Sources */,
@@ -3235,6 +3250,7 @@
 				A7D8BBD523E2574800DCD162 /* SDL_uikitclipboard.m in Sources */,
 				F386F6F92884663E001840AA /* SDL_utils.c in Sources */,
 				E4F7981E2AD8D86A00669F54 /* SDL_render_unsupported.c in Sources */,
+				B1E0D0000000000000000011 /* SDL_cursor_names.c in Sources */,
 				A7D8AC0F23E2514100DCD162 /* SDL_video.c in Sources */,
 				A7D8BA5B23E2514400DCD162 /* SDL_shaders_gles2.c in Sources */,
 				A7D8B14023E2514200DCD162 /* SDL_blit_1.c in Sources */,

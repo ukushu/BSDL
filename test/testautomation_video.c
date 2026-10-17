@@ -2825,6 +2825,59 @@ static const SDLTest_TestCaseReference videoTestRaiseWindow = {
     video_raiseWindow, "video_raiseWindow", "Checks window focus", TEST_ENABLED
 };
 
+static int SDLCALL video_gpuDriverEnumeration(void *arg)
+{
+    const int count = SDL_GetNumGPUDrivers();
+    SDLTest_AssertCheck(count >= 0, "GPU driver count is nonnegative: %d", count);
+    for (int i = 0; i < count; i++) {
+        const char *name = SDL_GetGPUDriver(i);
+        SDLTest_AssertCheck(name != NULL && name[0] != '\0', "GPU driver %d has a name", i);
+    }
+
+    SDL_ClearError();
+    SDLTest_AssertCheck(SDL_GetGPUDriver(-1) == NULL, "Negative GPU driver index is rejected");
+    SDLTest_AssertCheck(SDL_GetError()[0] != '\0', "Negative GPU driver index sets an error");
+    SDL_ClearError();
+    SDLTest_AssertCheck(SDL_GetGPUDriver(count) == NULL, "Out-of-range GPU driver index is rejected");
+    SDLTest_AssertCheck(SDL_GetError()[0] != '\0', "Out-of-range GPU driver index sets an error");
+    return TEST_COMPLETED;
+}
+
+static const SDLTest_TestCaseReference videoTestGPUDriverEnumeration = {
+    video_gpuDriverEnumeration, "video_gpuDriverEnumeration", "Enumerate GPU drivers and reject invalid indices", TEST_ENABLED
+};
+
+static int SDLCALL video_gpuDeviceLifecycle(void *arg)
+{
+    SDL_GPUDevice *device;
+    const char *name;
+
+    if (!SDL_GPUSupportsShaderFormats(SDL_GPU_SHADERFORMAT_SPIRV, "vulkan")) {
+        SDLTest_Log("Skipping Vulkan device lifecycle: %s", SDL_GetError());
+        SDLTest_AssertPass("Vulkan backend is unavailable with this video driver");
+        return TEST_COMPLETED;
+    }
+
+    device = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_SPIRV, false, "vulkan");
+    if (!SDLTest_AssertCheck(device != NULL, "Create Vulkan GPU device: %s", SDL_GetError())) {
+        return TEST_ABORTED;
+    }
+
+    SDLTest_AssertCheck(SDL_strcmp(SDL_GetGPUDeviceDriver(device), "vulkan") == 0,
+                        "Vulkan device reports its driver");
+    SDLTest_AssertCheck((SDL_GetGPUShaderFormats(device) & SDL_GPU_SHADERFORMAT_SPIRV) != 0,
+                        "Vulkan device supports SPIR-V");
+    name = SDL_GetStringProperty(SDL_GetGPUDeviceProperties(device), SDL_PROP_GPU_DEVICE_NAME_STRING, NULL);
+    SDLTest_AssertCheck(name != NULL && name[0] != '\0', "Vulkan device reports its name");
+
+    SDL_DestroyGPUDevice(device);
+    return TEST_COMPLETED;
+}
+
+static const SDLTest_TestCaseReference videoTestGPUDeviceLifecycle = {
+    video_gpuDeviceLifecycle, "video_gpuDeviceLifecycle", "Create, inspect, and destroy a Vulkan GPU device", TEST_ENABLED
+};
+
 /* Sequence of Video test cases */
 static const SDLTest_TestCaseReference *videoTests[] = {
     &videoTestEnableDisableScreensaver,
@@ -2853,6 +2906,8 @@ static const SDLTest_TestCaseReference *videoTests[] = {
     &videoTestCreateMaximized,
     &videoTestGetWindowSurface,
     &videoTestRaiseWindow,
+    &videoTestGPUDriverEnumeration,
+    &videoTestGPUDeviceLifecycle,
     NULL
 };
 

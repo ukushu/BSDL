@@ -31,7 +31,6 @@
 #include "usb_ids.h"
 #include "hidapi/SDL_hidapi_flydigi.h"
 #include "hidapi/SDL_hidapi_nintendo.h"
-#include "hidapi/SDL_hidapi_sinput.h"
 #include "../events/SDL_events_c.h"
 #include "../SDL_hints_c.h"
 
@@ -57,22 +56,6 @@
 #define SDL_GAMEPAD_SDKGE_FIELD_SIZE    SDL_strlen(SDL_GAMEPAD_SDKGE_FIELD)
 #define SDL_GAMEPAD_SDKLE_FIELD         "sdk<=:"
 #define SDL_GAMEPAD_SDKLE_FIELD_SIZE    SDL_strlen(SDL_GAMEPAD_SDKLE_FIELD)
-
-// Helper function to add button mapping
-#define SDL_ADD_BUTTON_MAPPING(sdl_name, button_id, maxlen)                     \
-    do {                                                                        \
-        char temp[32];                                                          \
-        (void)SDL_snprintf(temp, sizeof(temp), "%s:b%d,", sdl_name, button_id); \
-        SDL_strlcat(mapping_string, temp, maxlen);                              \
-    } while (0)
-
-// Helper function to add axis mapping
-#define SDL_ADD_AXIS_MAPPING(sdl_name, axis_id, maxlen)                       \
-    do {                                                                      \
-        char temp[32];                                                        \
-        (void)SDL_snprintf(temp, sizeof(temp), "%s:a%d,", sdl_name, axis_id); \
-        SDL_strlcat(mapping_string, temp, maxlen);                            \
-    } while (0)
 
 static bool SDL_gamepads_initialized;
 static SDL_Gamepad *SDL_gamepads SDL_GUARDED_BY(SDL_event_lock) = NULL;
@@ -831,276 +814,6 @@ static GamepadMapping_t *SDL_CreateMappingForAndroidGamepad(SDL_GUID guid)
 #endif // SDL_PLATFORM_ANDROID
 
 /*
-* Helper function to apply SInput decoded styles to the mapping string
-*/
-static inline void SDL_SInputStylesMapExtraction(SDL_SInputStyles_t* styles, char* mapping_string, size_t mapping_string_len)
-{
-    int current_button = 0;
-    int current_axis = 0;
-    int misc_buttons = 0;
-    int misc_button, misc_end;
-    bool digital_triggers = false;
-    bool dualstage_triggers = false;
-    int bumpers = 0;
-    bool left_stick = false;
-    bool right_stick = false;
-    int paddle_pairs = 0;
-    char misc_label[32];
-
-    // Determine how many misc buttons are used
-    switch (styles->misc_style) {
-    case SINPUT_MISCSTYLE_1:
-        misc_buttons = 1;
-        break;
-
-    case SINPUT_MISCSTYLE_2:
-        misc_buttons = 2;
-        break;
-
-    case SINPUT_MISCSTYLE_3:
-        misc_buttons = 3;
-        break;
-
-    case SINPUT_MISCSTYLE_4:
-        misc_buttons = 4;
-        break;
-
-    default:
-        break;
-    }
-    // The share button is reserved as misc1, additional buttons start at misc2
-    misc_button = 2;
-    misc_end = misc_button + misc_buttons;
-
-    // Analog joysticks (always come first in axis mapping)
-    switch (styles->analog_style) {
-    case SINPUT_ANALOGSTYLE_LEFTONLY:
-        SDL_ADD_AXIS_MAPPING("leftx", current_axis++, mapping_string_len);
-        SDL_ADD_AXIS_MAPPING("lefty", current_axis++, mapping_string_len);
-        left_stick = true;
-        break;
-
-    case SINPUT_ANALOGSTYLE_LEFTRIGHT:
-        SDL_ADD_AXIS_MAPPING("leftx", current_axis++, mapping_string_len);
-        SDL_ADD_AXIS_MAPPING("lefty", current_axis++, mapping_string_len);
-        SDL_ADD_AXIS_MAPPING("rightx", current_axis++, mapping_string_len);
-        SDL_ADD_AXIS_MAPPING("righty", current_axis++, mapping_string_len);
-        left_stick = true;
-        right_stick = true;
-        break;
-
-    case SINPUT_ANALOGSTYLE_RIGHTONLY:
-        SDL_ADD_AXIS_MAPPING("rightx", current_axis++, mapping_string_len);
-        SDL_ADD_AXIS_MAPPING("righty", current_axis++, mapping_string_len);
-        right_stick = true;
-        break;
-
-    default:
-        break;
-    }
-
-    // Bumpers
-    switch (styles->bumper_style) {
-    case SINPUT_BUMPERSTYLE_ONE:
-        bumpers = 1;
-        break;
-
-    case SINPUT_BUMPERSTYLE_TWO:
-        bumpers = 2;
-        break;
-
-    default:
-        break;
-    }
-
-    // Analog triggers
-    switch (styles->trigger_style) {
-    // Analog triggers
-    case SINPUT_TRIGGERSTYLE_ANALOG:
-        SDL_ADD_AXIS_MAPPING("lefttrigger", current_axis++, mapping_string_len);
-        SDL_ADD_AXIS_MAPPING("righttrigger", current_axis++, mapping_string_len);
-        break;
-
-    // Digital triggers
-    case SINPUT_TRIGGERSTYLE_DIGITAL:
-        digital_triggers = true;
-        break;
-
-    // Analog triggers with digital press
-    case SINPUT_TRIGGERSTYLE_DUALSTAGE:
-        SDL_ADD_AXIS_MAPPING("lefttrigger", current_axis++, mapping_string_len);
-        SDL_ADD_AXIS_MAPPING("righttrigger", current_axis++, mapping_string_len);
-        dualstage_triggers = true;
-        break;
-
-    default:
-        break;
-    }
-
-    switch (styles->paddle_style) {
-    case SINPUT_PADDLESTYLE_TWO:
-        paddle_pairs = 1;
-        break;
-
-    case SINPUT_PADDLESTYLE_FOUR:
-        paddle_pairs = 2;
-        break;
-
-    default:
-        break;
-    }
-
-    // Digital button mappings
-    // ABXY buttons (always applied as South, East, West, North)
-    SDL_ADD_BUTTON_MAPPING("a", current_button++, mapping_string_len); // South (typically A on Xbox, X on PlayStation)
-    SDL_ADD_BUTTON_MAPPING("b", current_button++, mapping_string_len); // East  (typically B on Xbox, Circle on PlayStation)
-    SDL_ADD_BUTTON_MAPPING("x", current_button++, mapping_string_len); // West  (typically X on Xbox, Square on PlayStation)
-    SDL_ADD_BUTTON_MAPPING("y", current_button++, mapping_string_len); // North (typically Y on Xbox, Triangle on PlayStation)
-
-    // D-Pad (always applied)
-    SDL_strlcat(mapping_string, "dpup:h0.1,dpdown:h0.4,dpleft:h0.8,dpright:h0.2,", mapping_string_len);
-
-    // Left and Right stick buttons
-    if (left_stick) {
-        SDL_ADD_BUTTON_MAPPING("leftstick", current_button++, mapping_string_len);
-    }
-    if (right_stick) {
-        SDL_ADD_BUTTON_MAPPING("rightstick", current_button++, mapping_string_len);
-    }
-
-    // Digital shoulder buttons (L/R Shoulder)
-    if (bumpers > 0) {
-        SDL_ADD_BUTTON_MAPPING("leftshoulder", current_button++, mapping_string_len);
-    }
-    if (bumpers > 1) {
-        SDL_ADD_BUTTON_MAPPING("rightshoulder", current_button++, mapping_string_len);
-    }
-
-    // Digital trigger buttons (capability overrides analog)
-    if (digital_triggers) {
-        SDL_ADD_BUTTON_MAPPING("lefttrigger", current_button++, mapping_string_len);
-        SDL_ADD_BUTTON_MAPPING("righttrigger", current_button++, mapping_string_len);
-    } else if (dualstage_triggers) {
-        // Dual-stage trigger buttons are appended as MISC buttons
-        // By convention the trigger buttons are misc3 and misc4 for GameCube style controllers
-        if (misc_end < 3) {
-            misc_end = 3;
-        }
-        SDL_snprintf(misc_label, sizeof(misc_label), "misc%d", misc_end++);
-        SDL_ADD_BUTTON_MAPPING(misc_label, current_button++, mapping_string_len);
-        SDL_snprintf(misc_label, sizeof(misc_label), "misc%d", misc_end++);
-        SDL_ADD_BUTTON_MAPPING(misc_label, current_button++, mapping_string_len);
-    }
-
-    // Paddle 1/2
-    if (paddle_pairs > 0) {
-        // Paddle 2 is first for left/right order of SInput
-        SDL_ADD_BUTTON_MAPPING("paddle2", current_button++, mapping_string_len);
-        SDL_ADD_BUTTON_MAPPING("paddle1", current_button++, mapping_string_len);
-    }
-
-    // Start/Plus
-    SDL_ADD_BUTTON_MAPPING("start", current_button++, mapping_string_len);
-
-    // Back/Minus, Guide/Home, Share/Capture
-    switch (styles->meta_style) {
-    case SINPUT_METASTYLE_BACK:
-        SDL_ADD_BUTTON_MAPPING("back", current_button++, mapping_string_len);
-        break;
-
-    case SINPUT_METASTYLE_BACKGUIDE:
-        SDL_ADD_BUTTON_MAPPING("back", current_button++, mapping_string_len);
-        SDL_ADD_BUTTON_MAPPING("guide", current_button++, mapping_string_len);
-        break;
-
-    case SINPUT_METASTYLE_BACKGUIDESHARE:
-        SDL_ADD_BUTTON_MAPPING("back", current_button++, mapping_string_len);
-        SDL_ADD_BUTTON_MAPPING("guide", current_button++, mapping_string_len);
-        SDL_ADD_BUTTON_MAPPING("misc1", current_button++, mapping_string_len);
-        break;
-
-    default:
-        break;
-    }
-
-    // Paddle 3/4
-    if (paddle_pairs > 1) {
-        // Paddle 4 is first for left/right order of SInput
-        SDL_ADD_BUTTON_MAPPING("paddle4", current_button++, mapping_string_len);
-        SDL_ADD_BUTTON_MAPPING("paddle3", current_button++, mapping_string_len);
-    }
-
-    // Touchpad buttons
-    switch (styles->touch_style) {
-    case SINPUT_TOUCHSTYLE_SINGLE:
-        SDL_ADD_BUTTON_MAPPING("touchpad", current_button++, mapping_string_len);
-        break;
-
-    case SINPUT_TOUCHSTYLE_DOUBLE:
-        SDL_ADD_BUTTON_MAPPING("touchpad", current_button++, mapping_string_len);
-        // Add the second touchpad button at the end of the misc buttons
-        SDL_snprintf(misc_label, sizeof(misc_label), "misc%d", misc_end++);
-        SDL_ADD_BUTTON_MAPPING(misc_label, current_button++, mapping_string_len);
-        break;
-
-    default:
-        break;
-    }
-
-    for (int i = 0; i < misc_buttons; ++i) {
-        SDL_snprintf(misc_label, sizeof(misc_label), "misc%d", misc_button++);
-        SDL_ADD_BUTTON_MAPPING(misc_label, current_button++, mapping_string_len);
-    }
-}
-
-/*
-* Helper function to decode SInput features information packed into version
-*/
-static void SDL_CreateMappingStringForSInputGamepad(Uint16 vendor, Uint16 product, Uint8 sub_product, Uint16 version, Uint8 face_style, char* mapping_string, size_t mapping_string_len)
-{
-    SDL_SInputStyles_t decoded = { 0 };
-
-    switch (face_style) {
-    default:
-        SDL_strlcat(mapping_string, "face:abxy,", mapping_string_len);
-        break;
-    case 2:
-        SDL_strlcat(mapping_string, "face:axby,", mapping_string_len);
-        break;
-    case 3:
-        SDL_strlcat(mapping_string, "face:bayx,", mapping_string_len);
-        break;
-    case 4:
-        SDL_strlcat(mapping_string, "face:sony,", mapping_string_len);
-        break;
-    }
-
-    // Interpret the mapping string
-    // dynamically based on the feature responses
-    decoded.misc_style = (SInput_MiscStyleType)(version % SINPUT_MISCSTYLE_MAX);
-    version /= SINPUT_MISCSTYLE_MAX;
-
-    decoded.touch_style = (SInput_TouchStyleType)(version % SINPUT_TOUCHSTYLE_MAX);
-    version /= SINPUT_TOUCHSTYLE_MAX;
-
-    decoded.meta_style = (SInput_MetaStyleType)(version % SINPUT_METASTYLE_MAX);
-    version /= SINPUT_METASTYLE_MAX;
-
-    decoded.paddle_style = (SInput_PaddleStyleType)(version % SINPUT_PADDLESTYLE_MAX);
-    version /= SINPUT_PADDLESTYLE_MAX;
-
-    decoded.trigger_style = (SInput_TriggerStyleType)(version % SINPUT_TRIGGERSTYLE_MAX);
-    version /= SINPUT_TRIGGERSTYLE_MAX;
-
-    decoded.bumper_style = (SInput_BumperStyleType)(version % SINPUT_BUMPERSTYLE_MAX);
-    version /= SINPUT_BUMPERSTYLE_MAX;
-
-    decoded.analog_style = (SInput_AnalogStyleType)(version % SINPUT_ANALOGSTYLE_MAX);
-
-    SDL_SInputStylesMapExtraction(&decoded, mapping_string, mapping_string_len);
-}
-
-/*
  * Helper function to guess at a mapping for HIDAPI gamepads
  */
 static GamepadMapping_t *SDL_CreateMappingForHIDAPIGamepad(SDL_GUID guid)
@@ -1241,9 +954,7 @@ static GamepadMapping_t *SDL_CreateMappingForHIDAPIGamepad(SDL_GUID guid)
     } else if (SDL_IsJoystickSInputController(vendor, product)) {
 
         Uint8 face_style = (guid.data[15] & 0xE0) >> 5;
-        Uint8 sub_product  = guid.data[15] & 0x1F;
-
-        SDL_CreateMappingStringForSInputGamepad(vendor, product, sub_product, version, face_style, mapping_string, sizeof(mapping_string));
+        SDL_CreateMappingStringForSInputGamepad(version, face_style, mapping_string, sizeof(mapping_string));
     } else if ((vendor == USB_VENDOR_MICROSOFT) && (product == USB_PRODUCT_XBOX360_BIGBUTTON_RECEIVER)) {
         SDL_strlcat(mapping_string, "dpup:h0.1,dpdown:h0.4,dpleft:h0.8,dpright:h0.2,a:b0,b:b1,x:b2,y:b3,back:b4,guide:b5,start:b6,misc1:b7", sizeof(mapping_string));
     } else {
@@ -1496,25 +1207,13 @@ static GamepadMapping_t *SDL_PrivateGetGamepadMappingForGUID(SDL_GUID guid, bool
     return mapping;
 }
 
-/*
- * given a gamepad button name and a joystick name update our mapping structure with it
- */
-static bool SDL_PrivateParseGamepadElement(SDL_Gamepad *gamepad, const char *szGameButton, const char *szJoystickButton)
+static bool SDL_ParseGamepadMappingOutput(SDL_Gamepad *gamepad, const char *szGameButton, SDL_GamepadBinding *bind)
 {
-    SDL_GamepadBinding bind;
     SDL_GamepadButton button;
     SDL_GamepadAxis axis;
-    bool invert_input = false;
-    char half_axis_input = 0;
     char half_axis_output = 0;
-    int i;
-    SDL_GamepadBinding *new_bindings;
     bool axby_mapping = false;
     bool baxy_mapping = false;
-
-    SDL_AssertJoysticksLocked();
-
-    SDL_zero(bind);
 
     if (*szGameButton == '+' || *szGameButton == '-') {
         half_axis_output = *szGameButton++;
@@ -1533,29 +1232,36 @@ static bool SDL_PrivateParseGamepadElement(SDL_Gamepad *gamepad, const char *szG
     axis = SDL_GetGamepadAxisFromString(szGameButton);
     button = SDL_PrivateGetGamepadButtonFromString(szGameButton, axby_mapping, baxy_mapping);
     if (axis != SDL_GAMEPAD_AXIS_INVALID) {
-        bind.output_type = SDL_GAMEPAD_BINDTYPE_AXIS;
-        bind.output.axis.axis = axis;
+        bind->output_type = SDL_GAMEPAD_BINDTYPE_AXIS;
+        bind->output.axis.axis = axis;
         if (axis == SDL_GAMEPAD_AXIS_LEFT_TRIGGER || axis == SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) {
-            bind.output.axis.axis_min = 0;
-            bind.output.axis.axis_max = SDL_JOYSTICK_AXIS_MAX;
+            bind->output.axis.axis_min = 0;
+            bind->output.axis.axis_max = SDL_JOYSTICK_AXIS_MAX;
         } else {
             if (half_axis_output == '+') {
-                bind.output.axis.axis_min = 0;
-                bind.output.axis.axis_max = SDL_JOYSTICK_AXIS_MAX;
+                bind->output.axis.axis_min = 0;
+                bind->output.axis.axis_max = SDL_JOYSTICK_AXIS_MAX;
             } else if (half_axis_output == '-') {
-                bind.output.axis.axis_min = 0;
-                bind.output.axis.axis_max = SDL_JOYSTICK_AXIS_MIN;
+                bind->output.axis.axis_min = 0;
+                bind->output.axis.axis_max = SDL_JOYSTICK_AXIS_MIN;
             } else {
-                bind.output.axis.axis_min = SDL_JOYSTICK_AXIS_MIN;
-                bind.output.axis.axis_max = SDL_JOYSTICK_AXIS_MAX;
+                bind->output.axis.axis_min = SDL_JOYSTICK_AXIS_MIN;
+                bind->output.axis.axis_max = SDL_JOYSTICK_AXIS_MAX;
             }
         }
     } else if (button != SDL_GAMEPAD_BUTTON_INVALID) {
-        bind.output_type = SDL_GAMEPAD_BINDTYPE_BUTTON;
-        bind.output.button = button;
+        bind->output_type = SDL_GAMEPAD_BINDTYPE_BUTTON;
+        bind->output.button = button;
     } else {
         return false;
     }
+    return true;
+}
+
+static bool SDL_ParseGamepadMappingInput(const char *szJoystickButton, SDL_GamepadBinding *bind)
+{
+    bool invert_input = false;
+    char half_axis_input = 0;
 
     if (*szJoystickButton == '+' || *szJoystickButton == '-') {
         half_axis_input = *szJoystickButton++;
@@ -1565,34 +1271,53 @@ static bool SDL_PrivateParseGamepadElement(SDL_Gamepad *gamepad, const char *szG
     }
 
     if (szJoystickButton[0] == 'a' && SDL_isdigit((unsigned char)szJoystickButton[1])) {
-        bind.input_type = SDL_GAMEPAD_BINDTYPE_AXIS;
-        bind.input.axis.axis = SDL_atoi(&szJoystickButton[1]);
+        bind->input_type = SDL_GAMEPAD_BINDTYPE_AXIS;
+        bind->input.axis.axis = SDL_atoi(&szJoystickButton[1]);
         if (half_axis_input == '+') {
-            bind.input.axis.axis_min = 0;
-            bind.input.axis.axis_max = SDL_JOYSTICK_AXIS_MAX;
+            bind->input.axis.axis_min = 0;
+            bind->input.axis.axis_max = SDL_JOYSTICK_AXIS_MAX;
         } else if (half_axis_input == '-') {
-            bind.input.axis.axis_min = 0;
-            bind.input.axis.axis_max = SDL_JOYSTICK_AXIS_MIN;
+            bind->input.axis.axis_min = 0;
+            bind->input.axis.axis_max = SDL_JOYSTICK_AXIS_MIN;
         } else {
-            bind.input.axis.axis_min = SDL_JOYSTICK_AXIS_MIN;
-            bind.input.axis.axis_max = SDL_JOYSTICK_AXIS_MAX;
+            bind->input.axis.axis_min = SDL_JOYSTICK_AXIS_MIN;
+            bind->input.axis.axis_max = SDL_JOYSTICK_AXIS_MAX;
         }
         if (invert_input) {
-            int tmp = bind.input.axis.axis_min;
-            bind.input.axis.axis_min = bind.input.axis.axis_max;
-            bind.input.axis.axis_max = tmp;
+            int tmp = bind->input.axis.axis_min;
+            bind->input.axis.axis_min = bind->input.axis.axis_max;
+            bind->input.axis.axis_max = tmp;
         }
     } else if (szJoystickButton[0] == 'b' && SDL_isdigit((unsigned char)szJoystickButton[1])) {
-        bind.input_type = SDL_GAMEPAD_BINDTYPE_BUTTON;
-        bind.input.button = SDL_atoi(&szJoystickButton[1]);
+        bind->input_type = SDL_GAMEPAD_BINDTYPE_BUTTON;
+        bind->input.button = SDL_atoi(&szJoystickButton[1]);
     } else if (szJoystickButton[0] == 'h' && SDL_isdigit((unsigned char)szJoystickButton[1]) &&
                szJoystickButton[2] == '.' && SDL_isdigit((unsigned char)szJoystickButton[3])) {
         int hat = SDL_atoi(&szJoystickButton[1]);
         int mask = SDL_atoi(&szJoystickButton[3]);
-        bind.input_type = SDL_GAMEPAD_BINDTYPE_HAT;
-        bind.input.hat.hat = hat;
-        bind.input.hat.hat_mask = mask;
+        bind->input_type = SDL_GAMEPAD_BINDTYPE_HAT;
+        bind->input.hat.hat = hat;
+        bind->input.hat.hat_mask = mask;
     } else {
+        return false;
+    }
+    return true;
+}
+
+/*
+ * given a gamepad button name and a joystick name update our mapping structure with it
+ */
+static bool SDL_PrivateParseGamepadElement(SDL_Gamepad *gamepad, const char *szGameButton, const char *szJoystickButton)
+{
+    SDL_GamepadBinding bind;
+    SDL_GamepadBinding *new_bindings;
+    int i;
+
+    SDL_AssertJoysticksLocked();
+
+    SDL_zero(bind);
+    if (!SDL_ParseGamepadMappingOutput(gamepad, szGameButton, &bind) ||
+        !SDL_ParseGamepadMappingInput(szJoystickButton, &bind)) {
         return false;
     }
 

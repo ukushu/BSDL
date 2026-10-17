@@ -7333,8 +7333,10 @@
 │   │   │   ├── SDL_openxrdyn.c
 │   │   │   ├── SDL_openxrdyn.h
 │   │   │   └── SDL_openxrsym.h
-│   │   ├── SDL_gpu_format.c
 │   │   ├── SDL_gpu.c
+│   │   ├── SDL_gpu_blit.c
+│   │   ├── SDL_gpu_device.c
+│   │   ├── SDL_gpu_format.c
 │   │   └── SDL_sysgpu.h
 │   ├── haptic/
 │   │   ├── android/
@@ -7679,6 +7681,7 @@
 │   │   ├── SDL_gamepad_c.h
 │   │   ├── SDL_gamepad_db.h
 │   │   ├── SDL_gamepad_names.c
+│   │   ├── SDL_gamepad_sinput.c
 │   │   ├── SDL_gamepad.c
 │   │   ├── SDL_joystick_c.h
 │   │   ├── SDL_joystick_classify.c
@@ -8733,6 +8736,7 @@
 │   │   ├── SDL_bmp.c
 │   │   ├── SDL_clipboard_c.h
 │   │   ├── SDL_clipboard.c
+│   │   ├── SDL_cursor_names.c
 │   │   ├── SDL_egl_c.h
 │   │   ├── SDL_egl.c
 │   │   ├── SDL_fillrect.c

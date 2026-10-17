@@ -1902,6 +1902,66 @@ bool SDL_GetTextureSize(SDL_Texture *texture, float *w, float *h)
     return true;
 }
 
+static void DetachTexturePalette(SDL_Texture *texture)
+{
+    if (texture->public_palette) {
+        SDL_Renderer *renderer = texture->renderer;
+        SDL_DestroyPalette(texture->public_palette);
+
+        if (!texture->native) {
+            // Clean up the texture palette
+            --texture->palette->refcount;
+            if (texture->palette->refcount == 0) {
+                FlushRenderCommandsIfPaletteNeeded(renderer, texture->palette);
+                renderer->DestroyPalette(renderer, texture->palette);
+                SDL_RemoveFromHashTable(renderer->palettes, texture->public_palette);
+            }
+            texture->palette = NULL;
+        }
+    }
+}
+
+static bool AttachTexturePalette(SDL_Texture *texture, SDL_Palette *palette)
+{
+    SDL_Renderer *renderer = texture->renderer;
+
+    texture->public_palette = palette;
+    texture->palette_version = 0;
+
+    if (texture->public_palette) {
+        ++texture->public_palette->refcount;
+
+        if (!texture->native) {
+            if (SDL_FindInHashTable(renderer->palettes, palette, (const void **)&texture->palette)) {
+                ++texture->palette->refcount;
+            } else {
+                SDL_TexturePalette *texture_palette = (SDL_TexturePalette *)SDL_calloc(1, sizeof(*texture_palette));
+                if (!texture_palette) {
+                    SDL_SetTexturePalette(texture, NULL);
+                    return false;
+                }
+                if (!renderer->CreatePalette(renderer, texture_palette)) {
+                    renderer->DestroyPalette(renderer, texture_palette);
+                    SDL_SetTexturePalette(texture, NULL);
+                    return false;
+                }
+                texture->palette = texture_palette;
+                texture->palette->refcount = 1;
+
+                if (!SDL_InsertIntoHashTable(renderer->palettes, palette, texture->palette, false)) {
+                    SDL_SetTexturePalette(texture, NULL);
+                    return false;
+                }
+            }
+        }
+
+        if (!texture->native && renderer->ChangeTexturePalette) {
+            renderer->ChangeTexturePalette(renderer, texture);
+        }
+    }
+    return true;
+}
+
 bool SDL_SetTexturePalette(SDL_Texture *texture, SDL_Palette *palette)
 {
     CHECK_TEXTURE_MAGIC(texture, false);
@@ -1915,58 +1975,10 @@ bool SDL_SetTexturePalette(SDL_Texture *texture, SDL_Palette *palette)
     }
 
     if (palette != texture->public_palette) {
-        SDL_Renderer *renderer = texture->renderer;
-
-        if (texture->public_palette) {
-            SDL_DestroyPalette(texture->public_palette);
-
-            if (!texture->native) {
-                // Clean up the texture palette
-                --texture->palette->refcount;
-                if (texture->palette->refcount == 0) {
-                    FlushRenderCommandsIfPaletteNeeded(renderer, texture->palette);
-                    renderer->DestroyPalette(renderer, texture->palette);
-                    SDL_RemoveFromHashTable(renderer->palettes, texture->public_palette);
-                }
-                texture->palette = NULL;
-            }
+        DetachTexturePalette(texture);
+        if (!AttachTexturePalette(texture, palette)) {
+            return false;
         }
-
-        texture->public_palette = palette;
-        texture->palette_version = 0;
-
-        if (texture->public_palette) {
-            ++texture->public_palette->refcount;
-
-            if (!texture->native) {
-                if (SDL_FindInHashTable(renderer->palettes, palette, (const void **)&texture->palette)) {
-                    ++texture->palette->refcount;
-                } else {
-                    SDL_TexturePalette *texture_palette = (SDL_TexturePalette *)SDL_calloc(1, sizeof(*texture_palette));
-                    if (!texture_palette) {
-                        SDL_SetTexturePalette(texture, NULL);
-                        return false;
-                    }
-                    if (!renderer->CreatePalette(renderer, texture_palette)) {
-                        renderer->DestroyPalette(renderer, texture_palette);
-                        SDL_SetTexturePalette(texture, NULL);
-                        return false;
-                    }
-                    texture->palette = texture_palette;
-                    texture->palette->refcount = 1;
-
-                    if (!SDL_InsertIntoHashTable(renderer->palettes, palette, texture->palette, false)) {
-                        SDL_SetTexturePalette(texture, NULL);
-                        return false;
-                    }
-                }
-            }
-
-            if (!texture->native && renderer->ChangeTexturePalette) {
-                renderer->ChangeTexturePalette(renderer, texture);
-            }
-        }
-
         if (texture->palette_surface) {
             SDL_SetSurfacePalette(texture->palette_surface, palette);
         }
@@ -3038,10 +3050,135 @@ static bool RenderLinesWithRectsF(SDL_Renderer *renderer, const SDL_FPoint *poin
     return result;
 }
 
-bool SDL_RenderLines(SDL_Renderer *renderer, const SDL_FPoint *points, int count)
+static bool RenderLinesWithGeometry(SDL_Renderer *renderer, const SDL_FPoint *points, int count)
 {
     bool result = true;
+    SDL_RenderViewState *view = renderer->view;
+    const float scale_x = view->current_scale.x;
+    const float scale_y = view->current_scale.y;
+    bool isstack1;
+    bool isstack2;
+    float *xy = SDL_small_alloc(float, 4 * 2 * count, &isstack1);
+    int *indices = SDL_small_alloc(int, (4) * 3 * (count - 1) + (2) * 3 * (count), &isstack2);
 
+    if (xy && indices) {
+        int i;
+        float *ptr_xy = xy;
+        int *ptr_indices = indices;
+        const int xy_stride = 2 * sizeof(float);
+        int num_vertices = 4 * count;
+        int num_indices = 0;
+        const int size_indices = 4;
+        int cur_index = -4;
+        const bool is_looping = (points[0].x == points[count - 1].x && points[0].y == points[count - 1].y);
+        SDL_FPoint p; // previous point
+        p.x = p.y = 0.0f;
+        /*       p            q
+
+                0----1------ 4----5
+                | \  |``\    | \  |
+                |  \ |   ` `\|  \ |
+                3----2-------7----6
+        */
+        for (i = 0; i < count; ++i) {
+            SDL_FPoint q = points[i]; // current point
+
+            q.x *= scale_x;
+            q.y *= scale_y;
+
+            *ptr_xy++ = q.x;
+            *ptr_xy++ = q.y;
+            *ptr_xy++ = q.x + scale_x;
+            *ptr_xy++ = q.y;
+            *ptr_xy++ = q.x + scale_x;
+            *ptr_xy++ = q.y + scale_y;
+            *ptr_xy++ = q.x;
+            *ptr_xy++ = q.y + scale_y;
+
+#define ADD_TRIANGLE(i1, i2, i3)        \
+    *ptr_indices++ = cur_index + (i1);  \
+    *ptr_indices++ = cur_index + (i2);  \
+    *ptr_indices++ = cur_index + (i3);  \
+    num_indices += 3;
+
+            // closed polyline, don´t draw twice the point
+            if (i || !is_looping) {
+                ADD_TRIANGLE(4, 5, 6)
+                ADD_TRIANGLE(4, 6, 7)
+            }
+
+            // first point only, no segment
+            if (i == 0) {
+                p = q;
+                cur_index += 4;
+                continue;
+            }
+
+            // draw segment
+            if (p.y == q.y) {
+                if (p.x < q.x) {
+                    ADD_TRIANGLE(1, 4, 7)
+                    ADD_TRIANGLE(1, 7, 2)
+                } else {
+                    ADD_TRIANGLE(5, 0, 3)
+                    ADD_TRIANGLE(5, 3, 6)
+                }
+            } else if (p.x == q.x) {
+                if (p.y < q.y) {
+                    ADD_TRIANGLE(2, 5, 4)
+                    ADD_TRIANGLE(2, 4, 3)
+                } else {
+                    ADD_TRIANGLE(6, 1, 0)
+                    ADD_TRIANGLE(6, 0, 7)
+                }
+            } else {
+                if (p.y < q.y) {
+                    if (p.x < q.x) {
+                        ADD_TRIANGLE(1, 5, 4)
+                        ADD_TRIANGLE(1, 4, 2)
+                        ADD_TRIANGLE(2, 4, 7)
+                        ADD_TRIANGLE(2, 7, 3)
+                    } else {
+                        ADD_TRIANGLE(4, 0, 5)
+                        ADD_TRIANGLE(5, 0, 3)
+                        ADD_TRIANGLE(5, 3, 6)
+                        ADD_TRIANGLE(6, 3, 2)
+                    }
+                } else {
+                    if (p.x < q.x) {
+                        ADD_TRIANGLE(0, 4, 7)
+                        ADD_TRIANGLE(0, 7, 1)
+                        ADD_TRIANGLE(1, 7, 6)
+                        ADD_TRIANGLE(1, 6, 2)
+                    } else {
+                        ADD_TRIANGLE(6, 5, 1)
+                        ADD_TRIANGLE(6, 1, 0)
+                        ADD_TRIANGLE(7, 6, 0)
+                        ADD_TRIANGLE(7, 0, 3)
+                    }
+                }
+            }
+
+#undef ADD_TRIANGLE
+
+            p = q;
+            cur_index += 4;
+        }
+
+        result = QueueCmdGeometry(renderer, NULL,
+                                  xy, xy_stride, &renderer->color, 0 /* color_stride */, NULL, 0,
+                                  num_vertices, indices, num_indices, size_indices,
+                                  1.0f, 1.0f, SDL_TEXTURE_ADDRESS_CLAMP, SDL_TEXTURE_ADDRESS_CLAMP);
+    }
+
+    SDL_small_free(xy, isstack1);
+    SDL_small_free(indices, isstack2);
+
+    return result;
+}
+
+bool SDL_RenderLines(SDL_Renderer *renderer, const SDL_FPoint *points, int count)
+{
     CHECK_RENDERER_MAGIC(renderer, false);
 
     CHECK_PARAM(!points) {
@@ -3056,135 +3193,12 @@ bool SDL_RenderLines(SDL_Renderer *renderer, const SDL_FPoint *points, int count
     const bool islogical = (view->logical_presentation_mode != SDL_LOGICAL_PRESENTATION_DISABLED);
 
     if (islogical || (renderer->line_method == SDL_RENDERLINEMETHOD_GEOMETRY)) {
-        const float scale_x = view->current_scale.x;
-        const float scale_y = view->current_scale.y;
-        bool isstack1;
-        bool isstack2;
-        float *xy = SDL_small_alloc(float, 4 * 2 * count, &isstack1);
-        int *indices = SDL_small_alloc(int, (4) * 3 * (count - 1) + (2) * 3 * (count), &isstack2);
-
-        if (xy && indices) {
-            int i;
-            float *ptr_xy = xy;
-            int *ptr_indices = indices;
-            const int xy_stride = 2 * sizeof(float);
-            int num_vertices = 4 * count;
-            int num_indices = 0;
-            const int size_indices = 4;
-            int cur_index = -4;
-            const bool is_looping = (points[0].x == points[count - 1].x && points[0].y == points[count - 1].y);
-            SDL_FPoint p; // previous point
-            p.x = p.y = 0.0f;
-            /*       p            q
-
-                    0----1------ 4----5
-                    | \  |``\    | \  |
-                    |  \ |   ` `\|  \ |
-                    3----2-------7----6
-            */
-            for (i = 0; i < count; ++i) {
-                SDL_FPoint q = points[i]; // current point
-
-                q.x *= scale_x;
-                q.y *= scale_y;
-
-                *ptr_xy++ = q.x;
-                *ptr_xy++ = q.y;
-                *ptr_xy++ = q.x + scale_x;
-                *ptr_xy++ = q.y;
-                *ptr_xy++ = q.x + scale_x;
-                *ptr_xy++ = q.y + scale_y;
-                *ptr_xy++ = q.x;
-                *ptr_xy++ = q.y + scale_y;
-
-#define ADD_TRIANGLE(i1, i2, i3)        \
-    *ptr_indices++ = cur_index + (i1);  \
-    *ptr_indices++ = cur_index + (i2);  \
-    *ptr_indices++ = cur_index + (i3);  \
-    num_indices += 3;
-
-                // closed polyline, don´t draw twice the point
-                if (i || !is_looping) {
-                    ADD_TRIANGLE(4, 5, 6)
-                    ADD_TRIANGLE(4, 6, 7)
-                }
-
-                // first point only, no segment
-                if (i == 0) {
-                    p = q;
-                    cur_index += 4;
-                    continue;
-                }
-
-                // draw segment
-                if (p.y == q.y) {
-                    if (p.x < q.x) {
-                        ADD_TRIANGLE(1, 4, 7)
-                        ADD_TRIANGLE(1, 7, 2)
-                    } else {
-                        ADD_TRIANGLE(5, 0, 3)
-                        ADD_TRIANGLE(5, 3, 6)
-                    }
-                } else if (p.x == q.x) {
-                    if (p.y < q.y) {
-                        ADD_TRIANGLE(2, 5, 4)
-                        ADD_TRIANGLE(2, 4, 3)
-                    } else {
-                        ADD_TRIANGLE(6, 1, 0)
-                        ADD_TRIANGLE(6, 0, 7)
-                    }
-                } else {
-                    if (p.y < q.y) {
-                        if (p.x < q.x) {
-                            ADD_TRIANGLE(1, 5, 4)
-                            ADD_TRIANGLE(1, 4, 2)
-                            ADD_TRIANGLE(2, 4, 7)
-                            ADD_TRIANGLE(2, 7, 3)
-                        } else {
-                            ADD_TRIANGLE(4, 0, 5)
-                            ADD_TRIANGLE(5, 0, 3)
-                            ADD_TRIANGLE(5, 3, 6)
-                            ADD_TRIANGLE(6, 3, 2)
-                        }
-                    } else {
-                        if (p.x < q.x) {
-                            ADD_TRIANGLE(0, 4, 7)
-                            ADD_TRIANGLE(0, 7, 1)
-                            ADD_TRIANGLE(1, 7, 6)
-                            ADD_TRIANGLE(1, 6, 2)
-                        } else {
-                            ADD_TRIANGLE(6, 5, 1)
-                            ADD_TRIANGLE(6, 1, 0)
-                            ADD_TRIANGLE(7, 6, 0)
-                            ADD_TRIANGLE(7, 0, 3)
-                        }
-                    }
-                }
-
-#undef ADD_TRIANGLE
-
-                p = q;
-                cur_index += 4;
-            }
-
-            result = QueueCmdGeometry(renderer, NULL,
-                                      xy, xy_stride, &renderer->color, 0 /* color_stride */, NULL, 0,
-                                      num_vertices, indices, num_indices, size_indices,
-                                      1.0f, 1.0f, SDL_TEXTURE_ADDRESS_CLAMP, SDL_TEXTURE_ADDRESS_CLAMP);
-        }
-
-        SDL_small_free(xy, isstack1);
-        SDL_small_free(indices, isstack2);
-
-    } else if (renderer->line_method == SDL_RENDERLINEMETHOD_POINTS) {
-        result = RenderLinesWithRectsF(renderer, points, count);
-    } else if (view->scale.x != 1.0f || view->scale.y != 1.0f) {  /* we checked for logical scale elsewhere. */
-        result = RenderLinesWithRectsF(renderer, points, count);
-    } else {
-        result = QueueCmdDrawLines(renderer, points, count);
+        return RenderLinesWithGeometry(renderer, points, count);
     }
-
-    return result;
+    if (renderer->line_method == SDL_RENDERLINEMETHOD_POINTS || view->scale.x != 1.0f || view->scale.y != 1.0f) {
+        return RenderLinesWithRectsF(renderer, points, count);
+    }
+    return QueueCmdDrawLines(renderer, points, count);
 }
 
 bool SDL_RenderRect(SDL_Renderer *renderer, const SDL_FRect *rect)
@@ -4055,6 +4069,193 @@ static int remap_indices(
 }
 
 #define DEBUG_SW_RENDER_GEOMETRY 0
+static void RenderSoftwareGeometryQuad(SDL_Renderer *renderer, SDL_Texture *texture, SDL_FRect src, const SDL_FRect *dst, const SDL_FColor *color)
+{
+    if (texture && src.w != 0 && src.h != 0) {
+        SDL_SetTextureAlphaModFloat(texture, color->a);
+        SDL_SetTextureColorModFloat(texture, color->r, color->g, color->b);
+        if (src.w > 0 && src.h > 0) {
+            SDL_RenderTexture(renderer, texture, &src, dst);
+        } else {
+            int flags = 0;
+            if (src.w < 0) {
+                flags |= SDL_FLIP_HORIZONTAL;
+                src.w *= -1;
+                src.x -= src.w;
+            }
+            if (src.h < 0) {
+                flags |= SDL_FLIP_VERTICAL;
+                src.h *= -1;
+                src.y -= src.h;
+            }
+            SDL_RenderTextureRotated(renderer, texture, &src, dst, 0, NULL, (SDL_FlipMode)flags);
+        }
+
+#if DEBUG_SW_RENDER_GEOMETRY
+        SDL_Log("Rect-COPY: RGB %f %f %f - Alpha:%f - texture=%p: src=(%d,%d, %d x %d) dst (%f, %f, %f x %f)", color->r, color->g, color->b, color->a,
+                (void *)texture, src.x, src.y, src.w, src.h, dst->x, dst->y, dst->w, dst->h);
+#endif
+    } else if (dst->w != 0.0f && dst->h != 0.0f) { // Rect, no texture
+        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+        SDL_SetRenderDrawColorFloat(renderer, color->r, color->g, color->b, color->a);
+        SDL_RenderFillRect(renderer, dst);
+#if DEBUG_SW_RENDER_GEOMETRY
+        SDL_Log("Rect-FILL: RGB %f %f %f - Alpha:%f - texture=%p: dst (%f, %f, %f x %f)", color->r, color->g, color->b, color->a,
+                (void *)texture, dst->x, dst->y, dst->w, dst->h);
+    } else {
+        SDL_Log("Rect-DISMISS: RGB %f %f %f - Alpha:%f - texture=%p: src=(%d,%d, %d x %d) dst (%f, %f, %f x %f)", color->r, color->g, color->b, color->a,
+                (void *)texture, src.x, src.y, src.w, src.h, dst->x, dst->y, dst->w, dst->h);
+#endif
+    }
+}
+
+typedef struct SDL_SWGeometryQuad
+{
+    int A, B, C, C2;
+#if DEBUG_SW_RENDER_GEOMETRY
+    int is_rectangle;
+#endif
+} SDL_SWGeometryQuad;
+
+static bool FindSoftwareGeometryQuad(const int prev[3], int k0, int k1, int k2, const float *xy, int xy_stride, SDL_SWGeometryQuad *quad)
+{
+    int is_quad = 1;
+    int A = -1, B = -1, C = -1, C2 = -1;
+#if DEBUG_SW_RENDER_GEOMETRY
+    int is_rectangle = 1;
+#endif
+    /* Two triangles forming a quadrilateral,
+     * prev and current triangles must have exactly 2 common vertices */
+    {
+        int cnt = 0, j = 3;
+        while (j--) {
+            int p = prev[j];
+            if (p == k0 || p == k1 || p == k2) {
+                cnt++;
+            }
+        }
+        is_quad = (cnt == 2);
+    }
+
+    // Identify vertices
+    if (is_quad) {
+        const float *xy0_, *xy1_, *xy2_;
+        float x0, x1, x2;
+        float y0, y1, y2;
+        xy0_ = (const float *)((const char *)xy + k0 * xy_stride);
+        xy1_ = (const float *)((const char *)xy + k1 * xy_stride);
+        xy2_ = (const float *)((const char *)xy + k2 * xy_stride);
+        x0 = xy0_[0];
+        y0 = xy0_[1];
+        x1 = xy1_[0];
+        y1 = xy1_[1];
+        x2 = xy2_[0];
+        y2 = xy2_[1];
+
+        // Find top-left
+        if (x0 <= x1 && y0 <= y1) {
+            if (x0 <= x2 && y0 <= y2) {
+                A = k0;
+            } else {
+                A = k2;
+            }
+        } else {
+            if (x1 <= x2 && y1 <= y2) {
+                A = k1;
+            } else {
+                A = k2;
+            }
+        }
+
+        // Find bottom-right
+        if (x0 >= x1 && y0 >= y1) {
+            if (x0 >= x2 && y0 >= y2) {
+                B = k0;
+            } else {
+                B = k2;
+            }
+        } else {
+            if (x1 >= x2 && y1 >= y2) {
+                B = k1;
+            } else {
+                B = k2;
+            }
+        }
+
+        // Find C
+        if (k0 != A && k0 != B) {
+            C = k0;
+        } else if (k1 != A && k1 != B) {
+            C = k1;
+        } else {
+            C = k2;
+        }
+
+        // Find C2
+        if (prev[0] != A && prev[0] != B) {
+            C2 = prev[0];
+        } else if (prev[1] != A && prev[1] != B) {
+            C2 = prev[1];
+        } else {
+            C2 = prev[2];
+        }
+
+        xy0_ = (const float *)((const char *)xy + A * xy_stride);
+        xy1_ = (const float *)((const char *)xy + B * xy_stride);
+        xy2_ = (const float *)((const char *)xy + C * xy_stride);
+        x0 = xy0_[0];
+        y0 = xy0_[1];
+        x1 = xy1_[0];
+        y1 = xy1_[1];
+        x2 = xy2_[0];
+        y2 = xy2_[1];
+
+        // Check if triangle A B C is rectangle
+        if ((x0 == x2 && y1 == y2) || (y0 == y2 && x1 == x2)) {
+            // ok
+        } else {
+            is_quad = 0;
+#if DEBUG_SW_RENDER_GEOMETRY
+            is_rectangle = 0;
+#endif
+        }
+
+        xy2_ = (const float *)((const char *)xy + C2 * xy_stride);
+        x2 = xy2_[0];
+        y2 = xy2_[1];
+
+        // Check if triangle A B C2 is rectangle
+        if ((x0 == x2 && y1 == y2) || (y0 == y2 && x1 == x2)) {
+            // ok
+        } else {
+            is_quad = 0;
+#if DEBUG_SW_RENDER_GEOMETRY
+            is_rectangle = 0;
+#endif
+        }
+    }
+
+    quad->A = A;
+    quad->B = B;
+    quad->C = C;
+    quad->C2 = C2;
+#if DEBUG_SW_RENDER_GEOMETRY
+    quad->is_rectangle = is_rectangle;
+#endif
+    return is_quad;
+}
+
+static bool IsSoftwareGeometryQuadUniform(const SDL_SWGeometryQuad *quad, const SDL_FColor *color, int color_stride)
+{
+    const SDL_FColor *col0_ = (const SDL_FColor *)((const char *)color + quad->A * color_stride);
+    const SDL_FColor *col1_ = (const SDL_FColor *)((const char *)color + quad->B * color_stride);
+    const SDL_FColor *col2_ = (const SDL_FColor *)((const char *)color + quad->C * color_stride);
+    const SDL_FColor *col3_ = (const SDL_FColor *)((const char *)color + quad->C2 * color_stride);
+    return SDL_memcmp(col0_, col1_, sizeof(*col0_)) == 0 &&
+           SDL_memcmp(col0_, col2_, sizeof(*col0_)) == 0 &&
+           SDL_memcmp(col0_, col3_, sizeof(*col0_)) == 0;
+}
+
 // For the software renderer, try to reinterpret triangles as SDL_Rect
 static bool SDLCALL SDL_SW_RenderGeometryRaw(SDL_Renderer *renderer,
                                             SDL_Texture *texture,
@@ -4090,15 +4291,11 @@ static bool SDLCALL SDL_SW_RenderGeometryRaw(SDL_Renderer *renderer,
 
     for (i = 0; i < count; i += 3) {
         int k0, k1, k2; // Current triangle indices
-        int is_quad = 1;
+        bool is_quad;
+        SDL_SWGeometryQuad quad;
 #if DEBUG_SW_RENDER_GEOMETRY
         int is_uniform = 1;
-        int is_rectangle = 1;
 #endif
-        int A = -1;  // Top left vertex
-        int B = -1;  // Bottom right vertex
-        int C = -1;  // Third vertex of current triangle
-        int C2 = -1; // Last, vertex of previous triangle
 
         if (size_indices == 4) {
             k0 = ((const Uint32 *)indices)[i];
@@ -4127,141 +4324,22 @@ static bool SDLCALL SDL_SW_RenderGeometryRaw(SDL_Renderer *renderer,
             continue;
         }
 
-        /* Two triangles forming a quadrilateral,
-         * prev and current triangles must have exactly 2 common vertices */
-        {
-            int cnt = 0, j = 3;
-            while (j--) {
-                int p = prev[j];
-                if (p == k0 || p == k1 || p == k2) {
-                    cnt++;
-                }
-            }
-            is_quad = (cnt == 2);
-        }
-
-        // Identify vertices
-        if (is_quad) {
-            const float *xy0_, *xy1_, *xy2_;
-            float x0, x1, x2;
-            float y0, y1, y2;
-            xy0_ = (const float *)((const char *)xy + k0 * xy_stride);
-            xy1_ = (const float *)((const char *)xy + k1 * xy_stride);
-            xy2_ = (const float *)((const char *)xy + k2 * xy_stride);
-            x0 = xy0_[0];
-            y0 = xy0_[1];
-            x1 = xy1_[0];
-            y1 = xy1_[1];
-            x2 = xy2_[0];
-            y2 = xy2_[1];
-
-            // Find top-left
-            if (x0 <= x1 && y0 <= y1) {
-                if (x0 <= x2 && y0 <= y2) {
-                    A = k0;
-                } else {
-                    A = k2;
-                }
-            } else {
-                if (x1 <= x2 && y1 <= y2) {
-                    A = k1;
-                } else {
-                    A = k2;
-                }
-            }
-
-            // Find bottom-right
-            if (x0 >= x1 && y0 >= y1) {
-                if (x0 >= x2 && y0 >= y2) {
-                    B = k0;
-                } else {
-                    B = k2;
-                }
-            } else {
-                if (x1 >= x2 && y1 >= y2) {
-                    B = k1;
-                } else {
-                    B = k2;
-                }
-            }
-
-            // Find C
-            if (k0 != A && k0 != B) {
-                C = k0;
-            } else if (k1 != A && k1 != B) {
-                C = k1;
-            } else {
-                C = k2;
-            }
-
-            // Find C2
-            if (prev[0] != A && prev[0] != B) {
-                C2 = prev[0];
-            } else if (prev[1] != A && prev[1] != B) {
-                C2 = prev[1];
-            } else {
-                C2 = prev[2];
-            }
-
-            xy0_ = (const float *)((const char *)xy + A * xy_stride);
-            xy1_ = (const float *)((const char *)xy + B * xy_stride);
-            xy2_ = (const float *)((const char *)xy + C * xy_stride);
-            x0 = xy0_[0];
-            y0 = xy0_[1];
-            x1 = xy1_[0];
-            y1 = xy1_[1];
-            x2 = xy2_[0];
-            y2 = xy2_[1];
-
-            // Check if triangle A B C is rectangle
-            if ((x0 == x2 && y1 == y2) || (y0 == y2 && x1 == x2)) {
-                // ok
-            } else {
-                is_quad = 0;
-#if DEBUG_SW_RENDER_GEOMETRY
-                is_rectangle = 0;
-#endif
-            }
-
-            xy2_ = (const float *)((const char *)xy + C2 * xy_stride);
-            x2 = xy2_[0];
-            y2 = xy2_[1];
-
-            // Check if triangle A B C2 is rectangle
-            if ((x0 == x2 && y1 == y2) || (y0 == y2 && x1 == x2)) {
-                // ok
-            } else {
-                is_quad = 0;
-#if DEBUG_SW_RENDER_GEOMETRY
-                is_rectangle = 0;
-#endif
-            }
-        }
+        is_quad = FindSoftwareGeometryQuad(prev, k0, k1, k2, xy, xy_stride, &quad);
 
         // Check if uniformly colored
-        if (is_quad) {
-            const SDL_FColor *col0_ = (const SDL_FColor *)((const char *)color + A * color_stride);
-            const SDL_FColor *col1_ = (const SDL_FColor *)((const char *)color + B * color_stride);
-            const SDL_FColor *col2_ = (const SDL_FColor *)((const char *)color + C * color_stride);
-            const SDL_FColor *col3_ = (const SDL_FColor *)((const char *)color + C2 * color_stride);
-            if (SDL_memcmp(col0_, col1_, sizeof(*col0_)) == 0 &&
-                SDL_memcmp(col0_, col2_, sizeof(*col0_)) == 0 &&
-                SDL_memcmp(col0_, col3_, sizeof(*col0_)) == 0) {
-                // ok
-            } else {
-                is_quad = 0;
+        if (is_quad && !IsSoftwareGeometryQuadUniform(&quad, color, color_stride)) {
+            is_quad = 0;
 #if DEBUG_SW_RENDER_GEOMETRY
-                is_uniform = 0;
+            is_uniform = 0;
 #endif
-            }
         }
 
         // Check if UVs within range
         if (is_quad && uv) {
-            const float *uv0_ = (const float *)((const char *)uv + A * color_stride);
-            const float *uv1_ = (const float *)((const char *)uv + B * color_stride);
-            const float *uv2_ = (const float *)((const char *)uv + C * color_stride);
-            const float *uv3_ = (const float *)((const char *)uv + C2 * color_stride);
+            const float *uv0_ = (const float *)((const char *)uv + quad.A * color_stride);
+            const float *uv1_ = (const float *)((const char *)uv + quad.B * color_stride);
+            const float *uv2_ = (const float *)((const char *)uv + quad.C * color_stride);
+            const float *uv3_ = (const float *)((const char *)uv + quad.C2 * color_stride);
             if (uv0_[0] >= 0.0f && uv0_[0] <= 1.0f &&
                 uv1_[0] >= 0.0f && uv1_[0] <= 1.0f &&
                 uv2_[0] >= 0.0f && uv2_[0] <= 1.0f &&
@@ -4279,12 +4357,12 @@ static bool SDLCALL SDL_SW_RenderGeometryRaw(SDL_Renderer *renderer,
             const float *xy0_, *xy1_, *uv0_, *uv1_;
             const SDL_FColor *col0_ = (const SDL_FColor *)((const char *)color + k0 * color_stride);
 
-            xy0_ = (const float *)((const char *)xy + A * xy_stride);
-            xy1_ = (const float *)((const char *)xy + B * xy_stride);
+            xy0_ = (const float *)((const char *)xy + quad.A * xy_stride);
+            xy1_ = (const float *)((const char *)xy + quad.B * xy_stride);
 
             if (texture) {
-                uv0_ = (const float *)((const char *)uv + A * uv_stride);
-                uv1_ = (const float *)((const char *)uv + B * uv_stride);
+                uv0_ = (const float *)((const char *)uv + quad.A * uv_stride);
+                uv1_ = (const float *)((const char *)uv + quad.B * uv_stride);
                 s.x = uv0_[0] * texw;
                 s.y = uv0_[1] * texh;
                 s.w = uv1_[0] * texw - s.x;
@@ -4298,50 +4376,14 @@ static bool SDLCALL SDL_SW_RenderGeometryRaw(SDL_Renderer *renderer,
             d.w = xy1_[0] - d.x;
             d.h = xy1_[1] - d.y;
 
-            // Rect + texture
-            if (texture && s.w != 0 && s.h != 0) {
-                SDL_SetTextureAlphaModFloat(texture, col0_->a);
-                SDL_SetTextureColorModFloat(texture, col0_->r, col0_->g, col0_->b);
-                if (s.w > 0 && s.h > 0) {
-                    SDL_RenderTexture(renderer, texture, &s, &d);
-                } else {
-                    int flags = 0;
-                    if (s.w < 0) {
-                        flags |= SDL_FLIP_HORIZONTAL;
-                        s.w *= -1;
-                        s.x -= s.w;
-                    }
-                    if (s.h < 0) {
-                        flags |= SDL_FLIP_VERTICAL;
-                        s.h *= -1;
-                        s.y -= s.h;
-                    }
-                    SDL_RenderTextureRotated(renderer, texture, &s, &d, 0, NULL, (SDL_FlipMode)flags);
-                }
-
-#if DEBUG_SW_RENDER_GEOMETRY
-                SDL_Log("Rect-COPY: RGB %f %f %f - Alpha:%f - texture=%p: src=(%d,%d, %d x %d) dst (%f, %f, %f x %f)", col0_->r, col0_->g, col0_->b, col0_->a,
-                        (void *)texture, s.x, s.y, s.w, s.h, d.x, d.y, d.w, d.h);
-#endif
-            } else if (d.w != 0.0f && d.h != 0.0f) { // Rect, no texture
-                SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
-                SDL_SetRenderDrawColorFloat(renderer, col0_->r, col0_->g, col0_->b, col0_->a);
-                SDL_RenderFillRect(renderer, &d);
-#if DEBUG_SW_RENDER_GEOMETRY
-                SDL_Log("Rect-FILL: RGB %f %f %f - Alpha:%f - texture=%p: dst (%f, %f, %f x %f)", col0_->r, col0_->g, col0_->b, col0_->a,
-                        (void *)texture, d.x, d.y, d.w, d.h);
-            } else {
-                SDL_Log("Rect-DISMISS: RGB %f %f %f - Alpha:%f - texture=%p: src=(%d,%d, %d x %d) dst (%f, %f, %f x %f)", col0_->r, col0_->g, col0_->b, col0_->a,
-                        (void *)texture, s.x, s.y, s.w, s.h, d.x, d.y, d.w, d.h);
-#endif
-            }
+            RenderSoftwareGeometryQuad(renderer, texture, s, &d, col0_);
 
             prev[0] = -1;
         } else {
             // Render triangles
             if (prev[0] != -1) {
 #if DEBUG_SW_RENDER_GEOMETRY
-                SDL_Log("Triangle %d %d %d - is_uniform:%d is_rectangle:%d", prev[0], prev[1], prev[2], is_uniform, is_rectangle);
+                SDL_Log("Triangle %d %d %d - is_uniform:%d is_rectangle:%d", prev[0], prev[1], prev[2], is_uniform, quad.is_rectangle);
 #endif
                 result = QueueCmdGeometry(renderer, texture,
                                           xy, xy_stride, color, color_stride, uv, uv_stride,
