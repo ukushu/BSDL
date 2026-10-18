@@ -2414,6 +2414,54 @@ static const SDLTest_TestCaseReference surfaceTestConvertIndexedColorKey = {
     surface_testConvertIndexedColorKey, "surface_testConvertIndexedColorKey", "Convert indexed color key without changing source", TEST_ENABLED
 };
 
+static int SDLCALL surface_testConvertMetadata(void *arg)
+{
+    SDL_Surface *source = SDL_CreateSurface(2, 2, SDL_PIXELFORMAT_RGBA32);
+    SDL_Surface *alternate = SDL_CreateSurface(4, 4, SDL_PIXELFORMAT_RGBA32);
+    SDL_Surface *converted = NULL;
+    SDL_Surface **images = NULL;
+    SDL_Rect clip = { 0, 0, 1, 1 };
+    SDL_Rect converted_clip;
+    Uint8 r, g, b, a;
+    int count = 0;
+
+    if (!SDLTest_AssertCheck(source && alternate, "Create source and alternate surfaces: %s", SDL_GetError())) {
+        SDL_DestroySurface(source);
+        SDL_DestroySurface(alternate);
+        return TEST_ABORTED;
+    }
+    SDLTest_AssertCheck(SDL_SetSurfaceColorMod(source, 10, 20, 30), "Set source color modulation");
+    SDLTest_AssertCheck(SDL_SetSurfaceAlphaMod(source, 40), "Set source alpha modulation");
+    SDLTest_AssertCheck(SDL_SetSurfaceClipRect(source, &clip), "Set source clip rect");
+    SDLTest_AssertCheck(SDL_SetNumberProperty(SDL_GetSurfaceProperties(source), "surface-test-metadata", 123), "Set source property");
+    SDLTest_AssertCheck(SDL_AddSurfaceAlternateImage(source, alternate), "Add alternate image");
+
+    converted = SDL_ConvertSurface(source, SDL_PIXELFORMAT_BGRA32);
+    if (SDLTest_AssertCheck(converted != NULL, "Convert surface with metadata: %s", SDL_GetError())) {
+        SDL_GetSurfaceColorMod(converted, &r, &g, &b);
+        SDL_GetSurfaceAlphaMod(converted, &a);
+        SDLTest_AssertCheck(r == 10 && g == 20 && b == 30 && a == 40, "Converted color and alpha modulation");
+        SDL_GetSurfaceClipRect(converted, &converted_clip);
+        SDLTest_AssertCheck(SDL_RectsEqual(&clip, &converted_clip), "Converted clip rect");
+        SDLTest_AssertCheck(SDL_GetNumberProperty(SDL_GetSurfaceProperties(converted), "surface-test-metadata", 0) == 123,
+                            "Converted custom property");
+        images = SDL_GetSurfaceImages(converted, &count);
+        SDLTest_AssertCheck(images && count == 2 && images[1] == alternate, "Converted alternate image");
+        SDL_free(images);
+    }
+    SDL_GetSurfaceColorMod(source, &r, &g, &b);
+    SDL_GetSurfaceAlphaMod(source, &a);
+    SDLTest_AssertCheck(r == 10 && g == 20 && b == 30 && a == 40, "Source modulation is unchanged");
+    SDL_DestroySurface(converted);
+    SDL_DestroySurface(source);
+    SDL_DestroySurface(alternate);
+    return TEST_COMPLETED;
+}
+
+static const SDLTest_TestCaseReference surfaceTestConvertMetadata = {
+    surface_testConvertMetadata, "surface_testConvertMetadata", "Convert surface metadata without changing source", TEST_ENABLED
+};
+
 static const SDLTest_TestCaseReference surfaceTestYUVPlaneOrder = {
     surface_testYUVPlaneOrder, "surface_testYUVPlaneOrder", "Test planar, semiplanar, and packed YUV conversions.", TEST_ENABLED
 };
@@ -2453,6 +2501,7 @@ static const SDLTest_TestCaseReference *surfaceTests[] = {
     &surfaceTestScale,
     &surfaceTest16BitTo32Bit,
     &surfaceTestConvertIndexedColorKey,
+    &surfaceTestConvertMetadata,
     &surfaceTestYUVPlaneOrder,
     NULL
 };

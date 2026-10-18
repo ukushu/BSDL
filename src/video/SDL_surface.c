@@ -1235,6 +1235,146 @@ static bool SDL_ConvertSurfaceColorKey(SDL_Surface *surface, SDL_Surface *conver
     return true;
 }
 
+static bool SDL_CopyConvertedSurfaceMetadata(SDL_Surface *surface, SDL_Surface *convert, Uint32 copy_flags)
+{
+    SDL_SetSurfaceClipRect(convert, &surface->clip_rect);
+
+    /* Enable alpha blending by default if the new surface has an
+     * alpha channel or alpha modulation */
+    if (SDL_ISPIXELFORMAT_ALPHA(convert->format) ||
+        (copy_flags & SDL_COPY_MODULATE_ALPHA)) {
+        SDL_SetSurfaceBlendMode(convert, SDL_BLENDMODE_BLEND);
+    }
+    if (copy_flags & SDL_COPY_RLE_DESIRED) {
+        SDL_SetSurfaceRLE(convert, true);
+    }
+
+    // Copy alternate images
+    for (int i = 0; i < surface->num_images; ++i) {
+        if (!SDL_AddSurfaceAlternateImage(convert, surface->images[i])) {
+            return false;
+        }
+    }
+
+    // Copy properties
+    if (surface->props) {
+        if (!SDL_CopyProperties(surface->props, SDL_GetSurfaceProperties(convert))) {
+            return false;
+        }
+
+        // Make sure the new surface doesn't reference an old SDL2 surface.
+        SDL_ClearProperty(SDL_GetSurfaceProperties(convert), "sdl2-compat.surface2");
+    }
+    return true;
+}
+
+static bool SDL_BlitSurfaceForConversion(SDL_Surface *surface, const SDL_Rect *rect, SDL_Surface *convert, SDL_Palette *palette, SDL_Colorspace colorspace, SDL_PropertiesID props, Uint32 copy_flags)
+{
+    SDL_Color copy_color;
+    SDL_Rect bounds = { 0, 0, rect->w, rect->h };
+    bool result;
+    bool palette_ck_transform = false;
+    Uint8 palette_ck_value = 0;
+    Uint8 *palette_saved_alpha = NULL;
+    int palette_saved_alpha_ncolors = 0;
+
+    copy_color.r = surface->map.info.r;
+    copy_color.g = surface->map.info.g;
+    copy_color.b = surface->map.info.b;
+    copy_color.a = surface->map.info.a;
+    surface->map.info.r = 0xFF;
+    surface->map.info.g = 0xFF;
+    surface->map.info.b = 0xFF;
+    surface->map.info.a = 0xFF;
+    surface->map.info.flags = (copy_flags & (SDL_COPY_RLE_COLORKEY | SDL_COPY_RLE_ALPHAKEY));
+    SDL_InvalidateMap(&surface->map);
+
+    /* Source surface has a palette with no real alpha (0 or OPAQUE).
+     * Destination format has alpha.
+     * -> set alpha channel to be opaque */
+    if (surface->palette && SDL_ISPIXELFORMAT_ALPHA(convert->format)) {
+        bool set_opaque = false;
+
+        bool is_opaque, has_alpha_channel;
+        SDL_DetectPalette(surface->palette, &is_opaque, &has_alpha_channel);
+
+        if (is_opaque) {
+            if (!has_alpha_channel) {
+                set_opaque = true;
+            }
+        }
+
+        // Set opaque and backup palette alpha values
+        if (set_opaque) {
+            int i;
+            palette_saved_alpha_ncolors = surface->palette->ncolors;
+            if (palette_saved_alpha_ncolors > 0) {
+                palette_saved_alpha = SDL_stack_alloc(Uint8, palette_saved_alpha_ncolors);
+                for (i = 0; i < palette_saved_alpha_ncolors; i++) {
+                    palette_saved_alpha[i] = surface->palette->colors[i].a;
+                    surface->palette->colors[i].a = SDL_ALPHA_OPAQUE;
+                }
+            }
+        }
+    }
+
+    // Transform colorkey to alpha. for cases where source palette has duplicate values, and colorkey is one of them
+    if (copy_flags & SDL_COPY_COLORKEY) {
+        if (surface->palette && !palette) {
+            palette_ck_transform = true;
+            palette_ck_value = surface->palette->colors[surface->map.info.colorkey].a;
+            surface->palette->colors[surface->map.info.colorkey].a = SDL_ALPHA_TRANSPARENT;
+        }
+    }
+
+    if (surface->pixels || SDL_MUSTLOCK(surface)) {
+        result = SDL_BlitSurfaceUnchecked(surface, rect, convert, &bounds);
+    } else {
+        result = true;
+    }
+
+    // Restore colorkey alpha value
+    if (palette_ck_transform) {
+        surface->palette->colors[surface->map.info.colorkey].a = palette_ck_value;
+    }
+
+    // Restore palette alpha values
+    if (palette_saved_alpha) {
+        int i;
+        for (i = 0; i < palette_saved_alpha_ncolors; i++) {
+            surface->palette->colors[i].a = palette_saved_alpha[i];
+        }
+        SDL_stack_free(palette_saved_alpha);
+    }
+
+    // Clean up the original surface, and update converted surface
+    convert->map.info.r = copy_color.r;
+    convert->map.info.g = copy_color.g;
+    convert->map.info.b = copy_color.b;
+    convert->map.info.a = copy_color.a;
+    convert->map.info.flags =
+        (copy_flags &
+         ~(SDL_COPY_COLORKEY | SDL_COPY_BLEND | SDL_COPY_RLE_DESIRED | SDL_COPY_RLE_COLORKEY |
+           SDL_COPY_RLE_ALPHAKEY));
+    surface->map.info.r = copy_color.r;
+    surface->map.info.g = copy_color.g;
+    surface->map.info.b = copy_color.b;
+    surface->map.info.a = copy_color.a;
+    surface->map.info.flags = copy_flags;
+    SDL_InvalidateMap(&surface->map);
+
+    if (!result) {
+        return false;
+    }
+
+    if (copy_flags & SDL_COPY_COLORKEY) {
+        if (!SDL_ConvertSurfaceColorKey(surface, convert, palette, colorspace, props)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 static SDL_Surface *SDL_ConvertSurfaceRectAndColorspace(SDL_Surface *surface, const SDL_Rect *rect, SDL_PixelFormat format, SDL_Palette *palette, SDL_Colorspace colorspace, SDL_PropertiesID props)
 {
     SDL_Palette *temp_palette = NULL;
@@ -1242,13 +1382,7 @@ static SDL_Surface *SDL_ConvertSurfaceRectAndColorspace(SDL_Surface *surface, co
     SDL_Colorspace src_colorspace;
     SDL_PropertiesID src_properties;
     Uint32 copy_flags;
-    SDL_Color copy_color;
     SDL_Rect bounds;
-    bool result;
-    bool palette_ck_transform = false;
-    Uint8 palette_ck_value = 0;
-    Uint8 *palette_saved_alpha = NULL;
-    int palette_saved_alpha_ncolors = 0;
 
     CHECK_PARAM(!SDL_SurfaceValid(surface)) {
         SDL_InvalidParamError("surface");
@@ -1338,100 +1472,8 @@ static SDL_Surface *SDL_ConvertSurfaceRectAndColorspace(SDL_Surface *surface, co
 
     // Save the original copy flags
     copy_flags = surface->map.info.flags;
-    copy_color.r = surface->map.info.r;
-    copy_color.g = surface->map.info.g;
-    copy_color.b = surface->map.info.b;
-    copy_color.a = surface->map.info.a;
-    surface->map.info.r = 0xFF;
-    surface->map.info.g = 0xFF;
-    surface->map.info.b = 0xFF;
-    surface->map.info.a = 0xFF;
-    surface->map.info.flags = (copy_flags & (SDL_COPY_RLE_COLORKEY | SDL_COPY_RLE_ALPHAKEY));
-    SDL_InvalidateMap(&surface->map);
-
-    /* Source surface has a palette with no real alpha (0 or OPAQUE).
-     * Destination format has alpha.
-     * -> set alpha channel to be opaque */
-    if (surface->palette && SDL_ISPIXELFORMAT_ALPHA(format)) {
-        bool set_opaque = false;
-
-        bool is_opaque, has_alpha_channel;
-        SDL_DetectPalette(surface->palette, &is_opaque, &has_alpha_channel);
-
-        if (is_opaque) {
-            if (!has_alpha_channel) {
-                set_opaque = true;
-            }
-        }
-
-        // Set opaque and backup palette alpha values
-        if (set_opaque) {
-            int i;
-            palette_saved_alpha_ncolors = surface->palette->ncolors;
-            if (palette_saved_alpha_ncolors > 0) {
-                palette_saved_alpha = SDL_stack_alloc(Uint8, palette_saved_alpha_ncolors);
-                for (i = 0; i < palette_saved_alpha_ncolors; i++) {
-                    palette_saved_alpha[i] = surface->palette->colors[i].a;
-                    surface->palette->colors[i].a = SDL_ALPHA_OPAQUE;
-                }
-            }
-        }
-    }
-
-    // Transform colorkey to alpha. for cases where source palette has duplicate values, and colorkey is one of them
-    if (copy_flags & SDL_COPY_COLORKEY) {
-        if (surface->palette && !palette) {
-            palette_ck_transform = true;
-            palette_ck_value = surface->palette->colors[surface->map.info.colorkey].a;
-            surface->palette->colors[surface->map.info.colorkey].a = SDL_ALPHA_TRANSPARENT;
-        }
-    }
-
-    if (surface->pixels || SDL_MUSTLOCK(surface)) {
-        result = SDL_BlitSurfaceUnchecked(surface, rect, convert, &bounds);
-    } else {
-        result = true;
-    }
-
-    // Restore colorkey alpha value
-    if (palette_ck_transform) {
-        surface->palette->colors[surface->map.info.colorkey].a = palette_ck_value;
-    }
-
-    // Restore palette alpha values
-    if (palette_saved_alpha) {
-        int i;
-        for (i = 0; i < palette_saved_alpha_ncolors; i++) {
-            surface->palette->colors[i].a = palette_saved_alpha[i];
-        }
-        SDL_stack_free(palette_saved_alpha);
-    }
-
-    // Clean up the original surface, and update converted surface
-    convert->map.info.r = copy_color.r;
-    convert->map.info.g = copy_color.g;
-    convert->map.info.b = copy_color.b;
-    convert->map.info.a = copy_color.a;
-    convert->map.info.flags =
-        (copy_flags &
-         ~(SDL_COPY_COLORKEY | SDL_COPY_BLEND | SDL_COPY_RLE_DESIRED | SDL_COPY_RLE_COLORKEY |
-           SDL_COPY_RLE_ALPHAKEY));
-    surface->map.info.r = copy_color.r;
-    surface->map.info.g = copy_color.g;
-    surface->map.info.b = copy_color.b;
-    surface->map.info.a = copy_color.a;
-    surface->map.info.flags = copy_flags;
-    SDL_InvalidateMap(&surface->map);
-
-    // SDL_BlitSurfaceUnchecked failed, and so the conversion
-    if (!result) {
+    if (!SDL_BlitSurfaceForConversion(surface, rect, convert, palette, colorspace, props, copy_flags)) {
         goto error;
-    }
-
-    if (copy_flags & SDL_COPY_COLORKEY) {
-        if (!SDL_ConvertSurfaceColorKey(surface, convert, palette, colorspace, props)) {
-            goto error;
-        }
     }
 
 end:
@@ -1439,33 +1481,8 @@ end:
         SDL_DestroyPalette(temp_palette);
     }
 
-    SDL_SetSurfaceClipRect(convert, &surface->clip_rect);
-
-    /* Enable alpha blending by default if the new surface has an
-     * alpha channel or alpha modulation */
-    if (SDL_ISPIXELFORMAT_ALPHA(format) ||
-        (copy_flags & SDL_COPY_MODULATE_ALPHA)) {
-        SDL_SetSurfaceBlendMode(convert, SDL_BLENDMODE_BLEND);
-    }
-    if (copy_flags & SDL_COPY_RLE_DESIRED) {
-        SDL_SetSurfaceRLE(convert, true);
-    }
-
-    // Copy alternate images
-    for (int i = 0; i < surface->num_images; ++i) {
-        if (!SDL_AddSurfaceAlternateImage(convert, surface->images[i])) {
-            goto error;
-        }
-    }
-
-    // Copy properties
-    if (surface->props) {
-        if (!SDL_CopyProperties(surface->props, SDL_GetSurfaceProperties(convert))) {
-            goto error;
-        }
-
-        // Make sure the new surface doesn't reference an old SDL2 surface.
-        SDL_ClearProperty(SDL_GetSurfaceProperties(convert), "sdl2-compat.surface2");
+    if (!SDL_CopyConvertedSurfaceMetadata(surface, convert, copy_flags)) {
+        goto error;
     }
 
     // We're ready to go!
