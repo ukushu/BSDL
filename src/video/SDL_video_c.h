@@ -57,7 +57,14 @@ extern bool SDL_InitVideo(const char *driver_name);
  */
 extern void SDL_QuitVideo(void);
 
+extern void SDL_FinalizeDisplayMode(SDL_DisplayMode *mode);
+extern const SDL_DisplayMode *SDL_GetFullscreenModeMatch(const SDL_DisplayMode *mode);
+
+extern bool SDL_CreateWindowTexture(struct SDL_VideoDevice *_this, SDL_Window *window, SDL_PixelFormat *format, void **pixels, int *pitch);
 extern bool SDL_SetWindowTextureVSync(struct SDL_VideoDevice *_this, SDL_Window *window, int vsync);
+extern bool SDL_GetWindowTextureVSync(struct SDL_VideoDevice *_this, SDL_Window *window, int *vsync);
+extern bool SDL_UpdateWindowTexture(struct SDL_VideoDevice *_this, SDL_Window *window, const SDL_Rect *rects, int numrects);
+extern void SDL_DestroyWindowTexture(struct SDL_VideoDevice *_this, SDL_Window *window);
 
 #if defined(SDL_VIDEO_DRIVER_X11) || defined(SDL_VIDEO_DRIVER_WAYLAND) || defined(SDL_VIDEO_DRIVER_EMSCRIPTEN)
 const char *SDL_GetCSSCursorName(SDL_SystemCursor id, const char **fallback_name);

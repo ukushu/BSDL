@@ -914,7 +914,12 @@
     <ClCompile Include="..\..\src\video\SDL_stretch.c" />
     <ClCompile Include="..\..\src\video\SDL_surface.c" />
     <ClCompile Include="..\..\src\video\SDL_video.c" />
+    <ClCompile Include="..\..\src\video\SDL_video_displays.c" />
+    <ClCompile Include="..\..\src\video\SDL_video_gl.c" />
+    <ClCompile Include="..\..\src\video\SDL_video_modes.c" />
     <ClCompile Include="..\..\src\video\SDL_video_textinput.c" />
+    <ClCompile Include="..\..\src\video\SDL_video_windowtexture.c" />
+    <ClCompile Include="..\..\src\video\SDL_video_vulkan.c" />
     <ClCompile Include="..\..\src\video\SDL_video_unsupported.c" />
     <ClCompile Include="..\..\src\video\SDL_vulkan_utils.c" />
     <ClCompile Include="..\..\src\video\SDL_yuv.c" />

@@ -668,8 +668,82 @@ static int SDLCALL joystick_openReuse(void *arg)
     return TEST_COMPLETED;
 }
 
+typedef struct JoystickRumbleCalls
+{
+    int body_count;
+    int trigger_count;
+    Uint16 body_low, body_high;
+    Uint16 trigger_left, trigger_right;
+} JoystickRumbleCalls;
+
+static bool SDLCALL joystick_onRumble(void *userdata, Uint16 low, Uint16 high)
+{
+    JoystickRumbleCalls *calls = (JoystickRumbleCalls *)userdata;
+    ++calls->body_count;
+    calls->body_low = low;
+    calls->body_high = high;
+    return true;
+}
+
+static bool SDLCALL joystick_onRumbleTriggers(void *userdata, Uint16 left, Uint16 right)
+{
+    JoystickRumbleCalls *calls = (JoystickRumbleCalls *)userdata;
+    ++calls->trigger_count;
+    calls->trigger_left = left;
+    calls->trigger_right = right;
+    return true;
+}
+
+static int SDLCALL joystick_rumbleExpiration(void *arg)
+{
+    SDL_VirtualJoystickDesc desc;
+    JoystickRumbleCalls calls = { 0 };
+    SDL_JoystickID id;
+    SDL_Joystick *joystick;
+
+    SDL_INIT_INTERFACE(&desc);
+    desc.type = SDL_JOYSTICK_TYPE_GAMEPAD;
+    desc.userdata = &calls;
+    desc.Rumble = joystick_onRumble;
+    desc.RumbleTriggers = joystick_onRumbleTriggers;
+    id = SDL_AttachVirtualJoystick(&desc);
+    if (!SDLTest_AssertCheck(id > 0, "Attach rumble joystick: %s", SDL_GetError())) {
+        return TEST_ABORTED;
+    }
+    joystick = SDL_OpenJoystick(id);
+    if (!SDLTest_AssertCheck(joystick != NULL, "Open rumble joystick: %s", SDL_GetError())) {
+        SDL_DetachVirtualJoystick(id);
+        return TEST_ABORTED;
+    }
+
+    SDLTest_AssertCheck(SDL_RumbleJoystick(joystick, 100, 200, 1), "Start body rumble: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_RumbleJoystickTriggers(joystick, 300, 400, 1), "Start trigger rumble: %s", SDL_GetError());
+    SDLTest_AssertCheck(calls.body_count == 1 && calls.body_low == 100 && calls.body_high == 200,
+                        "Body callback receives initial rumble values");
+    SDLTest_AssertCheck(calls.trigger_count == 1 && calls.trigger_left == 300 && calls.trigger_right == 400,
+                        "Trigger callback receives initial rumble values");
+
+    SDL_Delay(20);
+    SDL_UpdateJoysticks();
+    SDLTest_AssertCheck(calls.body_count == 2 && calls.body_low == 0 && calls.body_high == 0,
+                        "Expired body rumble sends one stop callback");
+    SDLTest_AssertCheck(calls.trigger_count == 2 && calls.trigger_left == 0 && calls.trigger_right == 0,
+                        "Expired trigger rumble sends one stop callback");
+    SDL_UpdateJoysticks();
+    SDLTest_AssertCheck(calls.body_count == 2 && calls.trigger_count == 2,
+                        "Stopped rumble is not sent again");
+
+    SDL_CloseJoystick(joystick);
+    SDLTest_AssertCheck(SDL_DetachVirtualJoystick(id), "Detach rumble joystick: %s", SDL_GetError());
+    return TEST_COMPLETED;
+}
+
 static const SDLTest_TestCaseReference joystickTestOpenReuse = {
     joystick_openReuse, "joystick_openReuse", "Opening a joystick twice preserves its input state until both closes", TEST_ENABLED
+};
+
+static const SDLTest_TestCaseReference joystickTestRumbleExpiration = {
+    joystick_rumbleExpiration, "joystick_rumbleExpiration", "Virtual joystick rumble stops once after its duration expires", TEST_ENABLED
 };
 
 /* Joystick routine test cases */
@@ -708,6 +782,7 @@ static const SDLTest_TestCaseReference joystickTest3 = {
 static const SDLTest_TestCaseReference *joystickTests[] = {
     &joystickTest1,
     &joystickTestOpenReuse,
+    &joystickTestRumbleExpiration,
     &joystickTestInitialState,
     &joystickTestVirtualGUIDFields,
     &joystickTestTypeClassification,

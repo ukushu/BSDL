@@ -3,6 +3,7 @@
  */
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_test.h>
+#include <SDL3/SDL_vulkan.h>
 #include "testautomation_suites.h"
 
 /* Private helpers */
@@ -478,6 +479,85 @@ static int SDLCALL video_getFullscreenDisplayModes(void *arg)
 
     return TEST_COMPLETED;
 }
+
+static int SDLCALL video_displayModeOrderingAndMatch(void *arg)
+{
+    int display_count = 0;
+    SDL_DisplayID *displays = SDL_GetDisplays(&display_count);
+
+    if (!SDLTest_AssertCheck(displays != NULL && display_count > 0, "Enumerate displays: %s", SDL_GetError())) {
+        SDL_free(displays);
+        return TEST_ABORTED;
+    }
+
+    for (int d = 0; d < display_count; ++d) {
+        int mode_count = 0;
+        SDL_DisplayMode **modes = SDL_GetFullscreenDisplayModes(displays[d], &mode_count);
+        if (!SDLTest_AssertCheck(modes != NULL, "Enumerate modes for display %" SDL_PRIu32 ": %s", displays[d], SDL_GetError())) {
+            SDL_free(displays);
+            return TEST_ABORTED;
+        }
+
+        for (int i = 0; i < mode_count; ++i) {
+            SDL_DisplayMode closest;
+            SDLTest_AssertCheck(modes[i]->displayID == displays[d] && modes[i]->pixel_density > 0.0f,
+                                "Mode %d belongs to its display and has positive density", i);
+            if (i > 0) {
+                SDLTest_AssertCheck(modes[i - 1]->w > modes[i]->w ||
+                                    (modes[i - 1]->w == modes[i]->w && modes[i - 1]->h >= modes[i]->h),
+                                    "Modes %d and %d are ordered by size", i - 1, i);
+            }
+            if (SDLTest_AssertCheck(SDL_GetClosestFullscreenDisplayMode(displays[d], modes[i]->w, modes[i]->h,
+                                                                        modes[i]->refresh_rate, true, &closest),
+                                    "Find a mode for listed size %dx%d", modes[i]->w, modes[i]->h)) {
+                SDLTest_AssertCheck(closest.displayID == displays[d] && closest.w == modes[i]->w && closest.h == modes[i]->h,
+                                    "Exact listed size maps to the same display and dimensions");
+            }
+        }
+        SDL_free(modes);
+    }
+    SDL_free(displays);
+    return TEST_COMPLETED;
+}
+
+static const SDLTest_TestCaseReference videoTestDisplayModeOrderingAndMatch = {
+    video_displayModeOrderingAndMatch, "video_displayModeOrderingAndMatch", "Check sorted display modes and exact size matching", TEST_ENABLED
+};
+
+static int SDLCALL video_displayRegistry(void *arg)
+{
+    int count = 0;
+    SDL_DisplayID *displays = SDL_GetDisplays(&count);
+
+    if (!SDLTest_AssertCheck(displays != NULL && count > 0, "Enumerate video displays: %s", SDL_GetError())) {
+        SDL_free(displays);
+        return TEST_ABORTED;
+    }
+
+    SDLTest_AssertCheck(SDL_GetPrimaryDisplay() == displays[0], "Primary display is first in the display list");
+    SDLTest_AssertCheck(displays[count] == 0, "Display list ends with a zero ID");
+
+    for (int i = 0; i < count; ++i) {
+        SDL_Rect bounds;
+        const char *name = SDL_GetDisplayName(displays[i]);
+        SDLTest_AssertCheck(name != NULL && *name != '\0', "Display %d has a name", i);
+        SDLTest_AssertCheck(SDL_GetDisplayProperties(displays[i]) != 0, "Display %d has properties", i);
+        if (SDLTest_AssertCheck(SDL_GetDisplayBounds(displays[i], &bounds), "Get display %d bounds: %s", i, SDL_GetError())) {
+            SDLTest_AssertCheck(bounds.w > 0 && bounds.h > 0, "Display %d has positive bounds", i);
+        }
+        SDLTest_AssertCheck(SDL_GetDisplayContentScale(displays[i]) > 0.0f, "Display %d has positive content scale", i);
+    }
+
+    SDL_ClearError();
+    SDLTest_AssertCheck(SDL_GetDisplayName(0) == NULL && *SDL_GetError() != '\0',
+                        "Invalid display lookup fails with an error");
+    SDL_free(displays);
+    return TEST_COMPLETED;
+}
+
+static const SDLTest_TestCaseReference videoTestDisplayRegistry = {
+    video_displayRegistry, "video_displayRegistry", "Check display registry queries and invalid display error", TEST_ENABLED
+};
 
 /**
  * Tests the functionality of the SDL_GetClosestFullscreenDisplayMode function against current resolution
@@ -2654,6 +2734,13 @@ static int SDLCALL video_getWindowSurface(void *arg)
     SDLTest_AssertPass("Call to SDL_UpdateWindowSurface(window)");
     SDLTest_AssertCheck(result == true, "Verify return value; expected: true, got: %d", result);
 
+    if (surface) {
+        SDL_Rect dirty = { 4, 5, 12, 10 };
+        SDLTest_AssertCheck(SDL_FillSurfaceRect(surface, &dirty, 0), "Fill a dirty surface rectangle: %s", SDL_GetError());
+        SDLTest_AssertCheck(SDL_UpdateWindowSurfaceRects(window, &dirty, 1), "Present a dirty surface rectangle: %s", SDL_GetError());
+        SDLTest_AssertCheck(SDL_GetWindowSurface(window) == surface, "Partial update preserves the surface");
+    }
+
     /* We shouldn't be able to create a renderer on a window with a surface */
     renderer = SDL_CreateRenderer(window, renderer_name);
     SDLTest_AssertPass("Call to SDL_CreateRenderer(window, %s)", renderer_name);
@@ -2663,6 +2750,7 @@ static int SDLCALL video_getWindowSurface(void *arg)
     SDLTest_AssertPass("Call to SDL_DestroyWindowSurface(window)");
     SDLTest_AssertCheck(result == true, "Verify return value; expected: true, got: %d", result);
     SDLTest_AssertCheck(!SDL_WindowHasSurface(window), "Validate that window does not have a surface");
+    SDLTest_AssertCheck(!SDL_UpdateWindowSurface(window), "Updating a destroyed window surface fails");
 
     /* We should be able to create a renderer on the window now */
     renderer = SDL_CreateRenderer(window, renderer_name);
@@ -2823,6 +2911,75 @@ static const SDLTest_TestCaseReference videoTestGetWindowSurface = {
 };
 static const SDLTest_TestCaseReference videoTestRaiseWindow = {
     video_raiseWindow, "video_raiseWindow", "Checks window focus", TEST_ENABLED
+};
+
+static int SDLCALL video_glContextLifecycle(void *arg)
+{
+    SDL_Window *gl_window;
+    SDL_GLContext context;
+    int red_size = 0;
+
+    if (!SDL_GL_LoadLibrary(NULL)) {
+        SDLTest_Log("OpenGL loader unavailable: %s", SDL_GetError());
+        return TEST_SKIPPED;
+    }
+
+    SDLTest_AssertCheck(SDL_GL_GetProcAddress("glGetString") != NULL, "Loaded OpenGL library exposes glGetString");
+    gl_window = SDL_CreateWindow("GL context lifecycle", 32, 32, SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN);
+    if (!SDLTest_AssertCheck(gl_window != NULL, "Create OpenGL window: %s", SDL_GetError())) {
+        SDL_GL_UnloadLibrary();
+        return TEST_ABORTED;
+    }
+    context = SDL_GL_CreateContext(gl_window);
+    if (!SDLTest_AssertCheck(context != NULL, "Create OpenGL context: %s", SDL_GetError())) {
+        SDL_DestroyWindow(gl_window);
+        SDL_GL_UnloadLibrary();
+        return TEST_ABORTED;
+    }
+
+    SDLTest_AssertCheck(SDL_GL_GetCurrentWindow() == gl_window, "New context makes its window current");
+    SDLTest_AssertCheck(SDL_GL_GetCurrentContext() == context, "New context becomes current");
+    SDLTest_AssertCheck(SDL_GL_GetAttribute(SDL_GL_RED_SIZE, &red_size) && red_size > 0,
+                        "Current context reports a red channel: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_GL_MakeCurrent(NULL, NULL), "Clear current OpenGL context: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_GL_GetCurrentContext() == NULL, "Current context is cleared");
+    SDLTest_AssertCheck(SDL_GL_MakeCurrent(gl_window, context), "Restore current OpenGL context: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_GL_DestroyContext(context), "Destroy OpenGL context: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_GL_GetCurrentContext() == NULL, "Destroyed context is no longer current");
+
+    SDL_DestroyWindow(gl_window);
+    SDL_GL_UnloadLibrary();
+    return TEST_COMPLETED;
+}
+
+static const SDLTest_TestCaseReference videoTestGLContextLifecycle = {
+    video_glContextLifecycle, "video_glContextLifecycle", "Checks OpenGL context lifecycle", TEST_ENABLED
+};
+
+static int SDLCALL video_vulkanLoaderReferences(void *arg)
+{
+    SDL_FunctionPointer proc;
+
+    if (!SDL_Vulkan_LoadLibrary(NULL)) {
+        SDLTest_Log("Vulkan loader unavailable: %s", SDL_GetError());
+        return TEST_SKIPPED;
+    }
+
+    proc = SDL_Vulkan_GetVkGetInstanceProcAddr();
+    SDLTest_AssertCheck(proc != NULL, "Loaded Vulkan library exposes vkGetInstanceProcAddr");
+    SDLTest_AssertCheck(SDL_Vulkan_LoadLibrary(NULL), "Second Vulkan loader reference succeeds: %s", SDL_GetError());
+    SDL_ClearError();
+    SDLTest_AssertCheck(!SDL_Vulkan_LoadLibrary("/nonexistent/SDL-vulkan-loader"), "Different loader path is rejected while loaded");
+    SDLTest_AssertCheck(SDL_GetError()[0] != '\0', "Different loader path sets an error");
+    SDL_Vulkan_UnloadLibrary();
+    SDLTest_AssertCheck(SDL_Vulkan_GetVkGetInstanceProcAddr() == proc,
+                        "One unload leaves the second loader reference active");
+    SDL_Vulkan_UnloadLibrary();
+    return TEST_COMPLETED;
+}
+
+static const SDLTest_TestCaseReference videoTestVulkanLoaderReferences = {
+    video_vulkanLoaderReferences, "video_vulkanLoaderReferences", "Checks Vulkan loader references and path validation", TEST_ENABLED
 };
 
 static int SDLCALL video_gpuDriverEnumeration(void *arg)
@@ -2998,6 +3155,8 @@ static const SDLTest_TestCaseReference *videoTests[] = {
     &videoTestFullscreenEnterLeave,
     &videoTestGetWindowFlags,
     &videoTestGetFullscreenDisplayModes,
+    &videoTestDisplayModeOrderingAndMatch,
+    &videoTestDisplayRegistry,
     &videoTestGetClosestDisplayModeCurrentResolution,
     &videoTestGetClosestDisplayModeRandomResolution,
     &videoTestGetWindowDisplayMode,
@@ -3016,6 +3175,8 @@ static const SDLTest_TestCaseReference *videoTests[] = {
     &videoTestCreateMaximized,
     &videoTestGetWindowSurface,
     &videoTestRaiseWindow,
+    &videoTestGLContextLifecycle,
+    &videoTestVulkanLoaderReferences,
     &videoTestGPUDriverEnumeration,
     &videoTestGPUDeviceLifecycle,
     &videoTestGPUBufferCopyPass,

@@ -2403,10 +2403,40 @@ static void SendSteamHandleUpdateEvents(void)
     }
 }
 
+static void SDL_UpdateJoystickRumble(SDL_Joystick *joystick)
+{
+    Uint64 now = SDL_GetTicks();
+
+    if (joystick->rumble_expiration && now >= joystick->rumble_expiration) {
+        SDL_RumbleJoystick(joystick, 0, 0, 0);
+        joystick->rumble_resend = 0;
+    }
+
+    if (joystick->rumble_resend && now >= joystick->rumble_resend) {
+        joystick->driver->Rumble(joystick, joystick->low_frequency_rumble, joystick->high_frequency_rumble);
+        joystick->rumble_resend = now + SDL_RUMBLE_RESEND_MS;
+        if (joystick->rumble_resend == 0) {
+            joystick->rumble_resend = 1;
+        }
+    }
+
+    if (joystick->trigger_rumble_expiration && now >= joystick->trigger_rumble_expiration) {
+        SDL_RumbleJoystickTriggers(joystick, 0, 0, 0);
+        joystick->trigger_rumble_resend = 0;
+    }
+
+    if (joystick->trigger_rumble_resend && now >= joystick->trigger_rumble_resend) {
+        joystick->driver->RumbleTriggers(joystick, joystick->left_trigger_rumble, joystick->right_trigger_rumble);
+        joystick->trigger_rumble_resend = now + SDL_RUMBLE_RESEND_MS;
+        if (joystick->trigger_rumble_resend == 0) {
+            joystick->trigger_rumble_resend = 1;
+        }
+    }
+}
+
 void SDL_UpdateJoysticks(void)
 {
     int i;
-    Uint64 now;
     SDL_Joystick *joystick;
 
     if (!SDL_joysticks_initialized) {
@@ -2435,32 +2465,7 @@ void SDL_UpdateJoysticks(void)
             SDL_GamepadHandleDelayedGuideButton(joystick);
         }
 
-        now = SDL_GetTicks();
-        if (joystick->rumble_expiration && now >= joystick->rumble_expiration) {
-            SDL_RumbleJoystick(joystick, 0, 0, 0);
-            joystick->rumble_resend = 0;
-        }
-
-        if (joystick->rumble_resend && now >= joystick->rumble_resend) {
-            joystick->driver->Rumble(joystick, joystick->low_frequency_rumble, joystick->high_frequency_rumble);
-            joystick->rumble_resend = now + SDL_RUMBLE_RESEND_MS;
-            if (joystick->rumble_resend == 0) {
-                joystick->rumble_resend = 1;
-            }
-        }
-
-        if (joystick->trigger_rumble_expiration && now >= joystick->trigger_rumble_expiration) {
-            SDL_RumbleJoystickTriggers(joystick, 0, 0, 0);
-            joystick->trigger_rumble_resend = 0;
-        }
-
-        if (joystick->trigger_rumble_resend && now >= joystick->trigger_rumble_resend) {
-            joystick->driver->RumbleTriggers(joystick, joystick->left_trigger_rumble, joystick->right_trigger_rumble);
-            joystick->trigger_rumble_resend = now + SDL_RUMBLE_RESEND_MS;
-            if (joystick->trigger_rumble_resend == 0) {
-                joystick->trigger_rumble_resend = 1;
-            }
-        }
+        SDL_UpdateJoystickRumble(joystick);
     }
 
     if (SDL_EventEnabled(SDL_EVENT_JOYSTICK_UPDATE_COMPLETE)) {

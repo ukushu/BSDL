@@ -3103,6 +3103,42 @@ static const SDLTest_TestCaseReference renderTestGeometryRawIndexWidths = {
     render_testGeometryRawIndexWidths, "render_testGeometryRawIndexWidths", "Checks geometry index widths and bounds", TEST_ENABLED
 };
 
+static int SDLCALL render_testFillRectsGeometryFallback(void *arg)
+{
+    const SDL_FRect rects[] = { { 2.0f, 2.0f, 4.0f, 4.0f }, { 10.0f, 5.0f, 3.0f, 2.0f } };
+    const SDL_Point samples[] = { { 3, 3 }, { 11, 6 }, { 0, 0 }, { 8, 8 } };
+    SDL_Surface *surface;
+
+    if (!renderer || SDL_strcmp(SDL_GetRendererName(renderer), SDL_SOFTWARE_RENDERER) == 0) {
+        return TEST_SKIPPED;
+    }
+
+    SDLTest_AssertCheck(SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255), "Set fill background");
+    SDLTest_AssertCheck(SDL_RenderClear(renderer), "Clear fill background");
+    SDLTest_AssertCheck(SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255), "Set fill color");
+    SDLTest_AssertCheck(SDL_RenderFillRects(renderer, rects, SDL_arraysize(rects)), "Fill two rectangles: %s", SDL_GetError());
+
+    surface = SDL_RenderReadPixels(renderer, NULL);
+    if (!SDLTest_AssertCheck(surface != NULL, "Read filled rectangles: %s", SDL_GetError())) {
+        return TEST_ABORTED;
+    }
+    for (int i = 0; i < SDL_arraysize(samples); ++i) {
+        Uint8 r = 0, g = 0, b = 0, a = 0;
+        if (SDLTest_AssertCheck(SDL_ReadSurfacePixel(surface, samples[i].x, samples[i].y, &r, &g, &b, &a),
+                                "Read fill sample %d: %s", i, SDL_GetError())) {
+            const Uint8 expected = i < 2 ? 255 : 0;
+            SDLTest_AssertCheck(r == expected && g == expected && b == expected && a == 255,
+                                "Fill sample %d has expected color", i);
+        }
+    }
+    SDL_DestroySurface(surface);
+    return TEST_COMPLETED;
+}
+
+static const SDLTest_TestCaseReference renderTestFillRectsGeometryFallback = {
+    render_testFillRectsGeometryFallback, "render_testFillRectsGeometryFallback", "Checks rectangle geometry fallback pixels", TEST_ENABLED
+};
+
 static const SDLTest_TestCaseReference renderTestSoftwareTexturePalette = {
     render_testSoftwareTexturePalette, "render_testSoftwareTexturePalette", "Tests queued draws across a texture palette change", TEST_ENABLED
 };
@@ -3153,6 +3189,7 @@ static const SDLTest_TestCaseReference *renderTests[] = {
     &renderTestSoftwareTextureFallback,
     &renderTestSoftwareGeometryQuads,
     &renderTestGeometryRawIndexWidths,
+    &renderTestFillRectsGeometryFallback,
     &renderTestSoftwareTexturePalette,
     &renderTestDebugText,
     &renderTestSoftwareTextureLock,
