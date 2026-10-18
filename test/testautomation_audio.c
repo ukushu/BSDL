@@ -1666,7 +1666,170 @@ static int SDLCALL audio_reopenPhysicalDeviceWithHigherSpec(void *arg)
 
 /* ================= Test Case References ================== */
 
+static int SDLCALL audio_loadWAVStructure(void *arg)
+{
+    static const Uint8 wav[] = {
+        'R', 'I', 'F', 'F', 38, 0, 0, 0, 'W', 'A', 'V', 'E',
+        'f', 'm', 't', ' ', 16, 0, 0, 0,
+        1, 0, 1, 0, 0x40, 0x1f, 0, 0, 0x40, 0x1f, 0, 0,
+        1, 0, 8, 0, 'd', 'a', 't', 'a', 2, 0, 0, 0, 0x80, 0xff
+    };
+    Uint8 invalid[sizeof(wav)];
+    SDL_AudioSpec spec;
+    Uint8 *audio = NULL;
+    Uint32 length = 0;
+    bool result;
+
+    result = SDL_LoadWAV_IO(SDL_IOFromConstMem(wav, sizeof(wav)), true, &spec, &audio, &length);
+    SDLTest_AssertCheck(result, "Load in-memory PCM WAVE: %s", SDL_GetError());
+    SDLTest_AssertCheck(spec.freq == 8000 && spec.channels == 1 && spec.format == SDL_AUDIO_U8,
+                        "WAVE format matches 8-bit mono PCM at 8000 Hz");
+    SDLTest_AssertCheck(length == 2 && audio && audio[0] == 0x80 && audio[1] == 0xff,
+                        "WAVE samples are preserved");
+    SDL_free(audio);
+
+    SDL_memcpy(invalid, wav, sizeof(wav));
+    SDL_memcpy(invalid + 8, "NOPE", 4);
+    result = SDL_LoadWAV_IO(SDL_IOFromConstMem(invalid, sizeof(invalid)), true, &spec, &audio, &length);
+    SDLTest_AssertCheck(!result && audio == NULL && length == 0, "Invalid RIFF form fails without audio output");
+    SDLTest_AssertCheck(SDL_strcmp(SDL_GetError(), "RIFF form type is not WAVE (not a Waveform file)") == 0,
+                        "Invalid RIFF form preserves its error");
+    return TEST_COMPLETED;
+}
+
+static int SDLCALL audio_loadWAVChunkOrder(void *arg)
+{
+    static const Uint8 wav_with_chunks[] = {
+        'R', 'I', 'F', 'F', 62, 0, 0, 0, 'W', 'A', 'V', 'E',
+        'J', 'U', 'N', 'K', 3, 0, 0, 0, 1, 2, 3, 0,
+        'f', 'm', 't', ' ', 16, 0, 0, 0,
+        1, 0, 1, 0, 0x40, 0x1f, 0, 0, 0x40, 0x1f, 0, 0,
+        1, 0, 8, 0,
+        'f', 'a', 'c', 't', 4, 0, 0, 0, 2, 0, 0, 0,
+        'd', 'a', 't', 'a', 2, 0, 0, 0, 0x80, 0xff
+    };
+    static const Uint8 wav_data_first[] = {
+        'R', 'I', 'F', 'F', 38, 0, 0, 0, 'W', 'A', 'V', 'E',
+        'd', 'a', 't', 'a', 2, 0, 0, 0, 0x80, 0xff,
+        'f', 'm', 't', ' ', 16, 0, 0, 0,
+        1, 0, 1, 0, 0x40, 0x1f, 0, 0, 0x40, 0x1f, 0, 0,
+        1, 0, 8, 0
+    };
+    SDL_AudioSpec spec;
+    Uint8 *audio = NULL;
+    Uint32 length = 0;
+    bool result;
+
+    result = SDL_LoadWAV_IO(SDL_IOFromConstMem(wav_with_chunks, sizeof(wav_with_chunks)), true, &spec, &audio, &length);
+    SDLTest_AssertCheck(result, "Load WAVE with unknown and fact chunks: %s", SDL_GetError());
+    SDLTest_AssertCheck(length == 2 && audio && audio[0] == 0x80 && audio[1] == 0xff,
+                        "Chunk scan preserves PCM samples");
+    SDL_free(audio);
+
+    result = SDL_LoadWAV_IO(SDL_IOFromConstMem(wav_data_first, sizeof(wav_data_first)), true, &spec, &audio, &length);
+    SDLTest_AssertCheck(!result && audio == NULL && length == 0, "Data before fmt fails without audio output");
+    SDLTest_AssertCheck(SDL_strcmp(SDL_GetError(), "fmt chunk after data chunk in WAVE file") == 0,
+                        "Data before fmt preserves its error");
+    return TEST_COMPLETED;
+}
+
+static int SDLCALL audio_loadWAVCodecs(void *arg)
+{
+    static const Uint8 ima[] = {
+        'R', 'I', 'F', 'F', 48, 0, 0, 0, 'W', 'A', 'V', 'E',
+        'f', 'm', 't', ' ', 20, 0, 0, 0,
+        0x11, 0, 1, 0, 0x40, 0x1f, 0, 0, 0xc7, 0x1b, 0, 0,
+        8, 0, 4, 0, 2, 0, 9, 0,
+        'd', 'a', 't', 'a', 8, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0
+    };
+    static const Uint8 ms[] = {
+        'R', 'I', 'F', 'F', 78, 0, 0, 0, 'W', 'A', 'V', 'E',
+        'f', 'm', 't', ' ', 50, 0, 0, 0,
+        2, 0, 1, 0, 0x40, 0x1f, 0, 0, 0x80, 0x3e, 0, 0,
+        8, 0, 4, 0, 32, 0, 4, 0, 7, 0,
+        0, 1, 0, 0, 0, 2, 0, 0xff, 0, 0, 0, 0,
+        0xc0, 0, 0x40, 0, 0xf0, 0, 0, 0,
+        0xcc, 1, 0x30, 0xff, 0x88, 1, 0x18, 0xff,
+        'd', 'a', 't', 'a', 8, 0, 0, 0,
+        0, 0x10, 0, 0, 0, 0, 0, 0
+    };
+    static const Uint8 alaw[] = {
+        'R', 'I', 'F', 'F', 38, 0, 0, 0, 'W', 'A', 'V', 'E',
+        'f', 'm', 't', ' ', 16, 0, 0, 0,
+        6, 0, 1, 0, 0x40, 0x1f, 0, 0, 0x40, 0x1f, 0, 0,
+        1, 0, 8, 0, 'd', 'a', 't', 'a', 1, 0, 0, 0, 0xd5, 0
+    };
+    static const Uint8 mulaw[] = {
+        'R', 'I', 'F', 'F', 38, 0, 0, 0, 'W', 'A', 'V', 'E',
+        'f', 'm', 't', ' ', 16, 0, 0, 0,
+        7, 0, 1, 0, 0x40, 0x1f, 0, 0, 0x40, 0x1f, 0, 0,
+        1, 0, 8, 0, 'd', 'a', 't', 'a', 1, 0, 0, 0, 0xff, 0
+    };
+    static const Uint8 wav_float[] = {
+        'R', 'I', 'F', 'F', 40, 0, 0, 0, 'W', 'A', 'V', 'E',
+        'f', 'm', 't', ' ', 16, 0, 0, 0,
+        3, 0, 1, 0, 0x40, 0x1f, 0, 0, 0, 0x7d, 0, 0,
+        4, 0, 32, 0, 'd', 'a', 't', 'a', 4, 0, 0, 0, 0, 0, 0x80, 0x3f
+    };
+    const struct {
+        const Uint8 *wav;
+        size_t size;
+        Uint32 length;
+        Sint16 first_sample;
+        const char *name;
+    } cases[] = {
+        { ima, sizeof(ima), 18, 0, "IMA ADPCM" },
+        { ms, sizeof(ms), 8, 0, "MS ADPCM" },
+        { alaw, sizeof(alaw), 2, 8, "A-law" },
+        { mulaw, sizeof(mulaw), 2, 0, "mu-law" }
+    };
+    SDL_AudioSpec spec;
+    Uint8 *audio = NULL;
+    Uint32 length = 0;
+    bool result;
+
+    for (size_t i = 0; i < SDL_arraysize(cases); ++i) {
+        Sint16 sample = -1;
+        result = SDL_LoadWAV_IO(SDL_IOFromConstMem(cases[i].wav, cases[i].size), true, &spec, &audio, &length);
+        if (SDLTest_AssertCheck(result, "Load %s WAVE: %s", cases[i].name, SDL_GetError())) {
+            SDLTest_AssertCheck(spec.freq == 8000 && spec.channels == 1 && spec.format == SDL_AUDIO_S16,
+                                "%s output format is 8 kHz mono S16", cases[i].name);
+            SDLTest_AssertCheck(length == cases[i].length && audio != NULL,
+                                "%s output length is %u", cases[i].name, cases[i].length);
+            if (audio && length >= sizeof(sample)) {
+                SDL_memcpy(&sample, audio, sizeof(sample));
+                SDLTest_AssertCheck(sample == cases[i].first_sample, "%s first decoded sample is preserved", cases[i].name);
+            }
+        }
+        SDL_free(audio);
+        audio = NULL;
+    }
+
+    result = SDL_LoadWAV_IO(SDL_IOFromConstMem(wav_float, sizeof(wav_float)), true, &spec, &audio, &length);
+    if (SDLTest_AssertCheck(result, "Load IEEE float WAVE: %s", SDL_GetError())) {
+        SDLTest_AssertCheck(spec.freq == 8000 && spec.channels == 1 && spec.format == SDL_AUDIO_F32LE,
+                            "Float output format is 8 kHz mono F32LE");
+        SDLTest_AssertCheck(length == 4 && audio && SDL_memcmp(audio, wav_float + sizeof(wav_float) - 4, 4) == 0,
+                            "Float sample bits are preserved");
+    }
+    SDL_free(audio);
+    return TEST_COMPLETED;
+}
+
 /* Audio test cases */
+static const SDLTest_TestCaseReference audioTestLoadWAVStructure = {
+    audio_loadWAVStructure, "audio_loadWAVStructure", "Check PCM WAVE parsing and invalid RIFF form.", TEST_ENABLED
+};
+
+static const SDLTest_TestCaseReference audioTestLoadWAVChunkOrder = {
+    audio_loadWAVChunkOrder, "audio_loadWAVChunkOrder", "Check WAVE chunk scan and fmt/data order.", TEST_ENABLED
+};
+
+static const SDLTest_TestCaseReference audioTestLoadWAVCodecs = {
+    audio_loadWAVCodecs, "audio_loadWAVCodecs", "Check float, companded, and ADPCM WAVE decoders.", TEST_ENABLED
+};
+
 static const SDLTest_TestCaseReference audioTestGetAudioFormatName = {
     audio_getAudioFormatName, "audio_getAudioFormatName", "Call to SDL_GetAudioFormatName", TEST_ENABLED
 };
@@ -1767,6 +1930,9 @@ static const SDLTest_TestCaseReference audioTestRecordingPostmix = {
 
 /* Sequence of Audio test cases */
 static const SDLTest_TestCaseReference *audioTests[] = {
+    &audioTestLoadWAVStructure,
+    &audioTestLoadWAVChunkOrder,
+    &audioTestLoadWAVCodecs,
     &audioTestGetAudioFormatName,
     &audioTestGetSilenceValueForFormat,
     &audioTest1, &audioTest2, &audioTest3, &audioTest4, &audioTest5, &audioTest6,

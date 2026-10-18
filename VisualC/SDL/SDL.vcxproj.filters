@@ -1441,6 +1441,9 @@
     <ClCompile Include="..\..\src\audio\SDL_wave.c">
       <Filter>audio</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\src\audio\SDL_wave_decode.c">
+      <Filter>audio</Filter>
+    </ClCompile>
     <ClCompile Include="..\..\src\audio\SDL_mixer.c">
       <Filter>audio</Filter>
     </ClCompile>
@@ -1799,6 +1802,12 @@
       <Filter>video</Filter>
     </ClCompile>
     <ClCompile Include="..\..\src\video\SDL_yuv.c">
+      <Filter>video</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\video\SDL_yuv_layout.c">
+      <Filter>video</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\video\SDL_yuv_convert.c">
       <Filter>video</Filter>
     </ClCompile>
     <ClCompile Include="..\..\src\video\SDL_vulkan_utils.c">

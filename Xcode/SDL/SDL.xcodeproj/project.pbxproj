@@ -165,6 +165,8 @@
 		A7D8ADF223E2514100DCD162 /* SDL_blit_A.c in Sources */ = {isa = PBXBuildFile; fileRef = A7D8A66423E2513E00DCD162 /* SDL_blit_A.c */; };
 		A7D8AE7623E2514100DCD162 /* SDL_clipboard.c in Sources */ = {isa = PBXBuildFile; fileRef = A7D8A67B23E2513E00DCD162 /* SDL_clipboard.c */; };
 		A7D8AE7C23E2514100DCD162 /* SDL_yuv.c in Sources */ = {isa = PBXBuildFile; fileRef = A7D8A67C23E2513E00DCD162 /* SDL_yuv.c */; };
+		BEEFC0DE0000000000000001 /* SDL_yuv_layout.c in Sources */ = {isa = PBXBuildFile; fileRef = BEEFC0DE0000000000000002 /* SDL_yuv_layout.c */; };
+		BEEFC0DE0000000000000003 /* SDL_yuv_convert.c in Sources */ = {isa = PBXBuildFile; fileRef = BEEFC0DE0000000000000004 /* SDL_yuv_convert.c */; };
 		A7D8AE8823E2514100DCD162 /* SDL_cocoaopengl.m in Sources */ = {isa = PBXBuildFile; fileRef = A7D8A67F23E2513E00DCD162 /* SDL_cocoaopengl.m */; };
 		A7D8AE8E23E2514100DCD162 /* SDL_cocoakeyboard.h in Headers */ = {isa = PBXBuildFile; fileRef = A7D8A68023E2513E00DCD162 /* SDL_cocoakeyboard.h */; };
 		A7D8AE9423E2514100DCD162 /* SDL_cocoamodes.m in Sources */ = {isa = PBXBuildFile; fileRef = A7D8A68123E2513E00DCD162 /* SDL_cocoamodes.m */; };
@@ -271,6 +273,7 @@
 		A7D8B75E23E2514300DCD162 /* SDL_sysloadso.c in Sources */ = {isa = PBXBuildFile; fileRef = A7D8A86323E2513F00DCD162 /* SDL_sysloadso.c */; };
 		A7D8B76423E2514300DCD162 /* SDL_mixer.c in Sources */ = {isa = PBXBuildFile; fileRef = A7D8A86523E2513F00DCD162 /* SDL_mixer.c */; };
 		A7D8B76A23E2514300DCD162 /* SDL_wave.c in Sources */ = {isa = PBXBuildFile; fileRef = A7D8A86623E2513F00DCD162 /* SDL_wave.c */; };
+		BEEFC0DE0000000000000005 /* SDL_wave_decode.c in Sources */ = {isa = PBXBuildFile; fileRef = BEEFC0DE0000000000000006 /* SDL_wave_decode.c */; };
 		A7D8B79423E2514400DCD162 /* SDL_dummyaudio.h in Headers */ = {isa = PBXBuildFile; fileRef = A7D8A87123E2513F00DCD162 /* SDL_dummyaudio.h */; };
 		A7D8B79A23E2514400DCD162 /* SDL_dummyaudio.c in Sources */ = {isa = PBXBuildFile; fileRef = A7D8A87223E2513F00DCD162 /* SDL_dummyaudio.c */; };
 		A7D8B7A023E2514400DCD162 /* SDL_audio_c.h in Headers */ = {isa = PBXBuildFile; fileRef = A7D8A87323E2513F00DCD162 /* SDL_audio_c.h */; };
@@ -799,6 +802,8 @@
 		A7D8A66423E2513E00DCD162 /* SDL_blit_A.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_blit_A.c; sourceTree = "<group>"; };
 		A7D8A67B23E2513E00DCD162 /* SDL_clipboard.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_clipboard.c; sourceTree = "<group>"; };
 		A7D8A67C23E2513E00DCD162 /* SDL_yuv.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_yuv.c; sourceTree = "<group>"; };
+		BEEFC0DE0000000000000002 /* SDL_yuv_layout.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_yuv_layout.c; sourceTree = "<group>"; };
+		BEEFC0DE0000000000000004 /* SDL_yuv_convert.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_yuv_convert.c; sourceTree = "<group>"; };
 		A7D8A67F23E2513E00DCD162 /* SDL_cocoaopengl.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = SDL_cocoaopengl.m; sourceTree = "<group>"; };
 		A7D8A68023E2513E00DCD162 /* SDL_cocoakeyboard.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SDL_cocoakeyboard.h; sourceTree = "<group>"; };
 		A7D8A68123E2513E00DCD162 /* SDL_cocoamodes.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = SDL_cocoamodes.m; sourceTree = "<group>"; };
@@ -906,6 +911,7 @@
 		A7D8A86323E2513F00DCD162 /* SDL_sysloadso.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_sysloadso.c; sourceTree = "<group>"; };
 		A7D8A86523E2513F00DCD162 /* SDL_mixer.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_mixer.c; sourceTree = "<group>"; };
 		A7D8A86623E2513F00DCD162 /* SDL_wave.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_wave.c; sourceTree = "<group>"; };
+		BEEFC0DE0000000000000006 /* SDL_wave_decode.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_wave_decode.c; sourceTree = "<group>"; };
 		A7D8A87123E2513F00DCD162 /* SDL_dummyaudio.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SDL_dummyaudio.h; sourceTree = "<group>"; };
 		A7D8A87223E2513F00DCD162 /* SDL_dummyaudio.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_dummyaudio.c; sourceTree = "<group>"; };
 		A7D8A87323E2513F00DCD162 /* SDL_audio_c.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SDL_audio_c.h; sourceTree = "<group>"; };
@@ -1798,6 +1804,8 @@
 				A7D8A63E23E2513D00DCD162 /* SDL_vulkan_internal.h */,
 				A7D8A64023E2513D00DCD162 /* SDL_vulkan_utils.c */,
 				A7D8A67C23E2513E00DCD162 /* SDL_yuv.c */,
+				BEEFC0DE0000000000000002 /* SDL_yuv_layout.c */,
+				BEEFC0DE0000000000000004 /* SDL_yuv_convert.c */,
 				A7D8A76A23E2513E00DCD162 /* SDL_yuv_c.h */,
 				F3EFA5EC2D5AB97300BCF22F /* stb_image.h */,
 				A7D8A61823E2513D00DCD162 /* uikit */,
@@ -2261,6 +2269,7 @@
 				A7D8A86523E2513F00DCD162 /* SDL_mixer.c */,
 				A7D8A89F23E2513F00DCD162 /* SDL_sysaudio.h */,
 				A7D8A86623E2513F00DCD162 /* SDL_wave.c */,
+				BEEFC0DE0000000000000006 /* SDL_wave_decode.c */,
 				A7D8A8A223E2513F00DCD162 /* SDL_wave.h */,
 			);
 			path = audio;
@@ -3067,6 +3076,8 @@
 				A7D8B9E323E2514400DCD162 /* SDL_drawline.c in Sources */,
 				F3A8957B2F7DC14400B9E5C2 /* SDL_UIKitBridge.m in Sources */,
 				A7D8AE7C23E2514100DCD162 /* SDL_yuv.c in Sources */,
+				BEEFC0DE0000000000000001 /* SDL_yuv_layout.c in Sources */,
+				BEEFC0DE0000000000000003 /* SDL_yuv_convert.c in Sources */,
 				A7D8B62F23E2514300DCD162 /* SDL_sysfilesystem.m in Sources */,
 				A7D8B41C23E2514300DCD162 /* SDL_systls.c in Sources */,
 				9846B07C287A9020000C35C8 /* SDL_hidapi_shield.c in Sources */,
@@ -3176,6 +3187,7 @@
 				A7D8B5BD23E2514300DCD162 /* SDL_iostream.c in Sources */,
 				A7D8B9D123E2514400DCD162 /* SDL_yuv_sw.c in Sources */,
 				A7D8B76A23E2514300DCD162 /* SDL_wave.c in Sources */,
+				BEEFC0DE0000000000000005 /* SDL_wave_decode.c in Sources */,
 				5616CA4C252BB2A6005D5928 /* SDL_url.c in Sources */,
 				F316ABDB2B5CA721002EF551 /* SDL_memmove.c in Sources */,
 				A7D8AA6523E2514000DCD162 /* SDL_hints.c in Sources */,

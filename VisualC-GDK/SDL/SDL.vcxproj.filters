@@ -28,6 +28,7 @@
     <ClCompile Include="..\..\src\audio\SDL_audioresample.c" />
     <ClCompile Include="..\..\src\audio\SDL_mixer.c" />
     <ClCompile Include="..\..\src\audio\SDL_wave.c" />
+    <ClCompile Include="..\..\src\audio\SDL_wave_decode.c" />
     <ClCompile Include="..\..\src\audio\wasapi\SDL_wasapi.c" />
     <ClCompile Include="..\..\src\core\SDL_core_unsupported.c" />
     <ClCompile Include="..\..\src\core\windows\SDL_gameinput.cpp" />
@@ -225,6 +226,8 @@
     <ClCompile Include="..\..\src\video\SDL_video_unsupported.c" />
     <ClCompile Include="..\..\src\video\SDL_vulkan_utils.c" />
     <ClCompile Include="..\..\src\video\SDL_yuv.c" />
+    <ClCompile Include="..\..\src\video\SDL_yuv_layout.c" />
+    <ClCompile Include="..\..\src\video\SDL_yuv_convert.c" />
     <ClCompile Include="..\..\src\video\windows\SDL_windowsclipboard.c" />
     <ClCompile Include="..\..\src\video\windows\SDL_windowsevents.c" />
     <ClCompile Include="..\..\src\video\windows\SDL_windowsframebuffer.c" />
