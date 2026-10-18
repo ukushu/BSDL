@@ -111,6 +111,13 @@ static int SDLCALL joystick_testVirtual(void *arg)
             gamepad = SDL_OpenGamepad(SDL_GetJoystickID(joystick));
             SDLTest_AssertCheck(gamepad != NULL, "SDL_OpenGamepad() succeeded");
             if (gamepad) {
+                SDL_Gamepad *again = SDL_OpenGamepad(device_id);
+                SDLTest_AssertCheck(again == gamepad, "Opening the same gamepad returns the existing instance");
+                if (again) {
+                    SDL_CloseGamepad(again);
+                }
+                SDLTest_AssertCheck(SDL_GetGamepadFromID(device_id) == gamepad,
+                                    "Closing the second reference keeps the first gamepad open");
                 {
                     const char *name = SDL_GetGamepadName(gamepad);
                     SDLTest_AssertCheck(name && SDL_strcmp(name, desc.name) == 0, "SDL_GetGamepadName() -> \"%s\" (expected \"%s\")", name, desc.name);
@@ -420,6 +427,7 @@ static int SDLCALL joystick_mappingElementParsing(void *arg)
 {
     SDL_VirtualJoystickDesc desc;
     SDL_JoystickID id;
+    SDL_Joystick *joystick = NULL;
     SDL_Gamepad *gamepad = NULL;
     SDL_GamepadBinding **bindings = NULL;
     char guid[33];
@@ -453,6 +461,8 @@ static int SDLCALL joystick_mappingElementParsing(void *arg)
     if (!SDLTest_AssertCheck(bindings != NULL, "Read parsed gamepad bindings: %s", SDL_GetError())) {
         goto done;
     }
+    SDLTest_AssertCheck(SDL_GetGamepadAxis(gamepad, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) == 0,
+                        "Mapped trigger starts at its logical zero point");
     for (int i = 0; i < count; ++i) {
         const SDL_GamepadBinding *bind = bindings[i];
         if (bind->output_type == SDL_GAMEPAD_BINDTYPE_AXIS && bind->output.axis.axis == SDL_GAMEPAD_AXIS_LEFTX) {
@@ -469,6 +479,27 @@ static int SDLCALL joystick_mappingElementParsing(void *arg)
     }
     SDLTest_AssertCheck(leftx && trigger && button && hat,
                         "Parser preserves half-axis inversion, negative half-axis, button, and hat bindings");
+    joystick = SDL_GetGamepadJoystick(gamepad);
+    if (SDLTest_AssertCheck(joystick != NULL, "Get virtual joystick for mapped-axis checks")) {
+        SDLTest_AssertCheck(SDL_SetJoystickVirtualAxis(joystick, 0, SDL_JOYSTICK_AXIS_MAX), "Set mapped axis at positive limit: %s", SDL_GetError());
+        SDL_UpdateJoysticks();
+        SDLTest_AssertCheck(SDL_GetGamepadAxis(gamepad, SDL_GAMEPAD_AXIS_LEFTX) == SDL_JOYSTICK_AXIS_MIN,
+                            "Inverted positive half-axis maps its upper endpoint");
+        SDLTest_AssertCheck(SDL_SetJoystickVirtualAxis(joystick, 0, 0), "Set mapped axis at zero: %s", SDL_GetError());
+        SDL_UpdateJoysticks();
+        SDLTest_AssertCheck(SDL_GetGamepadAxis(gamepad, SDL_GAMEPAD_AXIS_LEFTX) == SDL_JOYSTICK_AXIS_MAX,
+                            "Inverted positive half-axis maps its lower endpoint");
+        SDLTest_AssertCheck(SDL_SetJoystickVirtualAxis(joystick, 0, -1), "Move mapped axis outside its half range: %s", SDL_GetError());
+        SDL_UpdateJoysticks();
+        SDLTest_AssertCheck(SDL_GetGamepadAxis(gamepad, SDL_GAMEPAD_AXIS_LEFTX) == 0,
+                            "Leaving the mapped half range resets the gamepad axis");
+        SDLTest_AssertCheck(SDL_SetJoystickVirtualHat(joystick, 0, SDL_HAT_UP), "Set mapped hat direction: %s", SDL_GetError());
+        SDL_UpdateJoysticks();
+        SDLTest_AssertCheck(SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_EAST), "Mapped hat direction presses the gamepad button");
+        SDLTest_AssertCheck(SDL_SetJoystickVirtualHat(joystick, 0, SDL_HAT_CENTERED), "Center mapped hat: %s", SDL_GetError());
+        SDL_UpdateJoysticks();
+        SDLTest_AssertCheck(!SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_EAST), "Centering the mapped hat releases the gamepad button");
+    }
 
 done:
     SDL_free(bindings);

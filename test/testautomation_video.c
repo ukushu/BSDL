@@ -3145,6 +3145,120 @@ static const SDLTest_TestCaseReference videoTestGPUBufferCopyPass = {
     video_gpuBufferCopyPass, "video_gpuBufferCopyPass", "Upload and download bytes through Vulkan copy passes", TEST_ENABLED
 };
 
+static int SDLCALL video_recreateWindowSettings(void *arg)
+{
+    typedef int (*XFetchNameFn)(void *, unsigned long, char **);
+    typedef int (*XFreeFn)(void *);
+    const char *title = "Recreated window settings";
+    void *x11;
+    XFetchNameFn xfetchname;
+    XFreeFn xfree;
+    SDL_Window *window;
+    SDL_Renderer *renderer = NULL;
+    SDL_WindowID id;
+    unsigned long old_xid, new_xid;
+    char *native_title = NULL;
+    int min_w = 0, min_h = 0, max_w = 0, max_h = 0;
+    float min_aspect = 0.0f, max_aspect = 0.0f;
+
+    if (SDL_strcmp(SDL_GetCurrentVideoDriver(), "x11") != 0) {
+        return TEST_SKIPPED;
+    }
+
+    x11 = SDL_LoadObject("libX11.so.6");
+    if (!SDLTest_AssertCheck(x11 != NULL, "Load X11 to inspect native title: %s", SDL_GetError())) {
+        return TEST_ABORTED;
+    }
+    xfetchname = (XFetchNameFn)SDL_LoadFunction(x11, "XFetchName");
+    xfree = (XFreeFn)SDL_LoadFunction(x11, "XFree");
+    if (!SDLTest_AssertCheck(xfetchname && xfree, "Load X11 title functions: %s", SDL_GetError())) {
+        SDL_UnloadObject(x11);
+        return TEST_ABORTED;
+    }
+
+    window = SDL_CreateWindow(title, 180, 120, SDL_WINDOW_HIDDEN | SDL_WINDOW_RESIZABLE);
+    if (!SDLTest_AssertCheck(window != NULL, "Create window before OpenGL renderer: %s", SDL_GetError())) {
+        SDL_UnloadObject(x11);
+        return TEST_ABORTED;
+    }
+    id = SDL_GetWindowID(window);
+    old_xid = (unsigned long)SDL_GetNumberProperty(SDL_GetWindowProperties(window), SDL_PROP_WINDOW_X11_WINDOW_NUMBER, 0);
+    if (!SDLTest_AssertCheck(SDL_SetWindowMinimumSize(window, 80, 70) &&
+                             SDL_SetWindowMaximumSize(window, 400, 300) &&
+                             SDL_SetWindowAspectRatio(window, 1.0f, 2.0f),
+                             "Set window constraints before recreation: %s", SDL_GetError())) {
+        SDL_DestroyWindow(window);
+        SDL_UnloadObject(x11);
+        return TEST_ABORTED;
+    }
+
+    renderer = SDL_CreateRenderer(window, "opengl");
+    if (SDLTest_AssertCheck(renderer != NULL, "Create OpenGL renderer and recreate window: %s", SDL_GetError())) {
+        SDLTest_AssertCheck((SDL_GetWindowFlags(window) & SDL_WINDOW_OPENGL) != 0, "Recreated window has OpenGL flag");
+        SDLTest_AssertCheck(SDL_GetWindowID(window) == id, "Recreated window keeps its ID");
+        SDLTest_AssertCheck(SDL_strcmp(SDL_GetWindowTitle(window), title) == 0, "Recreated window keeps its title");
+        new_xid = (unsigned long)SDL_GetNumberProperty(SDL_GetWindowProperties(window), SDL_PROP_WINDOW_X11_WINDOW_NUMBER, 0);
+        SDLTest_AssertCheck(old_xid != 0 && new_xid != 0 && new_xid != old_xid, "OpenGL renderer recreated the native X11 window");
+        if (new_xid != 0) {
+            void *display = SDL_GetPointerProperty(SDL_GetWindowProperties(window), SDL_PROP_WINDOW_X11_DISPLAY_POINTER, NULL);
+            SDLTest_AssertCheck(display && xfetchname(display, new_xid, &native_title) && native_title &&
+                                SDL_strcmp(native_title, title) == 0, "Recreated X11 window has the native title");
+            if (native_title) {
+                xfree(native_title);
+            }
+        }
+        SDL_GetWindowMinimumSize(window, &min_w, &min_h);
+        SDL_GetWindowMaximumSize(window, &max_w, &max_h);
+        SDL_GetWindowAspectRatio(window, &min_aspect, &max_aspect);
+        SDLTest_AssertCheck(min_w == 80 && min_h == 70 && max_w == 400 && max_h == 300,
+                            "Recreated window keeps size constraints");
+        SDLTest_AssertCheck(min_aspect == 1.0f && max_aspect == 2.0f, "Recreated window keeps aspect limits");
+    }
+
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    SDL_UnloadObject(x11);
+    return TEST_COMPLETED;
+}
+
+static const SDLTest_TestCaseReference videoTestRecreateWindowSettings = {
+    video_recreateWindowSettings, "video_recreateWindowSettings", "Preserve window settings when OpenGL renderer recreates a window", TEST_ENABLED
+};
+
+static int SDLCALL video_destroyWindowUnlinksList(void *arg)
+{
+    SDL_Window *first = SDL_CreateWindow("first", 32, 32, SDL_WINDOW_HIDDEN);
+    SDL_Window *middle = SDL_CreateWindow("middle", 32, 32, SDL_WINDOW_HIDDEN);
+    SDL_Window *last = SDL_CreateWindow("last", 32, 32, SDL_WINDOW_HIDDEN);
+    SDL_WindowID first_id, middle_id, last_id;
+
+    if (!SDLTest_AssertCheck(first && middle && last, "Create three windows for list removal: %s", SDL_GetError())) {
+        if (last) SDL_DestroyWindow(last);
+        if (middle) SDL_DestroyWindow(middle);
+        if (first) SDL_DestroyWindow(first);
+        return TEST_ABORTED;
+    }
+
+    first_id = SDL_GetWindowID(first);
+    middle_id = SDL_GetWindowID(middle);
+    last_id = SDL_GetWindowID(last);
+    SDL_DestroyWindow(middle);
+    SDLTest_AssertCheck(SDL_GetWindowFromID(middle_id) == NULL, "Removed middle window is absent");
+    SDLTest_AssertCheck(SDL_GetWindowFromID(first_id) == first && SDL_GetWindowFromID(last_id) == last,
+                        "Windows on both sides remain reachable");
+
+    SDL_DestroyWindow(last);
+    SDLTest_AssertCheck(SDL_GetWindowFromID(last_id) == NULL && SDL_GetWindowFromID(first_id) == first,
+                        "Removing list head preserves remaining window");
+    SDL_DestroyWindow(first);
+    SDLTest_AssertCheck(SDL_GetWindowFromID(first_id) == NULL, "Final window is absent after destruction");
+    return TEST_COMPLETED;
+}
+
+static const SDLTest_TestCaseReference videoTestDestroyWindowUnlinksList = {
+    video_destroyWindowUnlinksList, "video_destroyWindowUnlinksList", "Remove middle and head windows without losing neighbors", TEST_ENABLED
+};
+
 /* Sequence of Video test cases */
 static const SDLTest_TestCaseReference *videoTests[] = {
     &videoTestEnableDisableScreensaver,
@@ -3180,6 +3294,8 @@ static const SDLTest_TestCaseReference *videoTests[] = {
     &videoTestGPUDriverEnumeration,
     &videoTestGPUDeviceLifecycle,
     &videoTestGPUBufferCopyPass,
+    &videoTestRecreateWindowSettings,
+    &videoTestDestroyWindowUnlinksList,
     NULL
 };
 

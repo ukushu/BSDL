@@ -674,11 +674,47 @@ static void SDL_SendWakeupEvent(void)
 #endif
 }
 
+// Read queued events while SDL_EventQ.lock is held.
+static int SDL_PeepQueuedEvents(SDL_Event *events, int numevents, SDL_EventAction action,
+                                Uint32 minType, Uint32 maxType, bool include_sentinel)
+{
+    int used = 0;
+    int sentinels_expected = 0;
+    SDL_EventEntry *entry, *next;
+
+    for (entry = SDL_EventQ.head; entry && (events == NULL || used < numevents); entry = next) {
+        next = entry->next;
+        const Uint32 type = entry->event.type;
+        if (minType <= type && type <= maxType) {
+            if (events) {
+                SDL_copyp(&events[used], &entry->event);
+
+                if (action == SDL_GETEVENT) {
+                    SDL_CutEvent(entry);
+                }
+            }
+            if (type == SDL_EVENT_POLL_SENTINEL) {
+                if (!include_sentinel) {
+                    continue;
+                }
+                if (events == NULL || action != SDL_GETEVENT) {
+                    ++sentinels_expected;
+                }
+                if (SDL_GetAtomicInt(&SDL_sentinel_pending) > sentinels_expected) {
+                    continue;
+                }
+            }
+            ++used;
+        }
+    }
+    return used;
+}
+
 // Lock the event queue, take a peep at it, and unlock it
 static int SDL_PeepEventsInternal(SDL_Event *events, int numevents, SDL_EventAction action,
                                   Uint32 minType, Uint32 maxType, bool include_sentinel)
 {
-    int i, used, sentinels_expected = 0;
+    int i, used;
 
     // Lock the event queue
     used = 0;
@@ -704,37 +740,7 @@ static int SDL_PeepEventsInternal(SDL_Event *events, int numevents, SDL_EventAct
                 used += SDL_AddEvent(&events[i]);
             }
         } else {
-            SDL_EventEntry *entry, *next;
-            Uint32 type;
-
-            for (entry = SDL_EventQ.head; entry && (events == NULL || used < numevents); entry = next) {
-                next = entry->next;
-                type = entry->event.type;
-                if (minType <= type && type <= maxType) {
-                    if (events) {
-                        SDL_copyp(&events[used], &entry->event);
-
-                        if (action == SDL_GETEVENT) {
-                            SDL_CutEvent(entry);
-                        }
-                    }
-                    if (type == SDL_EVENT_POLL_SENTINEL) {
-                        // Special handling for the sentinel event
-                        if (!include_sentinel) {
-                            // Skip it, we don't want to include it
-                            continue;
-                        }
-                        if (events == NULL || action != SDL_GETEVENT) {
-                            ++sentinels_expected;
-                        }
-                        if (SDL_GetAtomicInt(&SDL_sentinel_pending) > sentinels_expected) {
-                            // Skip it, there's another one pending
-                            continue;
-                        }
-                    }
-                    ++used;
-                }
-            }
+            used = SDL_PeepQueuedEvents(events, numevents, action, minType, maxType, include_sentinel);
         }
     }
     SDL_UnlockMutex(SDL_EventQ.lock);

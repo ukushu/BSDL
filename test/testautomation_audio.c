@@ -1521,6 +1521,104 @@ cleanup:
     return TEST_COMPLETED;
 }
 
+typedef struct AudioPostmixCallbackState
+{
+    SDL_AtomicInt calls;
+    SDL_AtomicInt valid_format;
+} AudioPostmixCallbackState;
+
+static void SDLCALL audio_postmixCallback(void *userdata, const SDL_AudioSpec *spec, float *buffer, int buflen)
+{
+    AudioPostmixCallbackState *state = (AudioPostmixCallbackState *)userdata;
+    (void)buffer;
+    if (spec && spec->format == SDL_AUDIO_F32 && buflen > 0) {
+        SDL_SetAtomicInt(&state->valid_format, 1);
+    }
+    SDL_AddAtomicInt(&state->calls, 1);
+}
+
+static int SDLCALL audio_playbackPostmixCallback(void *arg)
+{
+    AudioPostmixCallbackState state;
+    SDL_AudioDeviceID device;
+    SDL_AudioStream *stream = NULL;
+
+    SDL_zero(state);
+    if (!SDL_GetCurrentAudioDriver() || SDL_strcmp(SDL_GetCurrentAudioDriver(), "dummy") != 0) {
+        return TEST_SKIPPED;
+    }
+
+    device = SDL_OpenAudioDevice(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, NULL);
+    if (!SDLTest_AssertCheck(device != 0, "Open dummy playback device: %s", SDL_GetError())) {
+        return TEST_ABORTED;
+    }
+    stream = SDL_CreateAudioStream(NULL, NULL);
+    if (!SDLTest_AssertCheck(stream != NULL, "Create playback stream: %s", SDL_GetError())) {
+        SDL_CloseAudioDevice(device);
+        return TEST_ABORTED;
+    }
+    if (!SDLTest_AssertCheck(SDL_BindAudioStream(device, stream), "Bind playback stream: %s", SDL_GetError()) ||
+        !SDLTest_AssertCheck(SDL_SetAudioPostmixCallback(device, audio_postmixCallback, &state), "Set postmix callback: %s", SDL_GetError())) {
+        SDL_UnbindAudioStream(stream);
+        SDL_DestroyAudioStream(stream);
+        SDL_CloseAudioDevice(device);
+        return TEST_ABORTED;
+    }
+
+    for (int i = 0; i < 100 && SDL_GetAtomicInt(&state.calls) == 0; ++i) {
+        SDL_Delay(10);
+    }
+    SDLTest_AssertCheck(SDL_GetAtomicInt(&state.calls) > 0, "Playback mixing invokes postmix callback");
+    SDLTest_AssertCheck(SDL_GetAtomicInt(&state.valid_format) == 1, "Postmix receives float samples and a non-empty buffer");
+
+    SDL_SetAudioPostmixCallback(device, NULL, NULL);
+    SDL_UnbindAudioStream(stream);
+    SDL_DestroyAudioStream(stream);
+    SDL_CloseAudioDevice(device);
+    return TEST_COMPLETED;
+}
+
+static int SDLCALL audio_recordingPostmixCallback(void *arg)
+{
+    AudioPostmixCallbackState state;
+    SDL_AudioDeviceID device;
+    SDL_AudioStream *stream = NULL;
+
+    SDL_zero(state);
+    if (!SDL_GetCurrentAudioDriver() || SDL_strcmp(SDL_GetCurrentAudioDriver(), "dummy") != 0) {
+        return TEST_SKIPPED;
+    }
+
+    device = SDL_OpenAudioDevice(SDL_AUDIO_DEVICE_DEFAULT_RECORDING, NULL);
+    if (!SDLTest_AssertCheck(device != 0, "Open dummy recording device: %s", SDL_GetError())) {
+        return TEST_ABORTED;
+    }
+    stream = SDL_CreateAudioStream(NULL, NULL);
+    if (!SDLTest_AssertCheck(stream != NULL, "Create recording stream: %s", SDL_GetError())) {
+        SDL_CloseAudioDevice(device);
+        return TEST_ABORTED;
+    }
+    if (!SDLTest_AssertCheck(SDL_BindAudioStream(device, stream), "Bind recording stream: %s", SDL_GetError()) ||
+        !SDLTest_AssertCheck(SDL_SetAudioPostmixCallback(device, audio_postmixCallback, &state), "Set recording postmix callback: %s", SDL_GetError())) {
+        SDL_UnbindAudioStream(stream);
+        SDL_DestroyAudioStream(stream);
+        SDL_CloseAudioDevice(device);
+        return TEST_ABORTED;
+    }
+
+    for (int i = 0; i < 100 && SDL_GetAtomicInt(&state.calls) == 0; ++i) {
+        SDL_Delay(10);
+    }
+    SDLTest_AssertCheck(SDL_GetAtomicInt(&state.calls) > 0, "Recording iteration invokes postmix callback");
+    SDLTest_AssertCheck(SDL_GetAtomicInt(&state.valid_format) == 1, "Recording postmix receives float samples and a non-empty buffer");
+
+    SDL_SetAudioPostmixCallback(device, NULL, NULL);
+    SDL_UnbindAudioStream(stream);
+    SDL_DestroyAudioStream(stream);
+    SDL_CloseAudioDevice(device);
+    return TEST_COMPLETED;
+}
+
 static int SDLCALL audio_reopenPhysicalDeviceWithHigherSpec(void *arg)
 {
     const SDL_AudioSpec low = { SDL_AUDIO_S16, 1, 22050 };
@@ -1551,6 +1649,7 @@ static int SDLCALL audio_reopenPhysicalDeviceWithHigherSpec(void *arg)
         SDL_CloseAudioDevice(first);
         return TEST_ABORTED;
     }
+    SDLTest_AssertCheck(second != first, "Each open receives a distinct logical device ID");
     if (SDLTest_AssertCheck(SDL_GetAudioDeviceFormat(first, &actual, NULL), "Get reopened physical device format")) {
         SDLTest_AssertCheck(actual.format == high.format && actual.channels == high.channels && actual.freq == high.freq,
                             "Both logical devices use the higher physical spec");
@@ -1658,6 +1757,14 @@ static const SDLTest_TestCaseReference audioTestReopenHigherSpec = {
     audio_reopenPhysicalDeviceWithHigherSpec, "audio_reopenPhysicalDeviceWithHigherSpec", "Check physical device reopen for a higher logical spec.", TEST_ENABLED
 };
 
+static const SDLTest_TestCaseReference audioTestPlaybackPostmix = {
+    audio_playbackPostmixCallback, "audio_playbackPostmixCallback", "Checks the playback mixing and postmix path.", TEST_ENABLED
+};
+
+static const SDLTest_TestCaseReference audioTestRecordingPostmix = {
+    audio_recordingPostmixCallback, "audio_recordingPostmixCallback", "Checks the recording conversion and postmix path.", TEST_ENABLED
+};
+
 /* Sequence of Audio test cases */
 static const SDLTest_TestCaseReference *audioTests[] = {
     &audioTestGetAudioFormatName,
@@ -1665,7 +1772,8 @@ static const SDLTest_TestCaseReference *audioTests[] = {
     &audioTest1, &audioTest2, &audioTest3, &audioTest4, &audioTest5, &audioTest6,
     &audioTest7, &audioTest8, &audioTest9, &audioTest10, &audioTest11,
     &audioTest12, &audioTest13, &audioTest14, &audioTest15, &audioTest16,
-    &audioTest17, &audioTest18, &audioTestBindStreams, &audioTestReopenHigherSpec, NULL
+    &audioTest17, &audioTest18, &audioTestBindStreams, &audioTestReopenHigherSpec,
+    &audioTestPlaybackPostmix, &audioTestRecordingPostmix, NULL
 };
 
 /* Audio test suite (global) */

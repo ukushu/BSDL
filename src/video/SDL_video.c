@@ -1774,6 +1774,33 @@ static bool SDL_ReconfigureWindowInternal(SDL_Window *window, SDL_WindowFlags fl
     return true;
 }
 
+static void SDL_ApplyRecreatedWindowSettings(SDL_Window *window)
+{
+    if (_this->SetWindowTitle && window->title) {
+        _this->SetWindowTitle(_this, window);
+    }
+
+    if (_this->SetWindowIcon && window->icon) {
+        _this->SetWindowIcon(_this, window, window->icon);
+    }
+
+    if (_this->SetWindowMinimumSize && (window->min_w || window->min_h)) {
+        _this->SetWindowMinimumSize(_this, window);
+    }
+
+    if (_this->SetWindowMaximumSize && (window->max_w || window->max_h)) {
+        _this->SetWindowMaximumSize(_this, window);
+    }
+
+    if (_this->SetWindowAspectRatio && (window->min_aspect > 0.0f || window->max_aspect > 0.0f)) {
+        _this->SetWindowAspectRatio(_this, window);
+    }
+
+    if (window->hit_test) {
+        _this->SetWindowHitTest(window, true);
+    }
+}
+
 bool SDL_RecreateWindow(SDL_Window *window, SDL_WindowFlags flags)
 {
     bool loaded_opengl = false;
@@ -1888,29 +1915,7 @@ bool SDL_RecreateWindow(SDL_Window *window, SDL_WindowFlags flags)
         window->flags |= SDL_WINDOW_EXTERNAL;
     }
 
-    if (_this->SetWindowTitle && window->title) {
-        _this->SetWindowTitle(_this, window);
-    }
-
-    if (_this->SetWindowIcon && window->icon) {
-        _this->SetWindowIcon(_this, window, window->icon);
-    }
-
-    if (_this->SetWindowMinimumSize && (window->min_w || window->min_h)) {
-        _this->SetWindowMinimumSize(_this, window);
-    }
-
-    if (_this->SetWindowMaximumSize && (window->max_w || window->max_h)) {
-        _this->SetWindowMaximumSize(_this, window);
-    }
-
-    if (_this->SetWindowAspectRatio && (window->min_aspect > 0.0f || window->max_aspect > 0.0f)) {
-        _this->SetWindowAspectRatio(_this, window);
-    }
-
-    if (window->hit_test) {
-        _this->SetWindowHitTest(window, true);
-    }
+    SDL_ApplyRecreatedWindowSettings(window);
 
     SDL_FinishWindowCreation(window, flags);
 
@@ -3387,6 +3392,22 @@ void SDL_RemoveWindowRenderer(SDL_Window *window, SDL_Renderer *renderer)
     }
 }
 
+static void SDL_UnlinkWindow(SDL_Window *window)
+{
+    // Unlink the window from its siblings.
+    SDL_UpdateWindowHierarchy(window, NULL);
+
+    // Unlink the window from the global window list
+    if (window->next) {
+        window->next->prev = window->prev;
+    }
+    if (window->prev) {
+        window->prev->next = window->next;
+    } else {
+        _this->windows = window->next;
+    }
+}
+
 void SDL_DestroyWindow(SDL_Window *window)
 {
     CHECK_WINDOW_MAGIC(window,);
@@ -3480,18 +3501,7 @@ void SDL_DestroyWindow(SDL_Window *window)
     SDL_free(window->title);
     SDL_DestroySurface(window->icon);
 
-    // Unlink the window from its siblings.
-    SDL_UpdateWindowHierarchy(window, NULL);
-
-    // Unlink the window from the global window list
-    if (window->next) {
-        window->next->prev = window->prev;
-    }
-    if (window->prev) {
-        window->prev->next = window->next;
-    } else {
-        _this->windows = window->next;
-    }
+    SDL_UnlinkWindow(window);
 
     SDL_free(window->renderers);
     SDL_free(window);

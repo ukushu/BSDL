@@ -159,6 +159,21 @@ void SDL_ConvertToLinear(SDL_Renderer *renderer, SDL_FColor *color)
     }
 }
 
+static void RecycleRenderCommandQueue(SDL_Renderer *renderer)
+{
+    if (renderer->render_commands_tail) {
+        renderer->render_commands_tail->next = renderer->render_commands_pool;
+        renderer->render_commands_pool = renderer->render_commands;
+        renderer->render_commands_tail = NULL;
+        renderer->render_commands = NULL;
+    }
+    renderer->vertex_data_used = 0;
+    renderer->render_command_generation++;
+    renderer->color_queued = false;
+    renderer->viewport_queued = false;
+    renderer->cliprect_queued = false;
+}
+
 static bool FlushRenderCommands(SDL_Renderer *renderer)
 {
     bool result;
@@ -178,18 +193,7 @@ static bool FlushRenderCommands(SDL_Renderer *renderer)
 #endif
     result = renderer->RunCommandQueue(renderer, renderer->render_commands, renderer->vertex_data, renderer->vertex_data_used);
 
-    // Move the whole render command queue to the unused pool so we can reuse them next time.
-    if (renderer->render_commands_tail) {
-        renderer->render_commands_tail->next = renderer->render_commands_pool;
-        renderer->render_commands_pool = renderer->render_commands;
-        renderer->render_commands_tail = NULL;
-        renderer->render_commands = NULL;
-    }
-    renderer->vertex_data_used = 0;
-    renderer->render_command_generation++;
-    renderer->color_queued = false;
-    renderer->viewport_queued = false;
-    renderer->cliprect_queued = false;
+    RecycleRenderCommandQueue(renderer);
     return result;
 }
 
@@ -411,20 +415,9 @@ static bool QueueCmdClear(SDL_Renderer *renderer)
     return true;
 }
 
-static SDL_RenderCommand *PrepQueueCmdDraw(SDL_Renderer *renderer, const SDL_RenderCommandType cmdtype, SDL_Texture *texture)
+static bool QueueCmdDrawState(SDL_Renderer *renderer, const SDL_RenderCommandType cmdtype, SDL_FColor *color)
 {
-    SDL_RenderCommand *cmd = NULL;
     bool result = true;
-    SDL_FColor *color;
-    SDL_BlendMode blendMode;
-
-    if (texture) {
-        color = &texture->color;
-        blendMode = texture->blendMode;
-    } else {
-        color = &renderer->color;
-        blendMode = renderer->blendMode;
-    }
 
     if (cmdtype != SDL_RENDERCMD_GEOMETRY) {
         result = QueueCmdSetDrawColor(renderer, color);
@@ -438,8 +431,24 @@ static SDL_RenderCommand *PrepQueueCmdDraw(SDL_Renderer *renderer, const SDL_Ren
     if (result && !renderer->cliprect_queued) {
         result = QueueCmdSetClipRect(renderer);
     }
+    return result;
+}
 
-    if (result) {
+static SDL_RenderCommand *PrepQueueCmdDraw(SDL_Renderer *renderer, const SDL_RenderCommandType cmdtype, SDL_Texture *texture)
+{
+    SDL_RenderCommand *cmd = NULL;
+    SDL_FColor *color;
+    SDL_BlendMode blendMode;
+
+    if (texture) {
+        color = &texture->color;
+        blendMode = texture->blendMode;
+    } else {
+        color = &renderer->color;
+        blendMode = renderer->blendMode;
+    }
+
+    if (QueueCmdDrawState(renderer, cmdtype, color)) {
         cmd = AllocateRenderCommand(renderer);
         if (cmd) {
             cmd->command = cmdtype;
@@ -1470,7 +1479,7 @@ static SDL_PixelFormat GetClosestSupportedFormat(SDL_Renderer *renderer, SDL_Pix
     return renderer->texture_formats[0];
 }
 
-static bool SDL_CreateTextureFallback(SDL_Texture *texture)
+static bool SDL_CreateFallbackNativeTexture(SDL_Texture *texture)
 {
     SDL_Renderer *renderer = texture->renderer;
     SDL_PixelFormat format = texture->format;
@@ -1502,26 +1511,13 @@ static bool SDL_CreateTextureFallback(SDL_Texture *texture)
 
     texture->native = SDL_CreateTextureWithProperties(renderer, native_props);
     SDL_DestroyProperties(native_props);
-    if (!texture->native) {
-        return false;
-    }
+    return texture->native != NULL;
+}
 
-    SDL_SetPointerProperty(SDL_GetTextureProperties(texture->native), SDL_PROP_TEXTURE_PARENT_POINTER, texture);
-
-    // Swap textures to have texture before texture->native in the list
-    texture->native->next = texture->next;
-    if (texture->native->next) {
-        texture->native->next->prev = texture->native;
-    }
-    texture->prev = texture->native->prev;
-    if (texture->prev) {
-        texture->prev->next = texture;
-    }
-    texture->native->prev = texture;
-    texture->next = texture->native;
-    renderer->textures = texture;
-
-    SDL_SetTextureScaleMode(texture->native, texture->scaleMode);
+static bool SDL_AllocateFallbackTextureStorage(SDL_Texture *texture)
+{
+    SDL_PixelFormat format = texture->format;
+    SDL_TextureAccess access = texture->access;
 
     if (format == SDL_PIXELFORMAT_MJPG) {
         // We have a custom decode + upload path for this
@@ -1550,6 +1546,34 @@ static bool SDL_CreateTextureFallback(SDL_Texture *texture)
     return true;
 }
 
+static bool SDL_CreateTextureFallback(SDL_Texture *texture)
+{
+    SDL_Renderer *renderer = texture->renderer;
+
+    if (!SDL_CreateFallbackNativeTexture(texture)) {
+        return false;
+    }
+
+    SDL_SetPointerProperty(SDL_GetTextureProperties(texture->native), SDL_PROP_TEXTURE_PARENT_POINTER, texture);
+
+    // Swap textures to have texture before texture->native in the list
+    texture->native->next = texture->next;
+    if (texture->native->next) {
+        texture->native->next->prev = texture->native;
+    }
+    texture->prev = texture->native->prev;
+    if (texture->prev) {
+        texture->prev->next = texture;
+    }
+    texture->native->prev = texture;
+    texture->next = texture->native;
+    renderer->textures = texture;
+
+    SDL_SetTextureScaleMode(texture->native, texture->scaleMode);
+
+    return SDL_AllocateFallbackTextureStorage(texture);
+}
+
 static bool SDL_ValidateTextureCreateParams(SDL_Renderer *renderer, SDL_PixelFormat format, SDL_TextureAccess access, int w, int h)
 {
     CHECK_PARAM(SDL_BYTESPERPIXEL(format) == 0) {
@@ -1576,32 +1600,11 @@ static bool SDL_ValidateTextureCreateParams(SDL_Renderer *renderer, SDL_PixelFor
     return true;
 }
 
-SDL_Texture *SDL_CreateTextureWithProperties(SDL_Renderer *renderer, SDL_PropertiesID props)
+static void SDL_InitializeTextureState(SDL_Texture *texture, SDL_Renderer *renderer, SDL_PropertiesID props,
+                                       SDL_PixelFormat format, SDL_TextureAccess access, int w, int h)
 {
-    SDL_Texture *texture;
-    SDL_PixelFormat format = (SDL_PixelFormat)SDL_GetNumberProperty(props, SDL_PROP_TEXTURE_CREATE_FORMAT_NUMBER, SDL_PIXELFORMAT_UNKNOWN);
-    SDL_TextureAccess access = (SDL_TextureAccess)SDL_GetNumberProperty(props, SDL_PROP_TEXTURE_CREATE_ACCESS_NUMBER, SDL_TEXTUREACCESS_STATIC);
-    int w = (int)SDL_GetNumberProperty(props, SDL_PROP_TEXTURE_CREATE_WIDTH_NUMBER, 0);
-    int h = (int)SDL_GetNumberProperty(props, SDL_PROP_TEXTURE_CREATE_HEIGHT_NUMBER, 0);
-    SDL_Palette *palette = (SDL_Palette *)SDL_GetPointerProperty(props, SDL_PROP_TEXTURE_CREATE_PALETTE_POINTER, NULL);
-    SDL_Colorspace default_colorspace;
+    SDL_Colorspace default_colorspace = SDL_GetDefaultColorspaceForFormat(format);
 
-    CHECK_RENDERER_MAGIC(renderer, NULL);
-
-    if (!format) {
-        format = renderer->texture_formats[0];
-    }
-
-    if (!SDL_ValidateTextureCreateParams(renderer, format, access, w, h)) {
-        return NULL;
-    }
-
-    default_colorspace = SDL_GetDefaultColorspaceForFormat(format);
-
-    texture = (SDL_Texture *)SDL_calloc(1, sizeof(*texture));
-    if (!texture) {
-        return NULL;
-    }
     texture->refcount = 1;
     SDL_SetObjectValid(texture, SDL_OBJECT_TYPE_TEXTURE, true);
     texture->colorspace = (SDL_Colorspace)SDL_GetNumberProperty(props, SDL_PROP_TEXTURE_CREATE_COLORSPACE_NUMBER, default_colorspace);
@@ -1637,6 +1640,32 @@ SDL_Texture *SDL_CreateTextureWithProperties(SDL_Renderer *renderer, SDL_Propert
 
     texture->SDR_white_point = SDL_GetFloatProperty(props, SDL_PROP_TEXTURE_CREATE_SDR_WHITE_POINT_FLOAT, SDL_GetDefaultSDRWhitePoint(texture->colorspace));
     texture->HDR_headroom = SDL_GetFloatProperty(props, SDL_PROP_TEXTURE_CREATE_HDR_HEADROOM_FLOAT, SDL_GetDefaultHDRHeadroom(texture->colorspace));
+}
+
+SDL_Texture *SDL_CreateTextureWithProperties(SDL_Renderer *renderer, SDL_PropertiesID props)
+{
+    SDL_Texture *texture;
+    SDL_PixelFormat format = (SDL_PixelFormat)SDL_GetNumberProperty(props, SDL_PROP_TEXTURE_CREATE_FORMAT_NUMBER, SDL_PIXELFORMAT_UNKNOWN);
+    SDL_TextureAccess access = (SDL_TextureAccess)SDL_GetNumberProperty(props, SDL_PROP_TEXTURE_CREATE_ACCESS_NUMBER, SDL_TEXTUREACCESS_STATIC);
+    int w = (int)SDL_GetNumberProperty(props, SDL_PROP_TEXTURE_CREATE_WIDTH_NUMBER, 0);
+    int h = (int)SDL_GetNumberProperty(props, SDL_PROP_TEXTURE_CREATE_HEIGHT_NUMBER, 0);
+    SDL_Palette *palette = (SDL_Palette *)SDL_GetPointerProperty(props, SDL_PROP_TEXTURE_CREATE_PALETTE_POINTER, NULL);
+
+    CHECK_RENDERER_MAGIC(renderer, NULL);
+
+    if (!format) {
+        format = renderer->texture_formats[0];
+    }
+
+    if (!SDL_ValidateTextureCreateParams(renderer, format, access, w, h)) {
+        return NULL;
+    }
+
+    texture = (SDL_Texture *)SDL_calloc(1, sizeof(*texture));
+    if (!texture) {
+        return NULL;
+    }
+    SDL_InitializeTextureState(texture, renderer, props, format, access, w, h);
 
     if (IsSupportedFormat(renderer, format)) {
         if (!renderer->CreateTexture(renderer, texture, props)) {

@@ -136,6 +136,11 @@ static int SDLCALL events_pushPumpAndPollUserevent(void *arg)
 
     SDLTest_AssertCheck(SDL_HasEvents(SDL_EVENT_USER, SDL_EVENT_USER), "Check SDL_HasEvents returns true");
 
+    result = SDL_PeepEvents(&event_out, 1, SDL_PEEKEVENT, SDL_EVENT_USER, SDL_EVENT_USER);
+    SDLTest_AssertCheck(result == 1, "Peek the queued user event without removing it");
+    SDLTest_AssertCheck(event_out.user.code == ref_code, "Peek returns the queued event data");
+    SDLTest_AssertCheck(SDL_HasEvents(SDL_EVENT_USER, SDL_EVENT_USER), "Peeking leaves the user event queued");
+
     /* Poll until we get a user event. */
     for (i = 0; i < MAX_ITERATIONS; i++) {
         result = SDL_PollEvent(&event_out);

@@ -10873,15 +10873,65 @@ static void VULKAN_INTERNAL_PerformSubmitCleanups(VulkanRenderer *renderer)
     VULKAN_INTERNAL_PerformPendingDestroys(renderer);
 }
 
+static VkResult VULKAN_INTERNAL_PresentCommandBuffer(
+    VulkanRenderer *renderer,
+    VulkanCommandBuffer *vulkanCommandBuffer)
+{
+    for (Uint32 j = 0; j < vulkanCommandBuffer->presentDataCount; j += 1) {
+        VulkanPresentData *presentData = &vulkanCommandBuffer->presentDatas[j];
+        VkPresentInfoKHR presentInfo;
+        VkResult presentResult;
+
+        presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+        presentInfo.pNext = NULL;
+        presentInfo.pWaitSemaphores =
+            &presentData->windowData->renderFinishedSemaphore[presentData->swapchainImageIndex];
+        presentInfo.waitSemaphoreCount = 1;
+        presentInfo.pSwapchains = &presentData->windowData->swapchain;
+        presentInfo.swapchainCount = 1;
+        presentInfo.pImageIndices = &presentData->swapchainImageIndex;
+        presentInfo.pResults = NULL;
+
+        presentResult = renderer->vkQueuePresentKHR(
+            renderer->unifiedQueue,
+            &presentInfo);
+
+        if (presentResult == VK_SUCCESS || presentResult == VK_SUBOPTIMAL_KHR || presentResult == VK_ERROR_OUT_OF_DATE_KHR) {
+            // If presenting, the swapchain is using the in-flight fence
+            presentData->windowData->inFlightFences[presentData->windowData->frameCounter] = (SDL_GPUFence *)vulkanCommandBuffer->inFlightFence;
+            (void)SDL_AtomicIncRef(&vulkanCommandBuffer->inFlightFence->referenceCount);
+
+// On the Android platform, VK_SUBOPTIMAL_KHR is returned whenever the device is rotated. We'll just ignore this for now.
+#ifndef SDL_PLATFORM_ANDROID
+            if (presentResult == VK_SUBOPTIMAL_KHR) {
+                presentData->windowData->needsSwapchainRecreate = true;
+            }
+#endif
+            if (presentResult == VK_ERROR_OUT_OF_DATE_KHR) {
+                presentData->windowData->needsSwapchainRecreate = true;
+            }
+        } else if (presentResult == VK_ERROR_SURFACE_LOST_KHR) {
+            // Android can destroy the surface at any time when the app goes into the background,
+            // even after successfully acquiring a swapchain texture and before presenting it.
+            presentData->windowData->needsSwapchainRecreate = true;
+            presentData->windowData->needsSurfaceRecreate = true;
+        } else {
+            return presentResult;
+        }
+
+        presentData->windowData->frameCounter =
+            (presentData->windowData->frameCounter + 1) % renderer->allowedFramesInFlight;
+    }
+    return VK_SUCCESS;
+}
+
 static bool VULKAN_Submit(
     SDL_GPUCommandBuffer *commandBuffer)
 {
     VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer *)commandBuffer;
     VulkanRenderer *renderer = vulkanCommandBuffer->renderer;
     VkSubmitInfo submitInfo;
-    VkPresentInfoKHR presentInfo;
-    VulkanPresentData *presentData;
-    VkResult vulkanResult, presentResult = VK_SUCCESS;
+    VkResult vulkanResult, presentResult;
     VkPipelineStageFlags waitStages[MAX_PRESENT_COUNT];
     Uint32 swapchainImageIndex;
     VulkanTextureSubresource *swapchainTextureSubresource;
@@ -10956,51 +11006,12 @@ static bool VULKAN_Submit(
     }
 
     // Present, if applicable
-    for (Uint32 j = 0; j < vulkanCommandBuffer->presentDataCount; j += 1) {
-        presentData = &vulkanCommandBuffer->presentDatas[j];
+    presentResult = VULKAN_INTERNAL_PresentCommandBuffer(renderer, vulkanCommandBuffer);
+    if (presentResult != VK_SUCCESS) {
+        VULKAN_INTERNAL_ReleaseCommandBuffer(vulkanCommandBuffer);
+        SDL_UnlockMutex(renderer->submitLock);
 
-        presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-        presentInfo.pNext = NULL;
-        presentInfo.pWaitSemaphores =
-            &presentData->windowData->renderFinishedSemaphore[presentData->swapchainImageIndex];
-        presentInfo.waitSemaphoreCount = 1;
-        presentInfo.pSwapchains = &presentData->windowData->swapchain;
-        presentInfo.swapchainCount = 1;
-        presentInfo.pImageIndices = &presentData->swapchainImageIndex;
-        presentInfo.pResults = NULL;
-
-        presentResult = renderer->vkQueuePresentKHR(
-            renderer->unifiedQueue,
-            &presentInfo);
-
-        if (presentResult == VK_SUCCESS || presentResult == VK_SUBOPTIMAL_KHR || presentResult == VK_ERROR_OUT_OF_DATE_KHR) {
-            // If presenting, the swapchain is using the in-flight fence
-            presentData->windowData->inFlightFences[presentData->windowData->frameCounter] = (SDL_GPUFence *)vulkanCommandBuffer->inFlightFence;
-            (void)SDL_AtomicIncRef(&vulkanCommandBuffer->inFlightFence->referenceCount);
-
-// On the Android platform, VK_SUBOPTIMAL_KHR is returned whenever the device is rotated. We'll just ignore this for now.
-#ifndef SDL_PLATFORM_ANDROID
-            if (presentResult == VK_SUBOPTIMAL_KHR) {
-                presentData->windowData->needsSwapchainRecreate = true;
-            }
-#endif
-            if (presentResult == VK_ERROR_OUT_OF_DATE_KHR) {
-                presentData->windowData->needsSwapchainRecreate = true;
-            }
-        } else if (presentResult == VK_ERROR_SURFACE_LOST_KHR) {
-            // Android can destroy the surface at any time when the app goes into the background,
-            // even after successfully acquiring a swapchain texture and before presenting it.
-            presentData->windowData->needsSwapchainRecreate = true;
-            presentData->windowData->needsSurfaceRecreate = true;
-        } else {
-            VULKAN_INTERNAL_ReleaseCommandBuffer(vulkanCommandBuffer);
-            SDL_UnlockMutex(renderer->submitLock);
-
-            CHECK_VULKAN_ERROR_AND_RETURN(presentResult, vkQueuePresentKHR, false);
-        }
-
-        presentData->windowData->frameCounter =
-            (presentData->windowData->frameCounter + 1) % renderer->allowedFramesInFlight;
+        CHECK_VULKAN_ERROR_AND_RETURN(presentResult, vkQueuePresentKHR, false);
     }
 
     if (performCleanups) {

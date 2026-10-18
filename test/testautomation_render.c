@@ -2512,12 +2512,21 @@ static int SDLCALL render_testSoftwareTextureFallback(void *arg)
     SDL_Surface *surface = SDL_CreateSurface(2, 2, SDL_PIXELFORMAT_RGBA32);
     SDL_Renderer *software = NULL;
     SDL_Texture *texture = NULL;
+    SDL_Texture *retained = NULL;
+    float retained_w = 0.0f, retained_h = 0.0f;
 
     if (!SDLTest_AssertCheck(surface != NULL, "Create software fallback surface: %s", SDL_GetError())) {
         return TEST_ABORTED;
     }
     software = SDL_CreateSoftwareRenderer(surface);
     if (!SDLTest_AssertCheck(software != NULL, "Create software fallback renderer: %s", SDL_GetError())) {
+        SDL_DestroySurface(surface);
+        return TEST_ABORTED;
+    }
+
+    retained = SDL_CreateTexture(software, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STATIC, 2, 2);
+    if (!SDLTest_AssertCheck(retained != NULL, "Create texture before fallback: %s", SDL_GetError())) {
+        SDL_DestroyRenderer(software);
         SDL_DestroySurface(surface);
         return TEST_ABORTED;
     }
@@ -2543,6 +2552,66 @@ static int SDLCALL render_testSoftwareTextureFallback(void *arg)
         SDL_DestroyTexture(texture);
     }
 
+    SDLTest_AssertCheck(SDL_GetTextureSize(retained, &retained_w, &retained_h) && retained_w == 2.0f && retained_h == 2.0f,
+                        "Texture before fallback remains valid after fallback destruction");
+    SDL_DestroyTexture(retained);
+
+    SDL_DestroyRenderer(software);
+    SDL_DestroySurface(surface);
+    return TEST_COMPLETED;
+}
+
+static int SDLCALL render_testTextureCreationProperties(void *arg)
+{
+    SDL_Surface *surface = SDL_CreateSurface(4, 4, SDL_PIXELFORMAT_RGBA32);
+    SDL_Renderer *software = NULL;
+    SDL_PropertiesID create_props = 0;
+    SDL_Texture *texture = NULL;
+
+    if (!SDLTest_AssertCheck(surface != NULL, "Create texture properties surface: %s", SDL_GetError())) {
+        return TEST_ABORTED;
+    }
+    software = SDL_CreateSoftwareRenderer(surface);
+    if (!SDLTest_AssertCheck(software != NULL, "Create texture properties renderer: %s", SDL_GetError())) {
+        SDL_DestroySurface(surface);
+        return TEST_ABORTED;
+    }
+    create_props = SDL_CreateProperties();
+    if (!SDLTest_AssertCheck(create_props != 0, "Create texture properties: %s", SDL_GetError())) {
+        SDL_DestroyRenderer(software);
+        SDL_DestroySurface(surface);
+        return TEST_ABORTED;
+    }
+
+    SDL_SetNumberProperty(create_props, SDL_PROP_TEXTURE_CREATE_FORMAT_NUMBER, SDL_PIXELFORMAT_RGBA32);
+    SDL_SetNumberProperty(create_props, SDL_PROP_TEXTURE_CREATE_ACCESS_NUMBER, SDL_TEXTUREACCESS_STATIC);
+    SDL_SetNumberProperty(create_props, SDL_PROP_TEXTURE_CREATE_WIDTH_NUMBER, 0);
+    SDL_SetNumberProperty(create_props, SDL_PROP_TEXTURE_CREATE_HEIGHT_NUMBER, 2);
+    SDL_SetNumberProperty(create_props, SDL_PROP_TEXTURE_CREATE_COLORSPACE_NUMBER, SDL_COLORSPACE_SRGB);
+
+    texture = SDL_CreateTextureWithProperties(software, create_props);
+    SDLTest_AssertCheck(texture == NULL, "Reject zero-width texture");
+    SDLTest_AssertCheck(SDL_strcmp(SDL_GetError(), "Texture dimensions can't be 0") == 0,
+                        "Keep zero-width texture error: %s", SDL_GetError());
+    SDL_DestroyTexture(texture);
+
+    SDL_SetNumberProperty(create_props, SDL_PROP_TEXTURE_CREATE_WIDTH_NUMBER, 3);
+    texture = SDL_CreateTextureWithProperties(software, create_props);
+    if (SDLTest_AssertCheck(texture != NULL, "Create texture after rejected dimensions: %s", SDL_GetError())) {
+        SDL_PropertiesID texture_props = SDL_GetTextureProperties(texture);
+        SDLTest_AssertCheck(SDL_GetNumberProperty(texture_props, SDL_PROP_TEXTURE_FORMAT_NUMBER, 0) == SDL_PIXELFORMAT_RGBA32,
+                            "Texture format matches create properties");
+        SDLTest_AssertCheck(SDL_GetNumberProperty(texture_props, SDL_PROP_TEXTURE_ACCESS_NUMBER, -1) == SDL_TEXTUREACCESS_STATIC,
+                            "Texture access matches create properties");
+        SDLTest_AssertCheck(SDL_GetNumberProperty(texture_props, SDL_PROP_TEXTURE_WIDTH_NUMBER, 0) == 3 &&
+                            SDL_GetNumberProperty(texture_props, SDL_PROP_TEXTURE_HEIGHT_NUMBER, 0) == 2,
+                            "Texture dimensions match create properties");
+        SDLTest_AssertCheck(SDL_GetNumberProperty(texture_props, SDL_PROP_TEXTURE_COLORSPACE_NUMBER, 0) == SDL_COLORSPACE_SRGB,
+                            "Texture colorspace matches create properties");
+    }
+
+    SDL_DestroyTexture(texture);
+    SDL_DestroyProperties(create_props);
     SDL_DestroyRenderer(software);
     SDL_DestroySurface(surface);
     return TEST_COMPLETED;
@@ -3042,6 +3111,50 @@ static const SDLTest_TestCaseReference renderTestSoftwareTextureFallback = {
     render_testSoftwareTextureFallback, "render_testSoftwareTextureFallback", "Tests software texture fallback creation", TEST_ENABLED
 };
 
+static int SDLCALL render_testSoftwareRendererFlushSequence(void *arg)
+{
+    const SDL_FRect rect = { 0.0f, 0.0f, 1.0f, 1.0f };
+    SDL_Surface *surface = SDL_CreateSurface(2, 2, SDL_PIXELFORMAT_RGBA32);
+    SDL_Renderer *test_renderer = NULL;
+    Uint8 r = 0, g = 0, b = 0, a = 0;
+
+    if (!SDLTest_AssertCheck(surface != NULL, "Create flush sequence surface: %s", SDL_GetError())) {
+        return TEST_ABORTED;
+    }
+    test_renderer = SDL_CreateSoftwareRenderer(surface);
+    if (!SDLTest_AssertCheck(test_renderer != NULL, "Create flush sequence renderer: %s", SDL_GetError())) {
+        SDL_DestroySurface(surface);
+        return TEST_ABORTED;
+    }
+
+    SDLTest_AssertCheck(SDL_SetRenderDrawColor(test_renderer, 255, 0, 0, 255), "Set first frame color: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_RenderClear(test_renderer), "Queue first frame: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_RenderPresent(test_renderer), "Flush first frame: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_SetRenderDrawColor(test_renderer, 0, 0, 255, 255), "Set second frame color: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_RenderClear(test_renderer), "Queue second frame after flush: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_SetRenderDrawColor(test_renderer, 255, 255, 255, 255), "Set draw state after flush: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_RenderFillRect(test_renderer, &rect), "Queue draw after flush: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_RenderPresent(test_renderer), "Flush second frame: %s", SDL_GetError());
+    if (SDLTest_AssertCheck(SDL_ReadSurfacePixel(surface, 0, 0, &r, &g, &b, &a), "Read second frame: %s", SDL_GetError())) {
+        SDLTest_AssertCheck(r != 0 || g != 0 || b != 255 || a != 255, "Draw state is applied after a flush");
+    }
+    if (SDLTest_AssertCheck(SDL_ReadSurfacePixel(surface, 1, 1, &r, &g, &b, &a), "Read second frame background: %s", SDL_GetError())) {
+        SDLTest_AssertCheck(r == 0 && g == 0 && b == 255 && a == 255, "Second frame replaces the first frame");
+    }
+
+    SDL_DestroyRenderer(test_renderer);
+    SDL_DestroySurface(surface);
+    return TEST_COMPLETED;
+}
+
+static const SDLTest_TestCaseReference renderTestSoftwareRendererFlushSequence = {
+    render_testSoftwareRendererFlushSequence, "render_testSoftwareRendererFlushSequence", "Tests consecutive software renderer queue flushes", TEST_ENABLED
+};
+
+static const SDLTest_TestCaseReference renderTestTextureCreationProperties = {
+    render_testTextureCreationProperties, "render_testTextureCreationProperties", "Tests texture creation validation and published properties", TEST_ENABLED
+};
+
 static const SDLTest_TestCaseReference renderTestSoftwareGeometryQuads = {
     render_testSoftwareGeometryQuads, "render_testSoftwareGeometryQuads", "Tests software geometry quad rendering and state restoration", TEST_ENABLED
 };
@@ -3187,6 +3300,8 @@ static const SDLTest_TestCaseReference *renderTests[] = {
     &renderTestSoftware,
     &renderTestLogicalLinesGeometry,
     &renderTestSoftwareTextureFallback,
+    &renderTestSoftwareRendererFlushSequence,
+    &renderTestTextureCreationProperties,
     &renderTestSoftwareGeometryQuads,
     &renderTestGeometryRawIndexWidths,
     &renderTestFillRectsGeometryFallback,
