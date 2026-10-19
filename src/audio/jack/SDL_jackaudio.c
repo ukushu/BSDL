@@ -264,7 +264,6 @@ static void JACK_CloseDevice(SDL_AudioDevice *device)
         SDL_free(device->hidden);
         device->hidden = NULL;
 
-        SDL_AudioThreadFinalize(device);
     }
 }
 

@@ -2462,6 +2462,73 @@ static const SDLTest_TestCaseReference surfaceTestConvertMetadata = {
     surface_testConvertMetadata, "surface_testConvertMetadata", "Convert surface metadata without changing source", TEST_ENABLED
 };
 
+static int SDLCALL surface_testConvertFailurePreservesSource(void *arg)
+{
+    const SDL_Color white[] = { { 255, 255, 255, 255 }, { 255, 255, 255, 255 } };
+    SDL_Surface *source = SDL_CreateSurface(1, 1, SDL_PIXELFORMAT_RGBA32);
+    SDL_Palette *palette = SDL_CreatePalette(SDL_arraysize(white));
+    SDL_Surface *converted;
+    Uint8 r, g, b, a;
+
+    if (!SDLTest_AssertCheck(source && palette, "Create conversion inputs: %s", SDL_GetError())) {
+        SDL_DestroyPalette(palette);
+        SDL_DestroySurface(source);
+        return TEST_ABORTED;
+    }
+
+    SDLTest_AssertCheck(SDL_SetPaletteColors(palette, white, 0, SDL_arraysize(white)), "Set empty destination palette");
+    SDLTest_AssertCheck(SDL_WriteSurfacePixel(source, 0, 0, 10, 20, 30, 255), "Write source pixel");
+    SDLTest_AssertCheck(SDL_SetSurfaceColorMod(source, 40, 50, 60), "Set source color modulation");
+    SDLTest_AssertCheck(SDL_SetSurfaceAlphaMod(source, 70), "Set source alpha modulation");
+
+    converted = SDL_ConvertSurfaceAndColorspace(source, SDL_PIXELFORMAT_INDEX8, palette, SDL_COLORSPACE_UNKNOWN, 0);
+    SDLTest_AssertCheck(converted == NULL, "Empty destination palette rejects conversion");
+    SDLTest_AssertCheck(SDL_strcmp(SDL_GetError(), "Empty destination palette") == 0, "Conversion error remains observable");
+    SDL_GetSurfaceColorMod(source, &r, &g, &b);
+    SDL_GetSurfaceAlphaMod(source, &a);
+    SDLTest_AssertCheck(r == 40 && g == 50 && b == 60 && a == 70, "Failed conversion preserves source modulation");
+    SDLTest_AssertCheck(SDL_ReadSurfacePixel(source, 0, 0, &r, &g, &b, &a), "Read source pixel after failure");
+    SDLTest_AssertCheck(r == 10 && g == 20 && b == 30 && a == 255, "Failed conversion preserves source pixel");
+
+    SDL_DestroySurface(converted);
+    SDL_DestroyPalette(palette);
+    SDL_DestroySurface(source);
+    return TEST_COMPLETED;
+}
+
+static const SDLTest_TestCaseReference surfaceTestConvertFailurePreservesSource = {
+    surface_testConvertFailurePreservesSource, "surface_testConvertFailurePreservesSource", "Failed conversion preserves its error and source", TEST_ENABLED
+};
+
+static int SDLCALL surface_testPixelBoundsPreserveSource(void *arg)
+{
+    SDL_Surface *surface = SDL_CreateSurface(1, 1, SDL_PIXELFORMAT_RGBA32);
+    Uint8 r = 255, g = 255, b = 255, a = 255;
+
+    if (!SDLTest_AssertCheck(surface != NULL, "Create pixel bounds surface: %s", SDL_GetError())) {
+        return TEST_ABORTED;
+    }
+    SDLTest_AssertCheck(SDL_WriteSurfacePixel(surface, 0, 0, 10, 20, 30, 40), "Write initial pixel");
+
+    SDL_ClearError();
+    SDLTest_AssertCheck(!SDL_ReadSurfacePixel(surface, 1, 0, &r, &g, &b, &a), "Out-of-bounds read fails");
+    SDLTest_AssertCheck(SDL_GetError()[0] != '\0', "Out-of-bounds read preserves an error");
+    SDLTest_AssertCheck(r == 0 && g == 0 && b == 0 && a == 0, "Out-of-bounds read clears outputs");
+
+    SDL_ClearError();
+    SDLTest_AssertCheck(!SDL_WriteSurfacePixel(surface, -1, 0, 1, 2, 3, 4), "Out-of-bounds write fails");
+    SDLTest_AssertCheck(SDL_GetError()[0] != '\0', "Out-of-bounds write preserves an error");
+    SDLTest_AssertCheck(SDL_ReadSurfacePixel(surface, 0, 0, &r, &g, &b, &a), "Read initial pixel");
+    SDLTest_AssertCheck(r == 10 && g == 20 && b == 30 && a == 40, "Out-of-bounds write preserves pixel");
+
+    SDL_DestroySurface(surface);
+    return TEST_COMPLETED;
+}
+
+static const SDLTest_TestCaseReference surfaceTestPixelBoundsPreserveSource = {
+    surface_testPixelBoundsPreserveSource, "surface_testPixelBoundsPreserveSource", "Pixel bounds errors preserve source data", TEST_ENABLED
+};
+
 static const SDLTest_TestCaseReference surfaceTestYUVPlaneOrder = {
     surface_testYUVPlaneOrder, "surface_testYUVPlaneOrder", "Test planar, semiplanar, and packed YUV conversions.", TEST_ENABLED
 };
@@ -2502,6 +2569,8 @@ static const SDLTest_TestCaseReference *surfaceTests[] = {
     &surfaceTest16BitTo32Bit,
     &surfaceTestConvertIndexedColorKey,
     &surfaceTestConvertMetadata,
+    &surfaceTestConvertFailurePreservesSource,
+    &surfaceTestPixelBoundsPreserveSource,
     &surfaceTestYUVPlaneOrder,
     NULL
 };

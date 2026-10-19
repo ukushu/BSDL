@@ -801,6 +801,9 @@ static int SDLCALL joystick_openReuse(void *arg)
         SDL_CloseJoystick(second);
     }
     SDLTest_AssertCheck(SDL_DetachVirtualJoystick(id), "Detach virtual joystick after closing both references: %s", SDL_GetError());
+    SDL_ClearError();
+    SDLTest_AssertCheck(SDL_OpenJoystick(id) == NULL, "Detached joystick cannot be reopened");
+    SDLTest_AssertCheck(SDL_GetError()[0] != '\0', "Opening detached joystick preserves an error");
     return TEST_COMPLETED;
 }
 

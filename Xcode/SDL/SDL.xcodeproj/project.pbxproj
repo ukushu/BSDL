@@ -160,6 +160,8 @@
 		F05400000000000000000001 /* SDL_video_windowinput.c in Sources */ = {isa = PBXBuildFile; fileRef = F05400000000000000000002 /* SDL_video_windowinput.c */; };
 		B1E0D0000000000000000026 /* SDL_video_vulkan.c in Sources */ = {isa = PBXBuildFile; fileRef = B1E0D0000000000000000027 /* SDL_video_vulkan.c */; };
 		A7D8AC2D23E2514100DCD162 /* SDL_surface.c in Sources */ = {isa = PBXBuildFile; fileRef = A7D8A61423E2513D00DCD162 /* SDL_surface.c */; };
+		F05900000000000000000001 /* SDL_surface_convert.c in Sources */ = {isa = PBXBuildFile; fileRef = F05900000000000000000002 /* SDL_surface_convert.c */; };
+		F05A00000000000000000001 /* SDL_surface_pixels.c in Sources */ = {isa = PBXBuildFile; fileRef = F05A00000000000000000002 /* SDL_surface_pixels.c */; };
 		A7D8AC3323E2514100DCD162 /* SDL_RLEaccel.c in Sources */ = {isa = PBXBuildFile; fileRef = A7D8A61523E2513D00DCD162 /* SDL_RLEaccel.c */; };
 		A7D8AC3923E2514100DCD162 /* SDL_blit_copy.c in Sources */ = {isa = PBXBuildFile; fileRef = A7D8A61623E2513D00DCD162 /* SDL_blit_copy.c */; };
 		A7D8AC3F23E2514100DCD162 /* SDL_sysvideo.h in Headers */ = {isa = PBXBuildFile; fileRef = A7D8A61723E2513D00DCD162 /* SDL_sysvideo.h */; };
@@ -805,6 +807,8 @@
 		F05400000000000000000002 /* SDL_video_windowinput.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = SDL_video_windowinput.c; sourceTree = "<group>"; };
 		B1E0D0000000000000000027 /* SDL_video_vulkan.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_video_vulkan.c; sourceTree = "<group>"; };
 		A7D8A61423E2513D00DCD162 /* SDL_surface.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_surface.c; sourceTree = "<group>"; };
+		F05900000000000000000002 /* SDL_surface_convert.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_surface_convert.c; sourceTree = "<group>"; };
+		F05A00000000000000000002 /* SDL_surface_pixels.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_surface_pixels.c; sourceTree = "<group>"; };
 		A7D8A61523E2513D00DCD162 /* SDL_RLEaccel.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_RLEaccel.c; sourceTree = "<group>"; };
 		A7D8A61623E2513D00DCD162 /* SDL_blit_copy.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_blit_copy.c; sourceTree = "<group>"; };
 		A7D8A61723E2513D00DCD162 /* SDL_sysvideo.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SDL_sysvideo.h; sourceTree = "<group>"; };
@@ -1860,6 +1864,8 @@
 				F3EFA5EA2D5AB97300BCF22F /* SDL_stb_c.h */,
 				A7D8A60323E2513D00DCD162 /* SDL_stretch.c */,
 				A7D8A61423E2513D00DCD162 /* SDL_surface.c */,
+				F05900000000000000000002 /* SDL_surface_convert.c */,
+				F05A00000000000000000002 /* SDL_surface_pixels.c */,
 				F3EFA5EB2D5AB97300BCF22F /* SDL_surface_c.h */,
 				A7D8A61723E2513D00DCD162 /* SDL_sysvideo.h */,
 				B1E0D0000000000000000012 /* SDL_cursor_names.c */,
@@ -3383,6 +3389,8 @@
 				A7D8BA4923E2514400DCD162 /* SDL_render_gles2.c in Sources */,
 				F3A8371C2F69C80100AD32B6 /* SDL_RealityKitHelper.swift in Sources */,
 				A7D8AC2D23E2514100DCD162 /* SDL_surface.c in Sources */,
+				F05900000000000000000001 /* SDL_surface_convert.c in Sources */,
+				F05A00000000000000000001 /* SDL_surface_pixels.c in Sources */,
 				A7D8B54B23E2514300DCD162 /* SDL_hidapi_xboxone.c in Sources */,
 				A7D8AD2323E2514100DCD162 /* SDL_blit_auto.c in Sources */,
 				F3A4909E2554D38600E92A8B /* SDL_hidapi_ps5.c in Sources */,

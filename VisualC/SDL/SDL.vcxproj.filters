@@ -1807,6 +1807,12 @@
     <ClCompile Include="..\..\src\video\SDL_surface.c">
       <Filter>video</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\src\video\SDL_surface_convert.c">
+      <Filter>video</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\video\SDL_surface_pixels.c">
+      <Filter>video</Filter>
+    </ClCompile>
     <ClCompile Include="..\..\src\video\SDL_video.c">
       <Filter>video</Filter>
     </ClCompile>

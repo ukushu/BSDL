@@ -1161,10 +1161,6 @@ void SDL_QuitAudio(void)
 }
 
 
-void SDL_AudioThreadFinalize(SDL_AudioDevice *device)
-{
-}
-
 static void MixFloat32Audio(float *dst, const float *src, const int buffer_size)
 {
     if (!SDL_MixAudio((Uint8 *) dst, (const Uint8 *) src, SDL_AUDIO_F32, buffer_size, 1.0f)) {
@@ -1331,7 +1327,6 @@ void SDL_PlaybackAudioThreadShutdown(SDL_AudioDevice *device)
         SDL_Delay(delay);
     }
     current_audio.impl.ThreadDeinit(device);
-    SDL_AudioThreadFinalize(device);
 }
 
 static int SDLCALL PlaybackAudioThread(void *devicep)  // thread entry point
@@ -1462,7 +1457,6 @@ void SDL_RecordingAudioThreadShutdown(SDL_AudioDevice *device)
     SDL_assert(device->recording);
     device->FlushRecording(device);
     current_audio.impl.ThreadDeinit(device);
-    SDL_AudioThreadFinalize(device);
 }
 
 static int SDLCALL RecordingAudioThread(void *devicep)  // thread entry point
@@ -2243,6 +2237,51 @@ bool SDL_BindAudioStream(SDL_AudioDeviceID devid, SDL_AudioStream *stream)
     return SDL_BindAudioStreams(devid, &stream, 1);
 }
 
+static void LockAudioStreamForUnbinding(SDL_AudioStream *stream)
+{
+    /* to prevent deadlock when holding both locks, we _must_ lock the device first, and the stream second, as that is the order the audio thread will do it.
+       But this means we have an unlikely, pathological case where a stream could change its binding between when we lookup its bound device and when we lock everything,
+       so we double-check here. */
+    while (true) {
+        SDL_LockMutex(stream->lock);   // lock to check this and then release it, in case the device isn't locked yet.
+        SDL_LogicalAudioDevice *bounddev = stream->bound_device;
+        SDL_UnlockMutex(stream->lock);
+
+        // lock in correct order.
+        if (bounddev) {
+            SDL_LockMutex(bounddev->physical_device->lock);  // this requires recursive mutexes, since we're likely locking the same device multiple times.
+        }
+        SDL_LockMutex(stream->lock);
+
+        if (bounddev == stream->bound_device) {
+            break;  // the binding didn't change in the small window where it could, so we're good.
+        } else {
+            SDL_UnlockMutex(stream->lock);
+            if (bounddev) {
+                SDL_UnlockMutex(bounddev->physical_device->lock);
+            }
+        }
+    }
+}
+
+static void UnbindLockedAudioStream(SDL_AudioStream *stream)
+{
+    // don't allow unbinding from "simplified" devices (opened with SDL_OpenAudioDeviceStream). Just ignore them.
+    if (stream && stream->bound_device && !stream->bound_device->simplified) {
+        if (stream->bound_device->bound_streams == stream) {
+            SDL_assert(!stream->prev_binding);
+            stream->bound_device->bound_streams = stream->next_binding;
+        }
+        if (stream->prev_binding) {
+            stream->prev_binding->next_binding = stream->next_binding;
+        }
+        if (stream->next_binding) {
+            stream->next_binding->prev_binding = stream->prev_binding;
+        }
+        stream->prev_binding = stream->next_binding = NULL;
+    }
+}
+
 // !!! FIXME: this and BindAudioStreams are mutex nightmares.  :/
 void SDL_UnbindAudioStreams(SDL_AudioStream * const *streams, int num_streams)
 {
@@ -2250,54 +2289,15 @@ void SDL_UnbindAudioStreams(SDL_AudioStream * const *streams, int num_streams)
         return; // nothing to do
     }
 
-    /* to prevent deadlock when holding both locks, we _must_ lock the device first, and the stream second, as that is the order the audio thread will do it.
-       But this means we have an unlikely, pathological case where a stream could change its binding between when we lookup its bound device and when we lock everything,
-       so we double-check here. */
     for (int i = 0; i < num_streams; i++) {
-        SDL_AudioStream *stream = streams[i];
-        if (!stream) {
-            continue;  // nothing to do, it's a NULL stream.
-        }
-
-        while (true) {
-            SDL_LockMutex(stream->lock);   // lock to check this and then release it, in case the device isn't locked yet.
-            SDL_LogicalAudioDevice *bounddev = stream->bound_device;
-            SDL_UnlockMutex(stream->lock);
-
-            // lock in correct order.
-            if (bounddev) {
-                SDL_LockMutex(bounddev->physical_device->lock);  // this requires recursive mutexes, since we're likely locking the same device multiple times.
-            }
-            SDL_LockMutex(stream->lock);
-
-            if (bounddev == stream->bound_device) {
-                break;  // the binding didn't change in the small window where it could, so we're good.
-            } else {
-                SDL_UnlockMutex(stream->lock);  // it changed bindings! Try again.
-                if (bounddev) {
-                    SDL_UnlockMutex(bounddev->physical_device->lock);
-                }
-            }
+        if (streams[i]) {
+            LockAudioStreamForUnbinding(streams[i]);
         }
     }
 
     // everything is locked, start unbinding streams.
     for (int i = 0; i < num_streams; i++) {
-        SDL_AudioStream *stream = streams[i];
-        // don't allow unbinding from "simplified" devices (opened with SDL_OpenAudioDeviceStream). Just ignore them.
-        if (stream && stream->bound_device && !stream->bound_device->simplified) {
-            if (stream->bound_device->bound_streams == stream) {
-                SDL_assert(!stream->prev_binding);
-                stream->bound_device->bound_streams = stream->next_binding;
-            }
-            if (stream->prev_binding) {
-                stream->prev_binding->next_binding = stream->next_binding;
-            }
-            if (stream->next_binding) {
-                stream->next_binding->prev_binding = stream->prev_binding;
-            }
-            stream->prev_binding = stream->next_binding = NULL;
-        }
+        UnbindLockedAudioStream(streams[i]);
     }
 
     // Finalize and unlock everything.

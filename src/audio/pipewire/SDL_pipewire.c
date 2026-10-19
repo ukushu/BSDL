@@ -1354,7 +1354,6 @@ static void PIPEWIRE_CloseDevice(SDL_AudioDevice *device)
     SDL_free(device->hidden);
     device->hidden = NULL;
 
-    SDL_AudioThreadFinalize(device);
 }
 
 static void PIPEWIRE_DeinitializeStart(void)

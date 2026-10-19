@@ -75,7 +75,6 @@ static void HAIKUAUDIO_CloseDevice(SDL_AudioDevice *device)
         }
         delete device->hidden;
         device->hidden = NULL;
-        SDL_AudioThreadFinalize(device);
     }
 }
 

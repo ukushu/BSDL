@@ -1513,6 +1513,12 @@ static int SDLCALL audio_bindStreamsAtomically(void *arg)
     SDLTest_AssertCheck(SDL_GetAudioStreamDevice(streams[0]) == device, "Failed batch leaves first stream bound");
     SDLTest_AssertCheck(SDL_GetAudioStreamDevice(streams[1]) == 0, "Failed batch leaves second stream unbound");
 
+    SDL_UnbindAudioStreams(streams, 2);
+    SDLTest_AssertCheck(SDL_GetAudioStreamDevice(streams[0]) == 0, "Mixed batch unbind releases first stream");
+    SDLTest_AssertCheck(SDL_GetAudioStreamDevice(streams[1]) == 0, "Mixed batch unbind leaves second stream unbound");
+    SDL_UnbindAudioStreams(streams, 2);
+    SDLTest_AssertCheck(SDL_GetAudioStreamDevice(streams[0]) == 0, "Repeated batch unbind remains safe");
+
 cleanup:
     SDL_UnbindAudioStreams(streams, 2);
     SDL_DestroyAudioStream(streams[0]);

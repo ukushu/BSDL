@@ -848,6 +848,69 @@ static bool SDL_AllocateJoystickStateArrays(SDL_Joystick *joystick)
              ((joystick->nbuttons > 0) && !joystick->buttons));
 }
 
+static SDL_Joystick *SDL_CreateJoystick(SDL_JoystickDriver *driver, int device_index, SDL_JoystickID instance_id)
+{
+    SDL_Joystick *joystick;
+    const char *joystickname = NULL;
+    const char *joystickpath = NULL;
+    bool invert_sensors = false;
+    const SDL_SteamVirtualGamepadInfo *info;
+
+    // Create and initialize the joystick
+    joystick = (SDL_Joystick *)SDL_calloc(1, sizeof(*joystick));
+    if (!joystick) {
+        return NULL;
+    }
+    SDL_SetObjectValid(joystick, SDL_OBJECT_TYPE_JOYSTICK, true);
+    joystick->driver = driver;
+    joystick->instance_id = instance_id;
+    joystick->attached = true;
+    joystick->led_expiration = SDL_GetTicks();
+    joystick->battery_percent = -1;
+#ifdef SDL_JOYSTICK_VIRTUAL
+    joystick->is_virtual = (driver == &SDL_VIRTUAL_JoystickDriver);
+#endif
+
+    if (!driver->Open(joystick, device_index)) {
+        SDL_SetObjectValid(joystick, SDL_OBJECT_TYPE_JOYSTICK, false);
+        SDL_free(joystick);
+        return NULL;
+    }
+
+    joystickname = driver->GetDeviceName(device_index);
+    if (joystickname) {
+        joystick->name = SDL_strdup(joystickname);
+    }
+
+    joystickpath = driver->GetDevicePath(device_index);
+    if (joystickpath) {
+        joystick->path = SDL_strdup(joystickpath);
+    }
+
+    joystick->guid = driver->GetDeviceGUID(device_index);
+
+    if (!SDL_AllocateJoystickStateArrays(joystick)) {
+        SDL_CloseJoystick(joystick);
+        return NULL;
+    }
+
+    SDL_InitializeJoystickAxisValues(joystick);
+
+    // Get the Steam Input API handle
+    info = SDL_GetJoystickVirtualGamepadInfoForID(instance_id);
+    if (info) {
+        joystick->steam_handle = info->handle;
+        joystick->swap_face_buttons = ShouldSwapFaceButtons(info);
+    }
+
+    // Use system gyro and accelerometer if the gamepad doesn't have built-in sensors
+    if (ShouldAttemptSensorFusion(joystick, &invert_sensors)) {
+        AttemptSensorFusion(joystick, invert_sensors);
+    }
+
+    return joystick;
+}
+
 /*
  * Open a joystick for use - the index passed as an argument refers to
  * the N'th joystick on the system.  This index is the value which will
@@ -861,10 +924,6 @@ SDL_Joystick *SDL_OpenJoystick(SDL_JoystickID instance_id)
     int device_index;
     SDL_Joystick *joystick;
     SDL_Joystick *joysticklist;
-    const char *joystickname = NULL;
-    const char *joystickpath = NULL;
-    bool invert_sensors = false;
-    const SDL_SteamVirtualGamepadInfo *info;
 
     SDL_LockJoysticks();
 
@@ -887,59 +946,10 @@ SDL_Joystick *SDL_OpenJoystick(SDL_JoystickID instance_id)
         joysticklist = joysticklist->next;
     }
 
-    // Create and initialize the joystick
-    joystick = (SDL_Joystick *)SDL_calloc(1, sizeof(*joystick));
+    joystick = SDL_CreateJoystick(driver, device_index, instance_id);
     if (!joystick) {
         SDL_UnlockJoysticks();
         return NULL;
-    }
-    SDL_SetObjectValid(joystick, SDL_OBJECT_TYPE_JOYSTICK, true);
-    joystick->driver = driver;
-    joystick->instance_id = instance_id;
-    joystick->attached = true;
-    joystick->led_expiration = SDL_GetTicks();
-    joystick->battery_percent = -1;
-#ifdef SDL_JOYSTICK_VIRTUAL
-    joystick->is_virtual = (driver == &SDL_VIRTUAL_JoystickDriver);
-#endif
-
-    if (!driver->Open(joystick, device_index)) {
-        SDL_SetObjectValid(joystick, SDL_OBJECT_TYPE_JOYSTICK, false);
-        SDL_free(joystick);
-        SDL_UnlockJoysticks();
-        return NULL;
-    }
-
-    joystickname = driver->GetDeviceName(device_index);
-    if (joystickname) {
-        joystick->name = SDL_strdup(joystickname);
-    }
-
-    joystickpath = driver->GetDevicePath(device_index);
-    if (joystickpath) {
-        joystick->path = SDL_strdup(joystickpath);
-    }
-
-    joystick->guid = driver->GetDeviceGUID(device_index);
-
-    if (!SDL_AllocateJoystickStateArrays(joystick)) {
-        SDL_CloseJoystick(joystick);
-        SDL_UnlockJoysticks();
-        return NULL;
-    }
-
-    SDL_InitializeJoystickAxisValues(joystick);
-
-    // Get the Steam Input API handle
-    info = SDL_GetJoystickVirtualGamepadInfoForID(instance_id);
-    if (info) {
-        joystick->steam_handle = info->handle;
-        joystick->swap_face_buttons = ShouldSwapFaceButtons(info);
-    }
-
-    // Use system gyro and accelerometer if the gamepad doesn't have built-in sensors
-    if (ShouldAttemptSensorFusion(joystick, &invert_sensors)) {
-        AttemptSensorFusion(joystick, invert_sensors);
     }
 
     // Add joystick to list
