@@ -217,7 +217,8 @@
 │   ├── README.md
 │   └── release_checklist.md
 ├── Dox/
-│   └── ProjTree.md
+│   ├── ProjTree.md
+│   └── RefactoringValidation.md
 ├── examples/
 │   ├── asyncio/
 │   │   ├── 01-load-bitmaps/

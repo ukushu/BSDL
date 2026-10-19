@@ -1095,6 +1095,28 @@ static bool SDL_SelectRenderDriver(SDL_Renderer *renderer, SDL_Window *window, S
 }
 #endif
 
+#ifndef SDL_RENDER_DISABLED
+static void InitializeRendererView(SDL_Renderer *renderer, SDL_Surface *surface)
+{
+    if (surface) {
+        renderer->main_view.pixel_w = surface->w;
+        renderer->main_view.pixel_h = surface->h;
+    }
+    renderer->main_view.viewport.w = -1.0f;
+    renderer->main_view.viewport.h = -1.0f;
+    renderer->main_view.scale.x = 1.0f;
+    renderer->main_view.scale.y = 1.0f;
+    renderer->main_view.logical_scale.x = 1.0f;
+    renderer->main_view.logical_scale.y = 1.0f;
+    renderer->main_view.current_scale.x = 1.0f;
+    renderer->main_view.current_scale.y = 1.0f;
+    renderer->view = &renderer->main_view;
+    UpdatePixelViewport(renderer, &renderer->main_view);
+    UpdatePixelClipRect(renderer, &renderer->main_view);
+    UpdateMainViewDimensions(renderer);
+}
+#endif
+
 SDL_Renderer *SDL_CreateRendererWithProperties(SDL_PropertiesID props)
 {
 #ifndef SDL_RENDER_DISABLED
@@ -1168,22 +1190,7 @@ SDL_Renderer *SDL_CreateRendererWithProperties(SDL_PropertiesID props)
 
     renderer->window = window;
     renderer->target_mutex = SDL_CreateMutex();
-    if (surface) {
-        renderer->main_view.pixel_w = surface->w;
-        renderer->main_view.pixel_h = surface->h;
-    }
-    renderer->main_view.viewport.w = -1.0f;
-    renderer->main_view.viewport.h = -1.0f;
-    renderer->main_view.scale.x = 1.0f;
-    renderer->main_view.scale.y = 1.0f;
-    renderer->main_view.logical_scale.x = 1.0f;
-    renderer->main_view.logical_scale.y = 1.0f;
-    renderer->main_view.current_scale.x = 1.0f;
-    renderer->main_view.current_scale.y = 1.0f;
-    renderer->view = &renderer->main_view;
-    UpdatePixelViewport(renderer, &renderer->main_view);
-    UpdatePixelClipRect(renderer, &renderer->main_view);
-    UpdateMainViewDimensions(renderer);
+    InitializeRendererView(renderer, surface);
 
     renderer->palettes = SDL_CreateHashTable(0, false, SDL_HashPointer, SDL_KeyMatchPointer, SDL_DestroyHashValue, NULL);
     if (!renderer->palettes) {

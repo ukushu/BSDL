@@ -3145,6 +3145,54 @@ static const SDLTest_TestCaseReference videoTestGPUBufferCopyPass = {
     video_gpuBufferCopyPass, "video_gpuBufferCopyPass", "Upload and download bytes through Vulkan copy passes", TEST_ENABLED
 };
 
+static int SDLCALL video_gpuBufferAllocationReuse(void *arg)
+{
+    SDL_GPUBuffer *buffers[24] = { NULL };
+    SDL_GPUBufferCreateInfo info = { SDL_GPU_BUFFERUSAGE_VERTEX, 64, 0 };
+    SDL_GPUDevice *device;
+    const int count = (int)SDL_arraysize(buffers);
+
+    if (!SDL_GPUSupportsShaderFormats(SDL_GPU_SHADERFORMAT_SPIRV, "vulkan")) {
+        SDLTest_Log("Skipping Vulkan buffer allocation reuse: %s", SDL_GetError());
+        return TEST_SKIPPED;
+    }
+
+    device = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_SPIRV, false, "vulkan");
+    if (!SDLTest_AssertCheck(device != NULL, "Create Vulkan device for buffer reuse: %s", SDL_GetError())) {
+        return TEST_ABORTED;
+    }
+
+    for (int i = 0; i < count; ++i) {
+        buffers[i] = SDL_CreateGPUBuffer(device, &info);
+        if (!SDLTest_AssertCheck(buffers[i] != NULL, "Create GPU buffer %d: %s", i, SDL_GetError())) {
+            goto done;
+        }
+    }
+    for (int i = 0; i < count; i += 2) {
+        SDL_ReleaseGPUBuffer(device, buffers[i]);
+        buffers[i] = NULL;
+    }
+    for (int i = 0; i < count; i += 2) {
+        buffers[i] = SDL_CreateGPUBuffer(device, &info);
+        if (!SDLTest_AssertCheck(buffers[i] != NULL, "Recreate GPU buffer %d: %s", i, SDL_GetError())) {
+            goto done;
+        }
+    }
+
+done:
+    for (int i = 0; i < count; ++i) {
+        if (buffers[i]) {
+            SDL_ReleaseGPUBuffer(device, buffers[i]);
+        }
+    }
+    SDL_DestroyGPUDevice(device);
+    return TEST_COMPLETED;
+}
+
+static const SDLTest_TestCaseReference videoTestGPUBufferAllocationReuse = {
+    video_gpuBufferAllocationReuse, "video_gpuBufferAllocationReuse", "Recreate small Vulkan buffers after release", TEST_ENABLED
+};
+
 static int SDLCALL video_recreateWindowSettings(void *arg)
 {
     typedef int (*XFetchNameFn)(void *, unsigned long, char **);
@@ -3294,6 +3342,7 @@ static const SDLTest_TestCaseReference *videoTests[] = {
     &videoTestGPUDriverEnumeration,
     &videoTestGPUDeviceLifecycle,
     &videoTestGPUBufferCopyPass,
+    &videoTestGPUBufferAllocationReuse,
     &videoTestRecreateWindowSettings,
     &videoTestDestroyWindowUnlinksList,
     NULL

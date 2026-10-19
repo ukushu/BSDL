@@ -3272,6 +3272,128 @@ static const SDLTest_TestCaseReference renderTestDriverFallback = {
     render_testDriverFallback, "render_testDriverFallback", "Tests render driver fallback and error", TEST_ENABLED
 };
 
+static int SDLCALL render_testInitialSoftwareView(void *arg)
+{
+    SDL_Surface *surface = SDL_CreateSurface(13, 7, SDL_PIXELFORMAT_RGBA32);
+    SDL_Renderer *software = NULL;
+    SDL_Rect viewport;
+    int width, height;
+    float scale_x, scale_y;
+    Uint8 r, g, b, a;
+
+    if (!SDLTest_AssertCheck(surface != NULL, "Create renderer target: %s", SDL_GetError())) {
+        return TEST_ABORTED;
+    }
+    software = SDL_CreateSoftwareRenderer(surface);
+    if (!SDLTest_AssertCheck(software != NULL, "Create surface renderer: %s", SDL_GetError())) {
+        SDL_DestroySurface(surface);
+        return TEST_ABORTED;
+    }
+
+    SDLTest_AssertCheck(SDL_GetRenderOutputSize(software, &width, &height) && width == 13 && height == 7,
+                        "Initial output matches the surface");
+    SDLTest_AssertCheck(SDL_GetRenderViewport(software, &viewport) &&
+                        viewport.x == 0 && viewport.y == 0 && viewport.w == 13 && viewport.h == 7,
+                        "Initial viewport covers the surface");
+    SDLTest_AssertCheck(SDL_GetRenderScale(software, &scale_x, &scale_y) &&
+                        scale_x == 1.0f && scale_y == 1.0f, "Initial render scale is one");
+    SDLTest_AssertCheck(SDL_SetRenderDrawColor(software, 255, 0, 0, 255) &&
+                        SDL_RenderPoint(software, 12.0f, 6.0f) && SDL_RenderPresent(software),
+                        "Render at the far edge: %s", SDL_GetError());
+    if (SDLTest_AssertCheck(SDL_ReadSurfacePixel(surface, 12, 6, &r, &g, &b, &a),
+                            "Read far edge pixel: %s", SDL_GetError())) {
+        SDLTest_AssertCheck(r == 255 && g == 0 && b == 0 && a == 255,
+                            "Far edge pixel is red");
+    }
+
+    SDL_DestroyRenderer(software);
+    SDL_DestroySurface(surface);
+    return TEST_COMPLETED;
+}
+
+static const SDLTest_TestCaseReference renderTestInitialSoftwareView = {
+    render_testInitialSoftwareView, "render_testInitialSoftwareView", "Tests initial surface renderer viewport and scale", TEST_ENABLED
+};
+
+static int SDLCALL render_testVulkanCommandQueue(void *arg)
+{
+    SDL_Window *test_window = SDL_CreateWindow("Vulkan command queue", 32, 32, SDL_WINDOW_VULKAN);
+    SDL_Renderer *test_renderer = NULL;
+    SDL_Surface *pixels = NULL;
+    const SDL_FPoint strip[] = { { 2.0f, 14.0f }, { 20.0f, 14.0f }, { 20.0f, 20.0f } };
+    const SDL_Vertex triangle[] = {
+        { { 5.0f, 22.0f }, { 0.0f, 1.0f, 0.0f, 1.0f }, { 0.0f, 0.0f } },
+        { { 11.0f, 22.0f }, { 0.0f, 1.0f, 0.0f, 1.0f }, { 0.0f, 0.0f } },
+        { { 8.0f, 28.0f }, { 0.0f, 1.0f, 0.0f, 1.0f }, { 0.0f, 0.0f } }
+    };
+    const SDL_Point samples[] = { { 10, 2 }, { 10, 8 }, { 10, 14 }, { 25, 25 }, { 8, 24 }, { 10, 5 } };
+    Uint8 r, g, b, a;
+
+    if (!test_window) {
+        SDLTest_Log("Skipping Vulkan clear readback: %s", SDL_GetError());
+        return TEST_SKIPPED;
+    }
+    test_renderer = SDL_CreateRenderer(test_window, "vulkan");
+    if (!test_renderer) {
+        SDLTest_Log("Skipping Vulkan clear readback: %s", SDL_GetError());
+        SDL_DestroyWindow(test_window);
+        return TEST_SKIPPED;
+    }
+
+    if (SDLTest_AssertCheck(SDL_SetRenderDrawColor(test_renderer, 255, 0, 0, 255) &&
+                            SDL_RenderClear(test_renderer) &&
+                            SDL_SetRenderDrawColor(test_renderer, 0, 255, 0, 255) &&
+                            SDL_RenderLine(test_renderer, 2.0f, 2.0f, 20.0f, 2.0f) &&
+                            SDL_RenderLine(test_renderer, 2.0f, 8.0f, 20.0f, 8.0f) &&
+                            SDL_RenderLines(test_renderer, strip, SDL_arraysize(strip)) &&
+                            SDL_RenderPoint(test_renderer, 25.0f, 25.0f) &&
+                            SDL_RenderGeometry(test_renderer, NULL, triangle, SDL_arraysize(triangle), NULL, 0),
+                            "Clear and draw Vulkan primitives: %s", SDL_GetError())) {
+        pixels = SDL_RenderReadPixels(test_renderer, NULL);
+        if (SDLTest_AssertCheck(pixels != NULL, "Read Vulkan primitives: %s", SDL_GetError())) {
+            for (int i = 0; i < SDL_arraysize(samples); ++i) {
+                if (SDLTest_AssertCheck(SDL_ReadSurfacePixel(pixels, samples[i].x, samples[i].y, &r, &g, &b, &a),
+                                        "Read Vulkan sample %d: %s", i, SDL_GetError())) {
+                    SDLTest_AssertCheck(r == (i == 5 ? 255 : 0) && g == (i == 5 ? 0 : 255) && b == 0 && a == 255,
+                                        "Vulkan sample %d matches primitive or clear color", i);
+                }
+            }
+        }
+        SDL_DestroySurface(pixels);
+        pixels = NULL;
+
+        bool queued = true;
+        SDLTest_AssertCheck(SDL_SetRenderDrawColor(test_renderer, 0, 0, 0, 255) && SDL_RenderClear(test_renderer),
+                            "Clear Vulkan color changes: %s", SDL_GetError());
+        for (int i = 0; i < 1024; ++i) {
+            if (!SDL_SetRenderColorScale(test_renderer, (i & 1) ? 1.0f : 0.5f) ||
+                !SDL_SetRenderDrawColor(test_renderer, (i & 1) ? 0 : 255, (i & 1) ? 255 : 0, 0, 255) ||
+                !SDL_RenderPoint(test_renderer, 29.0f, 29.0f)) {
+                queued = false;
+                break;
+            }
+        }
+        SDLTest_AssertCheck(queued, "Queue repeated Vulkan color changes: %s", SDL_GetError());
+        pixels = SDL_RenderReadPixels(test_renderer, NULL);
+        if (SDLTest_AssertCheck(pixels != NULL, "Read repeated Vulkan draws: %s", SDL_GetError()) &&
+            SDLTest_AssertCheck(SDL_ReadSurfacePixel(pixels, 29, 29, &r, &g, &b, &a),
+                                "Read final Vulkan point: %s", SDL_GetError())) {
+            SDLTest_AssertCheck(r == 0 && g == 255 && b == 0 && a == 255,
+                                "Final Vulkan point uses final color scale");
+        }
+        SDLTest_AssertCheck(SDL_RenderPresent(test_renderer), "Present Vulkan frame: %s", SDL_GetError());
+    }
+
+    SDL_DestroySurface(pixels);
+    SDL_DestroyRenderer(test_renderer);
+    SDL_DestroyWindow(test_window);
+    return TEST_COMPLETED;
+}
+
+static const SDLTest_TestCaseReference renderTestVulkanCommandQueue = {
+    render_testVulkanCommandQueue, "render_testVulkanCommandQueue", "Checks Vulkan primitives, repeated color scales, readback, and present", TEST_ENABLED
+};
+
 /* Sequence of Render test cases */
 static const SDLTest_TestCaseReference *renderTests[] = {
     &renderTestGetNumRenderDrivers,
@@ -3310,6 +3432,8 @@ static const SDLTest_TestCaseReference *renderTests[] = {
     &renderTestSoftwareTextureLock,
     &renderTestSoftwareYUVTextureUpdates,
     &renderTestDriverFallback,
+    &renderTestInitialSoftwareView,
+    &renderTestVulkanCommandQueue,
     NULL
 };
 
