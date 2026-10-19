@@ -161,7 +161,6 @@ extern bool Cocoa_IsShowingModalDialog(SDL_Window *window);
 extern void SDL_UpdateLifecycleObserver(void);
 #endif
 
-static void SDL_CheckWindowSafeAreaChanged(SDL_Window *window);
 
 // Convenience functions for reading driver flags
 static bool SDL_ModeSwitchingEmulated(SDL_VideoDevice *_this)
@@ -2131,48 +2130,6 @@ void SDL_OnWindowLiveResizeUpdate(SDL_Window *window)
     SDL_PumpEventMaintenance();
 }
 
-static void SDL_CheckWindowSafeAreaChanged(SDL_Window *window)
-{
-    SDL_Rect rect;
-
-    rect.x = window->safe_inset_left;
-    rect.y = window->safe_inset_top;
-    rect.w = window->w - (window->safe_inset_right + window->safe_inset_left);
-    rect.h = window->h - (window->safe_inset_top + window->safe_inset_bottom);
-    if (SDL_memcmp(&rect, &window->safe_rect, sizeof(rect)) != 0) {
-        SDL_copyp(&window->safe_rect, &rect);
-        SDL_SendWindowEvent(window, SDL_EVENT_WINDOW_SAFE_AREA_CHANGED, 0, 0);
-    }
-}
-
-void SDL_SetWindowSafeAreaInsets(SDL_Window *window, int left, int right, int top, int bottom)
-{
-    window->safe_inset_left = left;
-    window->safe_inset_right = right;
-    window->safe_inset_top = top;
-    window->safe_inset_bottom = bottom;
-    SDL_CheckWindowSafeAreaChanged(window);
-}
-
-bool SDL_GetWindowSafeArea(SDL_Window *window, SDL_Rect *rect)
-{
-    if (rect) {
-        SDL_zerop(rect);
-    }
-
-    CHECK_WINDOW_MAGIC(window, false);
-
-    if (rect) {
-        if (SDL_RectEmpty(&window->safe_rect)) {
-            rect->w = window->w;
-            rect->h = window->h;
-        } else {
-            SDL_copyp(rect, &window->safe_rect);
-        }
-    }
-    return true;
-}
-
 void SDL_OnWindowMinimized(SDL_Window *window)
 {
     if (window->flags & SDL_WINDOW_FULLSCREEN) {
@@ -2778,54 +2735,6 @@ bool SDL_SetWindowShape(SDL_Window *window, SDL_Surface *shape)
         }
     }
     return true;
-}
-
-/*
- * Functions used by iOS application delegates
- */
-void SDL_OnApplicationWillTerminate(void)
-{
-    SDL_SendAppEvent(SDL_EVENT_TERMINATING);
-}
-
-void SDL_OnApplicationDidReceiveMemoryWarning(void)
-{
-    SDL_SendAppEvent(SDL_EVENT_LOW_MEMORY);
-}
-
-void SDL_OnApplicationWillEnterBackground(void)
-{
-    if (_this) {
-        SDL_Window *window;
-        for (window = _this->windows; window; window = window->next) {
-            SDL_SendWindowEvent(window, SDL_EVENT_WINDOW_MINIMIZED, 0, 0);
-        }
-        SDL_SetKeyboardFocus(NULL);
-    }
-    SDL_SendAppEvent(SDL_EVENT_WILL_ENTER_BACKGROUND);
-}
-
-void SDL_OnApplicationDidEnterBackground(void)
-{
-    SDL_SendAppEvent(SDL_EVENT_DID_ENTER_BACKGROUND);
-}
-
-void SDL_OnApplicationWillEnterForeground(void)
-{
-    SDL_SendAppEvent(SDL_EVENT_WILL_ENTER_FOREGROUND);
-}
-
-void SDL_OnApplicationDidEnterForeground(void)
-{
-    SDL_SendAppEvent(SDL_EVENT_DID_ENTER_FOREGROUND);
-
-    if (_this) {
-        SDL_Window *window;
-        for (window = _this->windows; window; window = window->next) {
-            SDL_SetKeyboardFocus(window);
-            SDL_SendWindowEvent(window, SDL_EVENT_WINDOW_RESTORED, 0, 0);
-        }
-    }
 }
 
 SDL_MetalView SDL_Metal_CreateView(SDL_Window *window)

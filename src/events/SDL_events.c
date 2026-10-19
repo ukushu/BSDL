@@ -124,21 +124,6 @@ typedef struct
 static SDL_DisabledEventBlock *SDL_disabled_events[256];
 static SDL_AtomicInt SDL_userevents;
 
-typedef struct SDL_TemporaryMemory
-{
-    void *memory;
-    struct SDL_TemporaryMemory *prev;
-    struct SDL_TemporaryMemory *next;
-} SDL_TemporaryMemory;
-
-typedef struct SDL_TemporaryMemoryState
-{
-    SDL_TemporaryMemory *head;
-    SDL_TemporaryMemory *tail;
-} SDL_TemporaryMemoryState;
-
-static SDL_TLSID SDL_temporary_memory;
-
 typedef struct SDL_EventEntry
 {
     SDL_Event event;
@@ -176,101 +161,6 @@ void SDL_DestroyEventLock(void)
     }
 }
 
-static void SDL_CleanupTemporaryMemory(void *data)
-{
-    SDL_TemporaryMemoryState *state = (SDL_TemporaryMemoryState *)data;
-
-    SDL_FreeTemporaryMemory();
-    SDL_free(state);
-}
-
-static SDL_TemporaryMemoryState *SDL_GetTemporaryMemoryState(bool create)
-{
-    SDL_TemporaryMemoryState *state;
-
-    state = (SDL_TemporaryMemoryState *)SDL_GetTLS(&SDL_temporary_memory);
-    if (!state) {
-        if (!create) {
-            return NULL;
-        }
-
-        state = (SDL_TemporaryMemoryState *)SDL_calloc(1, sizeof(*state));
-        if (!state) {
-            return NULL;
-        }
-
-        if (!SDL_SetTLS(&SDL_temporary_memory, state, SDL_CleanupTemporaryMemory)) {
-            SDL_free(state);
-            return NULL;
-        }
-    }
-    return state;
-}
-
-static SDL_TemporaryMemory *SDL_GetTemporaryMemoryEntry(SDL_TemporaryMemoryState *state, const void *mem)
-{
-    SDL_TemporaryMemory *entry;
-
-    // Start from the end, it's likely to have been recently allocated
-    for (entry = state->tail; entry; entry = entry->prev) {
-        if (mem == entry->memory) {
-            return entry;
-        }
-    }
-    return NULL;
-}
-
-static void SDL_LinkTemporaryMemoryEntry(SDL_TemporaryMemoryState *state, SDL_TemporaryMemory *entry)
-{
-    entry->prev = state->tail;
-    entry->next = NULL;
-
-    if (state->tail) {
-        state->tail->next = entry;
-    } else {
-        state->head = entry;
-    }
-    state->tail = entry;
-}
-
-static void SDL_UnlinkTemporaryMemoryEntry(SDL_TemporaryMemoryState *state, SDL_TemporaryMemory *entry)
-{
-    if (state->head == entry) {
-        state->head = entry->next;
-    }
-    if (state->tail == entry) {
-        state->tail = entry->prev;
-    }
-
-    if (entry->prev) {
-        entry->prev->next = entry->next;
-    }
-    if (entry->next) {
-        entry->next->prev = entry->prev;
-    }
-
-    entry->prev = NULL;
-    entry->next = NULL;
-}
-
-static void SDL_LinkTemporaryMemoryToEvent(SDL_EventEntry *event, const void *mem)
-{
-    SDL_TemporaryMemoryState *state;
-    SDL_TemporaryMemory *entry;
-
-    state = SDL_GetTemporaryMemoryState(false);
-    if (!state) {
-        return;
-    }
-
-    entry = SDL_GetTemporaryMemoryEntry(state, mem);
-    if (entry) {
-        SDL_UnlinkTemporaryMemoryEntry(state, entry);
-        entry->next = event->memory;
-        event->memory = entry;
-    }
-}
-
 static void SDL_TransferSysWMMemoryToEvent(SDL_EventEntry *event)
 {
     SDL2_SysWMmsg **wmmsg = (SDL2_SysWMmsg **)((&event->event.common)+1);
@@ -278,7 +168,7 @@ static void SDL_TransferSysWMMemoryToEvent(SDL_EventEntry *event)
     if (mem) {
         SDL_copyp(mem, *wmmsg);
         *wmmsg = mem;
-        SDL_LinkTemporaryMemoryToEvent(event, mem);
+        SDL_AttachTemporaryMemory(&event->memory, mem);
     }
 }
 
@@ -287,24 +177,24 @@ static void SDL_TransferTemporaryMemoryToEvent(SDL_EventEntry *event)
 {
     switch (event->event.type) {
     case SDL_EVENT_TEXT_EDITING:
-        SDL_LinkTemporaryMemoryToEvent(event, event->event.edit.text);
+        SDL_AttachTemporaryMemory(&event->memory, event->event.edit.text);
         break;
     case SDL_EVENT_TEXT_EDITING_CANDIDATES:
-        SDL_LinkTemporaryMemoryToEvent(event, event->event.edit_candidates.candidates);
+        SDL_AttachTemporaryMemory(&event->memory, event->event.edit_candidates.candidates);
         break;
     case SDL_EVENT_TEXT_INPUT:
-        SDL_LinkTemporaryMemoryToEvent(event, event->event.text.text);
+        SDL_AttachTemporaryMemory(&event->memory, event->event.text.text);
         break;
     case SDL_EVENT_DROP_BEGIN:
     case SDL_EVENT_DROP_FILE:
     case SDL_EVENT_DROP_TEXT:
     case SDL_EVENT_DROP_COMPLETE:
     case SDL_EVENT_DROP_POSITION:
-        SDL_LinkTemporaryMemoryToEvent(event, event->event.drop.source);
-        SDL_LinkTemporaryMemoryToEvent(event, event->event.drop.data);
+        SDL_AttachTemporaryMemory(&event->memory, event->event.drop.source);
+        SDL_AttachTemporaryMemory(&event->memory, event->event.drop.data);
         break;
     case SDL_EVENT_CLIPBOARD_UPDATE:
-        SDL_LinkTemporaryMemoryToEvent(event, event->event.clipboard.mime_types);
+        SDL_AttachTemporaryMemory(&event->memory, event->event.clipboard.mime_types);
         break;
     case SDL2_SYSWMEVENT:
         // We need to copy the stack pointer into temporary memory
@@ -312,103 +202,6 @@ static void SDL_TransferTemporaryMemoryToEvent(SDL_EventEntry *event)
         break;
     default:
         break;
-    }
-}
-
-// Transfer the event memory from the event to the thread-local event memory list
-static void SDL_TransferTemporaryMemoryFromEvent(SDL_EventEntry *event)
-{
-    SDL_TemporaryMemoryState *state;
-    SDL_TemporaryMemory *entry, *next;
-
-    if (!event->memory) {
-        return;
-    }
-
-    state = SDL_GetTemporaryMemoryState(true);
-    if (!state) {
-        return;  // this is now a leak, but you probably have bigger problems if malloc failed.
-    }
-
-    for (entry = event->memory; entry; entry = next) {
-        next = entry->next;
-        SDL_LinkTemporaryMemoryEntry(state, entry);
-    }
-    event->memory = NULL;
-}
-
-static void *SDL_FreeLater(void *memory)
-{
-    SDL_TemporaryMemoryState *state;
-
-    if (memory == NULL) {
-        return NULL;
-    }
-
-    // Make sure we're not adding this to the list twice
-    //SDL_assert(!SDL_ClaimTemporaryMemory(memory));
-
-    state = SDL_GetTemporaryMemoryState(true);
-    if (!state) {
-        return memory;  // this is now a leak, but you probably have bigger problems if malloc failed.
-    }
-
-    SDL_TemporaryMemory *entry = (SDL_TemporaryMemory *)SDL_malloc(sizeof(*entry));
-    if (!entry) {
-        return memory;  // this is now a leak, but you probably have bigger problems if malloc failed. We could probably pool up and reuse entries, though.
-    }
-
-    entry->memory = memory;
-
-    SDL_LinkTemporaryMemoryEntry(state, entry);
-
-    return memory;
-}
-
-void *SDL_AllocateTemporaryMemory(size_t size)
-{
-    return SDL_FreeLater(SDL_malloc(size));
-}
-
-const char *SDL_CreateTemporaryString(const char *string)
-{
-    if (string) {
-        return (const char *)SDL_FreeLater(SDL_strdup(string));
-    }
-    return NULL;
-}
-
-void *SDL_ClaimTemporaryMemory(const void *mem)
-{
-    SDL_TemporaryMemoryState *state;
-
-    state = SDL_GetTemporaryMemoryState(false);
-    if (state && mem) {
-        SDL_TemporaryMemory *entry = SDL_GetTemporaryMemoryEntry(state, mem);
-        if (entry) {
-            SDL_UnlinkTemporaryMemoryEntry(state, entry);
-            SDL_free(entry);
-            return (void *)mem;
-        }
-    }
-    return NULL;
-}
-
-void SDL_FreeTemporaryMemory(void)
-{
-    SDL_TemporaryMemoryState *state;
-
-    state = SDL_GetTemporaryMemoryState(false);
-    if (!state) {
-        return;
-    }
-
-    while (state->head) {
-        SDL_TemporaryMemory *entry = state->head;
-
-        SDL_UnlinkTemporaryMemoryEntry(state, entry);
-        SDL_free(entry->memory);
-        SDL_free(entry);
     }
 }
 
@@ -502,7 +295,7 @@ void SDL_StopEventLoop(void)
     // Clean out EventQ
     for (entry = SDL_EventQ.head; entry;) {
         SDL_EventEntry *next = entry->next;
-        SDL_TransferTemporaryMemoryFromEvent(entry);
+        SDL_TransferTemporaryMemoryFromEvent(&entry->memory);
         SDL_free(entry);
         entry = next;
     }
@@ -628,7 +421,7 @@ static int SDL_AddEvent(SDL_Event *event)
 // Remove an event from the queue -- called with the queue locked
 static void SDL_CutEvent(SDL_EventEntry *entry)
 {
-    SDL_TransferTemporaryMemoryFromEvent(entry);
+    SDL_TransferTemporaryMemoryFromEvent(&entry->memory);
 
     if (entry->prev) {
         entry->prev->next = entry->next;
@@ -656,7 +449,7 @@ static void SDL_CutEvent(SDL_EventEntry *entry)
     SDL_AddAtomicInt(&SDL_EventQ.count, -1);
 }
 
-static void SDL_SendWakeupEvent(void)
+void SDL_SendWakeupEvent(void)
 {
 #ifdef SDL_PLATFORM_ANDROID
     Android_SendLifecycleEvent(SDL_ANDROID_LIFECYCLE_WAKE);
@@ -812,178 +605,6 @@ void SDL_FlushEvents(Uint32 minType, Uint32 maxType)
         }
     }
     SDL_UnlockMutex(SDL_EventQ.lock);
-}
-
-typedef enum
-{
-    SDL_MAIN_CALLBACK_WAITING,
-    SDL_MAIN_CALLBACK_COMPLETE,
-    SDL_MAIN_CALLBACK_CANCELED,
-} SDL_MainThreadCallbackState;
-
-typedef struct SDL_MainThreadCallbackEntry
-{
-    SDL_MainThreadCallback callback;
-    void *userdata;
-    SDL_AtomicInt state;
-    SDL_Semaphore *semaphore;
-    struct SDL_MainThreadCallbackEntry *next;
-} SDL_MainThreadCallbackEntry;
-
-static SDL_Mutex *SDL_main_callbacks_lock;
-static SDL_MainThreadCallbackEntry *SDL_main_callbacks_head;
-static SDL_MainThreadCallbackEntry *SDL_main_callbacks_tail;
-
-static SDL_MainThreadCallbackEntry *SDL_CreateMainThreadCallback(SDL_MainThreadCallback callback, void *userdata, bool wait_complete)
-{
-    SDL_MainThreadCallbackEntry *entry = (SDL_MainThreadCallbackEntry *)SDL_malloc(sizeof(*entry));
-    if (!entry) {
-        return NULL;
-    }
-
-    entry->callback = callback;
-    entry->userdata = userdata;
-    SDL_SetAtomicInt(&entry->state, SDL_MAIN_CALLBACK_WAITING);
-    if (wait_complete) {
-        entry->semaphore = SDL_CreateSemaphore(0);
-        if (!entry->semaphore) {
-            SDL_free(entry);
-            return NULL;
-        }
-    } else {
-        entry->semaphore = NULL;
-    }
-    entry->next = NULL;
-
-    return entry;
-}
-
-static void SDL_DestroyMainThreadCallback(SDL_MainThreadCallbackEntry *entry)
-{
-    if (entry->semaphore) {
-        SDL_DestroySemaphore(entry->semaphore);
-    }
-    SDL_free(entry);
-}
-
-static void SDL_InitMainThreadCallbacks(void)
-{
-    SDL_main_callbacks_lock = SDL_CreateMutex();
-    SDL_assert(SDL_main_callbacks_head == NULL &&
-               SDL_main_callbacks_tail == NULL);
-}
-
-static void SDL_QuitMainThreadCallbacks(void)
-{
-    SDL_MainThreadCallbackEntry *entry;
-
-    SDL_LockMutex(SDL_main_callbacks_lock);
-    {
-        entry = SDL_main_callbacks_head;
-        SDL_main_callbacks_head = NULL;
-        SDL_main_callbacks_tail = NULL;
-    }
-    SDL_UnlockMutex(SDL_main_callbacks_lock);
-
-    while (entry) {
-        SDL_MainThreadCallbackEntry *next = entry->next;
-
-        if (entry->semaphore) {
-            // Let the waiting thread know this is canceled
-            SDL_SetAtomicInt(&entry->state, SDL_MAIN_CALLBACK_CANCELED);
-            SDL_SignalSemaphore(entry->semaphore);
-        } else {
-            // Nobody's waiting for this, clean it up
-            SDL_DestroyMainThreadCallback(entry);
-        }
-        entry = next;
-    }
-
-    SDL_DestroyMutex(SDL_main_callbacks_lock);
-    SDL_main_callbacks_lock = NULL;
-}
-
-static void SDL_RunMainThreadCallbacks(void)
-{
-    SDL_MainThreadCallbackEntry *entry;
-
-    SDL_LockMutex(SDL_main_callbacks_lock);
-    {
-        entry = SDL_main_callbacks_head;
-        SDL_main_callbacks_head = NULL;
-        SDL_main_callbacks_tail = NULL;
-    }
-    SDL_UnlockMutex(SDL_main_callbacks_lock);
-
-    while (entry) {
-        SDL_MainThreadCallbackEntry *next = entry->next;
-
-        entry->callback(entry->userdata);
-
-        if (entry->semaphore) {
-            // Let the waiting thread know this is done
-            SDL_SetAtomicInt(&entry->state, SDL_MAIN_CALLBACK_COMPLETE);
-            SDL_SignalSemaphore(entry->semaphore);
-        } else {
-            // Nobody's waiting for this, clean it up
-            SDL_DestroyMainThreadCallback(entry);
-        }
-        entry = next;
-    }
-}
-
-bool SDL_RunOnMainThread(SDL_MainThreadCallback callback, void *userdata, bool wait_complete)
-{
-    if (SDL_IsMainThread() || !SDL_WasInit(SDL_INIT_EVENTS)) {
-        // No need to queue the callback
-        callback(userdata);
-        return true;
-    }
-
-    SDL_MainThreadCallbackEntry *entry = SDL_CreateMainThreadCallback(callback, userdata, wait_complete);
-    if (!entry) {
-        return false;
-    }
-
-    SDL_LockMutex(SDL_main_callbacks_lock);
-    {
-        if (SDL_main_callbacks_tail) {
-            SDL_main_callbacks_tail->next = entry;
-            SDL_main_callbacks_tail = entry;
-        } else {
-            SDL_main_callbacks_head = entry;
-            SDL_main_callbacks_tail = entry;
-        }
-    }
-    SDL_UnlockMutex(SDL_main_callbacks_lock);
-
-    // If the main thread is waiting for events, wake it up
-    SDL_SendWakeupEvent();
-
-    if (!wait_complete) {
-        // Queued for execution, wait not requested
-        return true;
-    }
-
-    SDL_WaitSemaphore(entry->semaphore);
-
-    switch (SDL_GetAtomicInt(&entry->state)) {
-    case SDL_MAIN_CALLBACK_COMPLETE:
-        // Execution complete!
-        SDL_DestroyMainThreadCallback(entry);
-        return true;
-
-    case SDL_MAIN_CALLBACK_CANCELED:
-        // The callback was canceled on the main thread
-        SDL_DestroyMainThreadCallback(entry);
-        return SDL_SetError("Callback canceled");
-
-    default:
-        // Probably hit a deadlock in the callback
-        // We can't destroy the entry as the semaphore will be signaled
-        // if it ever comes back, just leak it here.
-        return SDL_SetError("Callback timed out");
-    }
 }
 
 void SDL_PumpEventMaintenance(void)

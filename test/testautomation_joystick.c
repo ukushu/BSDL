@@ -37,6 +37,8 @@ static void SDLCALL joystickTearDown(void *arg)
 static int SDLCALL joystick_testVirtual(void *arg)
 {
     SDL_VirtualJoystickDesc desc;
+    SDL_VirtualJoystickTouchpadDesc touchpad_desc = { 2, { 0, 0, 0 } };
+    SDL_VirtualJoystickSensorDesc sensor_desc = { SDL_SENSOR_GYRO, 60.0f };
     SDL_Joystick *joystick = NULL;
     SDL_Gamepad *gamepad = NULL;
     SDL_JoystickID device_id;
@@ -48,6 +50,10 @@ static int SDLCALL joystick_testVirtual(void *arg)
     desc.vendor_id = USB_VENDOR_NVIDIA;
     desc.product_id = USB_PRODUCT_NVIDIA_SHIELD_CONTROLLER_V103;
     desc.name = "Virtual NVIDIA SHIELD Controller";
+    desc.ntouchpads = 1;
+    desc.touchpads = &touchpad_desc;
+    desc.nsensors = 1;
+    desc.sensors = &sensor_desc;
     device_id = SDL_AttachVirtualJoystick(&desc);
     SDLTest_AssertCheck(device_id > 0, "SDL_AttachVirtualJoystick() -> %" SDL_PRIs32 " (expected > 0)", device_id);
     SDLTest_AssertCheck(SDL_IsJoystickVirtual(device_id), "SDL_IsJoystickVirtual()");
@@ -111,6 +117,33 @@ static int SDLCALL joystick_testVirtual(void *arg)
             gamepad = SDL_OpenGamepad(SDL_GetJoystickID(joystick));
             SDLTest_AssertCheck(gamepad != NULL, "SDL_OpenGamepad() succeeded");
             if (gamepad) {
+                bool finger_down = false;
+                float finger_x = 0.0f, finger_y = 0.0f, finger_pressure = 0.0f;
+                const float sensor_values[3] = { 1.0f, 2.0f, 3.0f };
+                float gamepad_sensor_values[3] = { 0.0f, 0.0f, 0.0f };
+
+                SDLTest_AssertCheck(SDL_GetNumGamepadTouchpads(gamepad) == 1, "SDL_GetNumGamepadTouchpads() == 1");
+                SDLTest_AssertCheck(SDL_GetNumGamepadTouchpadFingers(gamepad, 0) == 2, "SDL_GetNumGamepadTouchpadFingers() == 2");
+                SDLTest_AssertCheck(SDL_SetJoystickVirtualTouchpad(joystick, 0, 1, true, 0.25f, 0.75f, 0.5f), "SDL_SetJoystickVirtualTouchpad()");
+                SDL_UpdateJoysticks();
+                SDLTest_AssertCheck(SDL_GetGamepadTouchpadFinger(gamepad, 0, 1, &finger_down, &finger_x, &finger_y, &finger_pressure), "SDL_GetGamepadTouchpadFinger()");
+                SDLTest_AssertCheck(finger_down && finger_x == 0.25f && finger_y == 0.75f && finger_pressure == 0.5f,
+                                    "Gamepad touchpad finger state is preserved");
+                SDLTest_AssertCheck(!SDL_GetGamepadTouchpadFinger(gamepad, 1, 0, NULL, NULL, NULL, NULL),
+                                    "SDL_GetGamepadTouchpadFinger() rejects an invalid touchpad");
+
+                SDLTest_AssertCheck(SDL_GamepadHasSensor(gamepad, SDL_SENSOR_GYRO), "SDL_GamepadHasSensor() reports the virtual gyroscope");
+                SDLTest_AssertCheck(!SDL_GamepadSensorEnabled(gamepad, SDL_SENSOR_GYRO), "SDL_GamepadSensorEnabled() starts disabled");
+                SDLTest_AssertCheck(SDL_GetGamepadSensorDataRate(gamepad, SDL_SENSOR_GYRO) == 60.0f, "SDL_GetGamepadSensorDataRate() -> 60 Hz");
+                SDLTest_AssertCheck(SDL_SetGamepadSensorEnabled(gamepad, SDL_SENSOR_GYRO, true), "SDL_SetGamepadSensorEnabled()");
+                SDLTest_AssertCheck(SDL_GamepadSensorEnabled(gamepad, SDL_SENSOR_GYRO), "SDL_GamepadSensorEnabled() reports enabled");
+                SDLTest_AssertCheck(SDL_SendJoystickVirtualSensorData(joystick, SDL_SENSOR_GYRO, 123, sensor_values, 3),
+                                    "SDL_SendJoystickVirtualSensorData()");
+                SDL_UpdateJoysticks();
+                SDLTest_AssertCheck(SDL_GetGamepadSensorData(gamepad, SDL_SENSOR_GYRO, gamepad_sensor_values, 3), "SDL_GetGamepadSensorData()");
+                SDLTest_AssertCheck(gamepad_sensor_values[0] == 1.0f && gamepad_sensor_values[1] == 2.0f && gamepad_sensor_values[2] == 3.0f,
+                                    "Gamepad sensor values are preserved");
+
                 SDL_Gamepad *again = SDL_OpenGamepad(device_id);
                 SDLTest_AssertCheck(again == gamepad, "Opening the same gamepad returns the existing instance");
                 if (again) {

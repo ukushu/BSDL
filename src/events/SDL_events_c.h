@@ -24,6 +24,8 @@
 
 #include "SDL_internal.h"
 
+typedef struct SDL_TemporaryMemory SDL_TemporaryMemory;
+
 // Useful functions and variables from SDL_events.c
 #include "../video/SDL_sysvideo.h"
 
@@ -63,8 +65,15 @@ extern void *SDL_AllocateTemporaryMemory(size_t size);
 extern const char *SDL_CreateTemporaryString(const char *string);
 extern void *SDL_ClaimTemporaryMemory(const void *mem);
 extern void SDL_FreeTemporaryMemory(void);
+extern void SDL_AttachTemporaryMemory(SDL_TemporaryMemory **event_memory, const void *mem);
+extern void SDL_TransferTemporaryMemoryFromEvent(SDL_TemporaryMemory **event_memory);
 
 extern void SDL_PumpEventMaintenance(void);
+extern void SDL_SendWakeupEvent(void);
+extern void SDL_InitMainThreadCallbacks(void);
+extern void SDL_QuitMainThreadCallbacks(void);
+extern void SDL_RunMainThreadCallbacks(void);
+extern bool SDL_RunOnMainThread(SDL_MainThreadCallback callback, void *userdata, bool wait_complete);
 
 extern void SDL_SendQuit(void);
 

@@ -11,11 +11,16 @@
 - Surface: створення й конвертацію форматів, clip rect, blend/color/alpha modulation, palette і color key, alternate images та властивості; конвертація не змінює стан джерела.
 - YUV: порядок площин, planar/semiplanar/packed формати, розміри й крок рядка на парних та непарних розмірах.
 - WAV: PCM, порядок `fmt`/`data` та невідомих chunk-ів, float і підтримувані companded/ADPCM декодери; некоректний RIFF має повертати помилку без витоку ресурсів.
-- Video/render: режими дисплеїв, параметри вікна, fullscreen, window surface/texture, logical presentation, DPI coordinate round trips і mouse/touch/pen/drop перетворення, OpenGL/Vulkan loader lifecycle, fallback renderer і збереження помилки при невдалому створенні.
-- Events/joystick: черга й callback-и подій, створення віртуального joystick/gamepad, читання та зміна кнопок/осей; перевірити підписи face buttons для ABXY, AXBY, BAYX і Sony стилів.
+- Video/render: режими дисплеїв, параметри й safe area вікна, fullscreen, window surface/texture, logical presentation, DPI coordinate round trips і mouse/touch/pen/drop перетворення, OpenGL/Vulkan loader lifecycle, fallback renderer і збереження помилки при невдалому створенні.
+- Events/joystick: черга й callback-и подій, передачу тимчасової пам’яті між потоком і queued event, створення віртуального joystick/gamepad, читання та зміна кнопок/осей; перевірити підписи face buttons для ABXY, AXBY, BAYX і Sony стилів.
+- Temporary event memory: створити event із `SDL_CreateTemporaryString`, додати в queue, peek/read його кілька разів, перевірити чинність рядка до видалення та повторне використання після; перевірити `SDL_FlushEvent`, drop/text/clipboard payload-и й SysWM stack-copy lifetime.
 - Software geometry fallback: прямокутні quad-и, текстуровані та нетекстуровані кольорові quad-и, індекси 8/16/32-bit, raw geometry і fallback-трикутники; перевірити, що черга команд та відновлення draw state не змінилися.
+- Streaming texture lock/update: native, YUV і palette-backed textures; lock-to-surface, dirty updates, unlock flush і readback після циклу lock/write/unlock.
 - Window placement/display selection: point/rect display lookup, popup coordinate conversion, pending/fullscreen display selection and fallback to the primary display.
 - Video sync hint: toggle `SDL_HINT_VIDEO_SYNC_WINDOW_OPERATIONS` at runtime and verify window operations follow the updated hint; confirm fullscreen-mode changes remain synchronous on macOS Cocoa transitions and do not affect behavior when the hint is disabled.
+- Gamepad peripherals: on a controller that provides them, query touchpad count/fingers and finger state, sensor support/enabled state/data rate/data, and capacitive button state; verify invalid touchpad/finger indices return errors and optional output pointers are handled independently.
+- Main-thread callbacks: from a worker thread queue callbacks with and without waiting, verify execution on the main thread and FIFO order; verify direct execution when called on the main thread and safe cancellation when the event subsystem quits with queued callbacks.
+- Application lifecycle: send will-enter-background / did-enter-foreground around a live window and verify minimize, focus loss, focus restore and restored events; verify terminating and low-memory notifications reach event watchers.
 
 ## Матриця платформ
 
@@ -70,10 +75,15 @@
 - Перевірити `SDL_SetRenderDrawColor`, draw color/alpha scale, blend mode, color scale mode та HDR output properties на кожному доступному backend. Порівняти framebuffer/readback для clear і primitives, перевірити послідовні зміни стану між кадрами, reset після resize та коректні SDL errors для непідтримуваного HDR/color mode. На Windows перевірити D3D12 і Vulkan, якщо доступні; на macOS — Metal.
 - Перевірити renderer/window association, name/properties і output size для window renderer після resize, DPI change та window recreation; звірити pixel size на mixed-DPI Windows displays і Retina drawable на macOS. Перевірити offscreen та software renderer: output size має бути коректним згідно API.
 - Перевірити geometry triangles з/без texture, 8/16/32-bit indices, автоматичний clamp/wrap UV та software fallback; повторити з logical scaling і після resize/DPI зміни, звіривши framebuffer/readback на кожній платформі.
+- Перевірити streaming texture lock, lock-to-surface, update та unlock/readback на software і hardware renderer; для YUV і palette-backed texture звірити формат/площини та результат після flush на Windows і macOS.
 - Зібрати `testgpurender_effects` і `testgpurender_msdf`; створити GPU render state, встановити vertex/fragment shader, sampler та uniform-и, намалювати кадр і перевірити readback. Повторити після resize/window recreation, щоб перевірити чергу команд і життєвий цикл ресурсів.
 - Перевірити backend помилку/відсутній GPU та збереження SDL error. Зафіксувати реальний backend/device; для Windows перевірити D3D12 і Vulkan, якщо доступні, для macOS — Metal (Vulkan лише якщо backend зібраний).
 
 `deus check .` не запускає `testgpurender_effects` і `testgpurender_msdf` окремими CTest цілями. Їхній build і native runtime результат записувати окремо; пропуск через відсутній backend/GPU позначати Skipped із причиною.
+
+### Перевірки event callback refactor на Windows і macOS
+
+Після переносу черги callback-ів головного потоку виконати `events_testRunOnMainThread` на Windows native/MSVC і macOS native/Xcode. Перевірити постановку з worker thread у режимах wait і no-wait, виконання callback саме на main thread, завершення waiting thread, прямий виклик із main thread та cancellation queued callback під час завершення event subsystem. Зафіксувати Passed/Failed/Skipped; не зараховувати dummy/offscreen запуск як перевірку native thread wake-up.
 
 Поточне середовище Linux має активну X11 сесію й AMD Radeon RX 5700 (RADV). Конфігурація Deus з `SDL_X11=ON`, `SDL_WAYLAND=ON`, `SDLTEST_VIDEO_DRIVER=x11` успішно збирається. У повному прогоні `deus check .` від 2026-10-19 усі 25 CTest цілей виконались: 23 пройшли, дві (`testautomation` і `testautomation-no-simd`) завершились помилкою через відомий `render_testColorspaceLinear` (картка 000007). У звичайному automation target було 4 пропуски, у no-SIMD — 12; пропуск не є успіхом і має оцінюватися за потрібним драйвером. `video_testFullscreenEnterLeave` і `mouse_getMouseFocus` у цьому прогоні пройшли; їхні попередні нестабільні результати лишаються зафіксованими окремо в картках 000008 і 000040.
 
@@ -147,4 +157,24 @@ Renderer/window association, renderer name/properties і output-size accessors �
 
 `SDL_RenderGeometry`/`SDL_RenderGeometryRaw` та перевірки індексів/UV винесено в `SDL_render_geometry.c`; command queue geometry API лишився у renderer core. Після `SDL3-shared` build пройшов `render_testGeometryRawIndexWidths` (1/1); Visual Studio XML і Xcode project перевірено. Перевірити software fallback, texture palette sync, auto UV clamp/wrap та 8/16/32-bit індекси на Windows mixed-DPI і macOS Retina. Повний прогін після переносу не запускався.
 
-Стан `SDL_HINT_VIDEO_SYNC_WINDOW_OPERATIONS`, його callback і `SDL_SyncIfRequired` винесено в `SDL_video_sync.c`; callback як і раніше реєструється після успішної video initialization. Після цього `SDL3-shared` зібрався без попереджень, а `video_testFullscreenEnterLeave` пройшов (1/1) на X11. Перевірка hint runtime toggle та синхронного fullscreen mode transition на Cocoa лишається платформною.
+Стан `SDL_HINT_VIDEO_SYNC_WINDOW_OPERATIONS`, його callback і `SDL_SyncIfRequired` винесено в `SDL_video_sync.c`; callback як і раніше реєструється після успішної video initialization. Після цього `SDL3-shared` зібрався без попереджень, а `video_testFullscreenEnterLeave` пройшов (1/1) на X11. Перевірка hint runtime toggle та синхронного fullscreen mode transition на Cocoa лишається платформною. Xcode project registrations перевірені: всі 1210 object IDs мають 24 символи, унікальні, а посилання резолвяться.
+
+Touchpad, sensor і capsense Gamepad API винесено в `SDL_gamepad_peripherals.c`; залежність від private `SDL_Gamepad` struct не додавалася. `joystick_testVirtual` тепер перевіряє touchpad fingers, invalid touchpad error, sensor presence/enabled/rate/data на virtual gamepad; build `testautomation` і фокусний тест пройшли (1/1). Native Windows/macOS перевірка лишається для фізичних touchpad/sensor/capsense пристроїв, якщо вони доступні.
+
+Streaming texture lock/unlock API, включно з YUV, palette surface і native texture paths та `SDL_LockTextureToSurface`, винесено з update module до `SDL_render_texture_lock.c`. Спільні update/YUV upload функції й lock/unlock semantics залишені без змін. `SDL3-shared` зібрався, а `render_testSoftwareTextureLock` пройшов (1/1) з lock-to-surface, unlock, render і pixel readback. Перевірки update, palette/YUV і readback для Windows/macOS додані до матриці; повний прогін після переносу не запускався.
+
+Fullscreen display/window coordination винесено з `SDL_video_modes.c` у `SDL_video_fullscreen.c`; display mode inventory і mode selection лишилися окремо. `SDL3-shared` зібрався, `video_testFullscreenEnterLeave` пройшов (1/1) на X11. Native platform checklist покриває enter/leave, exclusive mode restore, display changes і Cocoa fullscreen Space transitions; ці Windows/macOS runtime перевірки лишаються відкритими.
+
+Display/window association, display-change handling, HDR propagation та window pixel/content scale винесено до `SDL_video_windowdisplay.c`; display list/registry/geometry accessors лишилися в `SDL_video_displays.c`. Після `SDL3-shared` build пройшов увесь Video automation suite на X11: 35 passed, 0 failed, 1 skipped; до нього входили display registry і fullscreen transition перевірки. Windows mixed-DPI і macOS Retina сценарії залишаються в platform matrix.
+
+Чергу callback-ів головного потоку винесено з `SDL_events.c` у `SDL_events_mainthread.c`; `SDL_SendWakeupEvent` лишається у event core і викликається через внутрішній прототип. `SDL3-shared` та `testautomation` зібралися; `events_mainThreadCallbacks` пройшов 9/9 assertions на X11. Windows native wake-up і macOS native thread checks лишаються відкритими за platform checklist.
+
+Logical presentation, перерахунок pixel viewport/clip і DPI для main view перенесено з `SDL_render.c` у `SDL_render_coordinates.c`; вибір destination rect відділено від оновлення renderer state. `SDL3-shared` і `testautomation` зібралися; `render_testLogicalSize` пройшов на X11 після цього поділу. Windows mixed-DPI та macOS Retina перевірки лишаються відкритими за renderer platform checklist.
+
+Application lifecycle callbacks винесено з `SDL_video.c` до `SDL_video_application.c`; функції зберігають події завершення/пам’яті та цикли minimize/focus/restore для вікон. `SDL3-shared` і `testautomation` зібралися. Lifecycle runtime перевірки на iOS/Android лишаються відкритими за спільним checklist.
+
+Safe-area inset handling, change notification і query перенесено з `SDL_video.c` до `SDL_video_windowgeometry.c`; resize callback використовує спільний internal checker. `SDL3-shared` і `testautomation` зібралися; перевірки safe-area подій на пристроях із вирізом лишаються платформним пунктом.
+
+Thread-local temporary memory ownership і керування TLS list винесено з `SDL_events.c` до `SDL_events_temporary_memory.c`; event core зберігає лише зв’язування payload-ів за типом події. `SDL3-shared` і `testautomation` зібралися, Events suite пройшов 5/5 на X11. Повного прямого покриття всіх payload lifetime сценаріїв у suite немає; вони внесені в checklist.
+
+Розбір синтаксису input/output binding перенесено з `SDL_gamepad.c` до `SDL_gamepad_mapping.c`; core передає parser-у mapping string, а сам зберігає прикріплення binding до gamepad. `SDL3-shared` і `testautomation` зібралися; `joystick_mappingElementParsing` пройшов 18/18 assertions. Mapping-label тести лишаються окремою перевіркою.

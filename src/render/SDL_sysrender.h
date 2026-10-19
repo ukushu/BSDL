@@ -426,6 +426,7 @@ extern bool SDL_IsNPOT(int value);
 extern void SDL_UpdateColorScale(SDL_Renderer *renderer);
 extern void SDL_UpdateHDRProperties(SDL_Renderer *renderer);
 extern void SDL_UpdateLogicalPresentation(SDL_Renderer *renderer);
+extern void SDL_UpdateMainViewDimensions(SDL_Renderer *renderer);
 
 // Setup colorspace conversion
 extern void SDL_SetupRendererColorspace(SDL_Renderer *renderer, SDL_PropertiesID props);

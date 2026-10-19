@@ -693,6 +693,8 @@
     <ClCompile Include="..\..\src\events\SDL_dropevents.c" />
     <ClCompile Include="..\..\src\events\SDL_eventdescription.c" />
     <ClCompile Include="..\..\src\events\SDL_events.c" />
+    <ClCompile Include="..\..\src\events\SDL_events_temporary_memory.c" />
+    <ClCompile Include="..\..\src\events\SDL_events_mainthread.c" />
     <ClCompile Include="..\..\src\events\SDL_eventwatch.c" />
     <ClCompile Include="..\..\src\events\SDL_keyboard.c" />
     <ClCompile Include="..\..\src\events\SDL_keymap.c" />
@@ -755,6 +757,7 @@
     <ClCompile Include="..\..\src\joystick\hidapi\SDL_hidapi_zuiki.c" />
     <ClCompile Include="..\..\src\joystick\hidapi\SDL_report_descriptor.c" />
     <ClCompile Include="..\..\src\joystick\SDL_gamepad.c" />
+    <ClCompile Include="..\..\src\joystick\SDL_gamepad_peripherals.c" />
     <ClCompile Include="..\..\src\joystick\SDL_gamepad_filter.c" />
     <ClCompile Include="..\..\src\joystick\SDL_gamepad_names.c" />
     <ClCompile Include="..\..\src\joystick\SDL_gamepad_sinput.c" />
@@ -831,6 +834,7 @@
     <ClCompile Include="..\..\src\render\SDL_render_debug.c" />
     <ClCompile Include="..\..\src\render\SDL_render_texture_state.c" />
     <ClCompile Include="..\..\src\render\SDL_render_texture_update.c" />
+    <ClCompile Include="..\..\src\render\SDL_render_texture_lock.c" />
     <ClCompile Include="..\..\src\render\SDL_render_unsupported.c" />
     <ClCompile Include="..\..\src\render\SDL_yuv_sw.c" />
     <ClCompile Include="..\..\src\render\software\SDL_blendfillrect.c" />
@@ -926,9 +930,12 @@
     <ClCompile Include="..\..\src\video\SDL_stretch.c" />
     <ClCompile Include="..\..\src\video\SDL_surface.c" />
     <ClCompile Include="..\..\src\video\SDL_video.c" />
+    <ClCompile Include="..\..\src\video\SDL_video_application.c" />
     <ClCompile Include="..\..\src\video\SDL_video_displays.c" />
+    <ClCompile Include="..\..\src\video\SDL_video_windowdisplay.c" />
     <ClCompile Include="..\..\src\video\SDL_video_gl.c" />
     <ClCompile Include="..\..\src\video\SDL_video_modes.c" />
+    <ClCompile Include="..\..\src\video\SDL_video_fullscreen.c" />
     <ClCompile Include="..\..\src\video\SDL_video_textinput.c" />
     <ClCompile Include="..\..\src\video\SDL_video_windowgeometry.c" />
     <ClCompile Include="..\..\src\video\SDL_video_sync.c" />
