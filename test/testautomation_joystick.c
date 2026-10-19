@@ -466,6 +466,68 @@ static int SDLCALL joystick_gamepadButtonLabelsForType(void *arg)
     return TEST_COMPLETED;
 }
 
+static int SDLCALL joystick_getGamepadsFiltersDevices(void *arg)
+{
+    SDL_VirtualJoystickDesc desc;
+    SDL_JoystickID gamepad_id = 0;
+    SDL_JoystickID joystick_id = 0;
+    SDL_JoystickID *gamepads = NULL;
+    char guid[33];
+    char mapping[128];
+    int count = 0;
+    bool found_gamepad = false;
+
+    SDL_INIT_INTERFACE(&desc);
+    desc.type = SDL_JOYSTICK_TYPE_GAMEPAD;
+    desc.nbuttons = 1;
+    desc.vendor_id = 0xF00D;
+    desc.product_id = 0xBEEF;
+    desc.name = "Virtual Gamepad List Entry";
+    gamepad_id = SDL_AttachVirtualJoystick(&desc);
+    if (!SDLTest_AssertCheck(gamepad_id > 0, "Attach mapped virtual gamepad: %s", SDL_GetError())) {
+        goto done;
+    }
+
+    SDL_GUIDToString(SDL_GetJoystickGUIDForID(gamepad_id), guid, sizeof(guid));
+    SDL_snprintf(mapping, sizeof(mapping), "%s,Virtual Gamepad List Entry,a:b0,", guid);
+    if (!SDLTest_AssertCheck(SDL_AddGamepadMapping(mapping) >= 0, "Add virtual gamepad mapping: %s", SDL_GetError())) {
+        goto done;
+    }
+
+    SDL_INIT_INTERFACE(&desc);
+    desc.type = SDL_JOYSTICK_TYPE_UNKNOWN;
+    desc.vendor_id = 0xF00D;
+    desc.product_id = 0xBEF0;
+    desc.name = "Virtual Unmapped Joystick";
+    joystick_id = SDL_AttachVirtualJoystick(&desc);
+    if (!SDLTest_AssertCheck(joystick_id > 0, "Attach unmapped virtual joystick: %s", SDL_GetError())) {
+        goto done;
+    }
+
+    gamepads = SDL_GetGamepads(&count);
+    if (!SDLTest_AssertCheck(gamepads != NULL, "Get gamepad list: %s", SDL_GetError())) {
+        goto done;
+    }
+    for (int i = 0; i < count; ++i) {
+        SDLTest_AssertCheck(gamepads[i] != joystick_id, "Gamepad list excludes unmapped joystick");
+        SDLTest_AssertCheck(SDL_IsGamepad(gamepads[i]), "Every listed device has a gamepad mapping");
+        if (gamepads[i] == gamepad_id) {
+            found_gamepad = true;
+        }
+    }
+    SDLTest_AssertCheck(found_gamepad, "Gamepad list includes mapped virtual gamepad");
+
+done:
+    SDL_free(gamepads);
+    if (joystick_id > 0) {
+        SDL_DetachVirtualJoystick(joystick_id);
+    }
+    if (gamepad_id > 0) {
+        SDL_DetachVirtualJoystick(gamepad_id);
+    }
+    return TEST_COMPLETED;
+}
+
 static int SDLCALL joystick_mappingElementParsing(void *arg)
 {
     SDL_VirtualJoystickDesc desc;
@@ -848,6 +910,9 @@ static const SDLTest_TestCaseReference joystickTestMappingLabelHints = {
 static const SDLTest_TestCaseReference joystickTestGamepadButtonLabelsForType = {
     joystick_gamepadButtonLabelsForType, "joystick_gamepadButtonLabelsForType", "Button labels follow the gamepad face style", TEST_ENABLED
 };
+static const SDLTest_TestCaseReference joystickTestGetGamepadsFiltersDevices = {
+    joystick_getGamepadsFiltersDevices, "joystick_getGamepadsFiltersDevices", "Only mapped devices are returned by SDL_GetGamepads", TEST_ENABLED
+};
 static const SDLTest_TestCaseReference joystickTestGamepadNameConversions = {
     joystick_gamepadNameConversions, "joystick_gamepadNameConversions", "Gamepad names and enums round-trip", TEST_ENABLED
 };
@@ -869,6 +934,7 @@ static const SDLTest_TestCaseReference *joystickTests[] = {
     &joystickTestGamepadNameConversions,
     &joystickTestMappingLabelHints,
     &joystickTestGamepadButtonLabelsForType,
+    &joystickTestGetGamepadsFiltersDevices,
     &joystickTest3,
     NULL
 };

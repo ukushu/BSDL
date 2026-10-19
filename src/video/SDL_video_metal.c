@@ -23,16 +23,6 @@
 
 #include "SDL_sysvideo.h"
 
-#define CHECK_WINDOW_MAGIC(window, result)                              \
-    CHECK_PARAM(!_this) {                                               \
-        SDL_UninitializedVideo();                                       \
-        return result;                                                  \
-    }                                                                   \
-    CHECK_PARAM(!SDL_ObjectValid(window, SDL_OBJECT_TYPE_WINDOW)) {     \
-        SDL_SetError("Invalid window");                                 \
-        return result;                                                  \
-    }
-
 SDL_MetalView SDL_Metal_CreateView(SDL_Window *window)
 {
     SDL_VideoDevice *_this = SDL_GetVideoDevice();

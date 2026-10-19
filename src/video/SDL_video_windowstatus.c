@@ -23,22 +23,6 @@
 
 #include "SDL_sysvideo.h"
 
-#define CHECK_WINDOW_MAGIC(window, result)                              \
-    CHECK_PARAM(!_this) {                                               \
-        SDL_UninitializedVideo();                                       \
-        return result;                                                  \
-    }                                                                   \
-    CHECK_PARAM(!SDL_ObjectValid(window, SDL_OBJECT_TYPE_WINDOW)) {     \
-        SDL_SetError("Invalid window");                                 \
-        return result;                                                  \
-    }
-
-#define CHECK_WINDOW_NOT_POPUP(window, result)                         \
-    CHECK_PARAM(SDL_WINDOW_IS_POPUP(window)) {                          \
-        SDL_SetError("Operation invalid on popup windows");            \
-        return result;                                                  \
-    }
-
 bool SDL_FlashWindow(SDL_Window *window, SDL_FlashOperation operation)
 {
     SDL_VideoDevice *_this = SDL_GetVideoDevice();
@@ -77,7 +61,6 @@ bool SDL_SetWindowProgressState(SDL_Window *window, SDL_ProgressState state)
 
 SDL_ProgressState SDL_GetWindowProgressState(SDL_Window *window)
 {
-    SDL_VideoDevice *_this = SDL_GetVideoDevice();
 
     CHECK_WINDOW_MAGIC(window, SDL_PROGRESS_STATE_INVALID);
     CHECK_WINDOW_NOT_POPUP(window, SDL_PROGRESS_STATE_INVALID);
@@ -107,7 +90,6 @@ bool SDL_SetWindowProgressValue(SDL_Window *window, float value)
 
 float SDL_GetWindowProgressValue(SDL_Window *window)
 {
-    SDL_VideoDevice *_this = SDL_GetVideoDevice();
 
     CHECK_WINDOW_MAGIC(window, -1.0f);
     CHECK_WINDOW_NOT_POPUP(window, -1.0f);

@@ -152,6 +152,12 @@
 		B1E0D0000000000000000024 /* SDL_video_windowtexture.c in Sources */ = {isa = PBXBuildFile; fileRef = B1E0D0000000000000000025 /* SDL_video_windowtexture.c */; };
 		F05100000000000000000001 /* SDL_video_windowstatus.c in Sources */ = {isa = PBXBuildFile; fileRef = F05100000000000000000002 /* SDL_video_windowstatus.c */; };
 		F05200000000000000000001 /* SDL_video_windowhierarchy.c in Sources */ = {isa = PBXBuildFile; fileRef = F05200000000000000000002 /* SDL_video_windowhierarchy.c */; };
+		F05300000000000000000001 /* SDL_video_messagebox.c in Sources */ = {isa = PBXBuildFile; fileRef = F05300000000000000000002 /* SDL_video_messagebox.c */; };
+		F05500000000000000000001 /* SDL_video_windowproperties.c in Sources */ = {isa = PBXBuildFile; fileRef = F05500000000000000000002 /* SDL_video_windowproperties.c */; };
+		F05600000000000000000001 /* SDL_video_windowevents.c in Sources */ = {isa = PBXBuildFile; fileRef = F05600000000000000000002 /* SDL_video_windowevents.c */; };
+		F05700000000000000000001 /* SDL_video_windowstate.c in Sources */ = {isa = PBXBuildFile; fileRef = F05700000000000000000002 /* SDL_video_windowstate.c */; };
+		F05800000000000000000001 /* SDL_video_windowlifecycle.c in Sources */ = {isa = PBXBuildFile; fileRef = F05800000000000000000002 /* SDL_video_windowlifecycle.c */; };
+		F05400000000000000000001 /* SDL_video_windowinput.c in Sources */ = {isa = PBXBuildFile; fileRef = F05400000000000000000002 /* SDL_video_windowinput.c */; };
 		B1E0D0000000000000000026 /* SDL_video_vulkan.c in Sources */ = {isa = PBXBuildFile; fileRef = B1E0D0000000000000000027 /* SDL_video_vulkan.c */; };
 		A7D8AC2D23E2514100DCD162 /* SDL_surface.c in Sources */ = {isa = PBXBuildFile; fileRef = A7D8A61423E2513D00DCD162 /* SDL_surface.c */; };
 		A7D8AC3323E2514100DCD162 /* SDL_RLEaccel.c in Sources */ = {isa = PBXBuildFile; fileRef = A7D8A61523E2513D00DCD162 /* SDL_RLEaccel.c */; };
@@ -791,6 +797,12 @@
 		B1E0D0000000000000000025 /* SDL_video_windowtexture.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_video_windowtexture.c; sourceTree = "<group>"; };
 		F05100000000000000000002 /* SDL_video_windowstatus.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_video_windowstatus.c; sourceTree = "<group>"; };
 		F05200000000000000000002 /* SDL_video_windowhierarchy.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_video_windowhierarchy.c; sourceTree = "<group>"; };
+		F05300000000000000000002 /* SDL_video_messagebox.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_video_messagebox.c; sourceTree = "<group>"; };
+		F05500000000000000000002 /* SDL_video_windowproperties.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_video_windowproperties.c; sourceTree = "<group>"; };
+		F05600000000000000000002 /* SDL_video_windowevents.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_video_windowevents.c; sourceTree = "<group>"; };
+		F05700000000000000000002 /* SDL_video_windowstate.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_video_windowstate.c; sourceTree = "<group>"; };
+		F05800000000000000000002 /* SDL_video_windowlifecycle.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_video_windowlifecycle.c; sourceTree = "<group>"; };
+		F05400000000000000000002 /* SDL_video_windowinput.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = SDL_video_windowinput.c; sourceTree = "<group>"; };
 		B1E0D0000000000000000027 /* SDL_video_vulkan.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_video_vulkan.c; sourceTree = "<group>"; };
 		A7D8A61423E2513D00DCD162 /* SDL_surface.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_surface.c; sourceTree = "<group>"; };
 		A7D8A61523E2513D00DCD162 /* SDL_RLEaccel.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_RLEaccel.c; sourceTree = "<group>"; };
@@ -1864,6 +1876,12 @@
 				B1E0D0000000000000000025 /* SDL_video_windowtexture.c */,
 				F05100000000000000000002 /* SDL_video_windowstatus.c */,
 				F05200000000000000000002 /* SDL_video_windowhierarchy.c */,
+				F05300000000000000000002 /* SDL_video_messagebox.c */,
+				F05500000000000000000002 /* SDL_video_windowproperties.c */,
+				F05600000000000000000002 /* SDL_video_windowevents.c */,
+				F05700000000000000000002 /* SDL_video_windowstate.c */,
+				F05800000000000000000002 /* SDL_video_windowlifecycle.c */,
+				F05400000000000000000002 /* SDL_video_windowinput.c */,
 				B1E0D0000000000000000027 /* SDL_video_vulkan.c */,
 				F3DDCC522AFD42B600B0842B /* SDL_video_c.h */,
 				E4F7981F2AD8D87F00669F54 /* SDL_video_unsupported.c */,
@@ -3410,6 +3428,12 @@
 				B1E0D0000000000000000024 /* SDL_video_windowtexture.c in Sources */,
 				F05100000000000000000001 /* SDL_video_windowstatus.c in Sources */,
 				F05200000000000000000001 /* SDL_video_windowhierarchy.c in Sources */,
+				F05300000000000000000001 /* SDL_video_messagebox.c in Sources */,
+				F05500000000000000000001 /* SDL_video_windowproperties.c in Sources */,
+				F05600000000000000000001 /* SDL_video_windowevents.c in Sources */,
+				F05700000000000000000001 /* SDL_video_windowstate.c in Sources */,
+				F05800000000000000000001 /* SDL_video_windowlifecycle.c in Sources */,
+				F05400000000000000000001 /* SDL_video_windowinput.c in Sources */,
 				B1E0D0000000000000000026 /* SDL_video_vulkan.c in Sources */,
 				A7D8BA5B23E2514400DCD162 /* SDL_shaders_gles2.c in Sources */,
 				A7D8B14023E2514200DCD162 /* SDL_blit_1.c in Sources */,

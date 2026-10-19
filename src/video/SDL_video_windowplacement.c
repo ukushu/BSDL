@@ -12,16 +12,6 @@
 #include "SDL_video_c.h"
 #include "../events/SDL_events_c.h"
 
-#define CHECK_WINDOW_MAGIC(window, result)                              \
-    CHECK_PARAM(!SDL_GetVideoDevice()) {                                \
-        SDL_UninitializedVideo();                                       \
-        return result;                                                  \
-    }                                                                   \
-    CHECK_PARAM(!SDL_ObjectValid(window, SDL_OBJECT_TYPE_WINDOW)) {     \
-        SDL_SetError("Invalid window");                                 \
-        return result;                                                  \
-    }
-
 SDL_DisplayID SDL_ResolveWindowPosition(int *window_x, int *window_y, int w, int h, bool *undefined_x, bool *undefined_y)
 {
     int x = *window_x;

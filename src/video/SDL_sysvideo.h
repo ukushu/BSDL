@@ -553,6 +553,30 @@ extern bool SDL_UninitializedVideo(void);
 // Use SDL_OnVideoThread() sparingly, to avoid regressions in use cases that currently happen to work
 extern bool SDL_OnVideoThread(void);
 extern SDL_VideoDevice *SDL_GetVideoDevice(void);
+
+static SDL_INLINE bool SDL_CheckWindowMagicForVideo(SDL_Window *window)
+{
+    if (!SDL_GetVideoDevice()) {
+        SDL_UninitializedVideo();
+        return false;
+    }
+    if (!SDL_ObjectValid(window, SDL_OBJECT_TYPE_WINDOW)) {
+        SDL_SetError("Invalid window");
+        return false;
+    }
+    return true;
+}
+
+#define CHECK_WINDOW_MAGIC(window, result) \
+    CHECK_PARAM(!SDL_CheckWindowMagicForVideo(window)) { \
+        return result; \
+    }
+
+#define CHECK_WINDOW_NOT_POPUP(window, result) \
+    CHECK_PARAM(SDL_WINDOW_IS_POPUP(window)) { \
+        SDL_SetError("Operation invalid on popup windows"); \
+        return result; \
+    }
 extern void SDL_SetSystemTheme(SDL_SystemTheme theme);
 extern SDL_DisplayID SDL_AddBasicVideoDisplay(const SDL_DisplayMode *desktop_mode);
 extern SDL_DisplayID SDL_AddVideoDisplay(const SDL_VideoDisplay *display, bool send_event);
@@ -574,6 +598,7 @@ extern int SDL_GetDisplayIndex(SDL_DisplayID displayID);
 extern SDL_DisplayData *SDL_GetDisplayDriverData(SDL_DisplayID display);
 extern SDL_DisplayData *SDL_GetDisplayDriverDataForWindow(SDL_Window *window);
 extern int SDL_GetMessageBoxCount(void);
+extern bool SDL_ShowMessageBoxWithFallback(const SDL_MessageBoxData *messageboxdata, int *buttonID);
 extern void SDL_SetWindowHDRProperties(SDL_Window *window, const SDL_HDROutputProperties *HDR, bool send_event);
 extern void SDL_SetWindowSafeAreaInsets(SDL_Window *window, int left, int right, int top, int bottom);
 extern void SDL_CheckWindowSafeAreaChanged(SDL_Window *window);

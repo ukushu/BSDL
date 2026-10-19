@@ -11,6 +11,7 @@
 
 #include "SDL_hints_c.h"
 #include "SDL_video_c.h"
+#include "SDL_sysvideo.h"
 
 // Hint to treat all window ops as synchronous
 static bool syncHint;
@@ -35,4 +36,16 @@ void SDL_SyncIfRequired(SDL_Window *window)
 bool SDL_GetVideoSyncHint(void)
 {
     return syncHint;
+}
+
+bool SDL_SyncWindow(SDL_Window *window)
+{
+    SDL_VideoDevice *_this = SDL_GetVideoDevice();
+    CHECK_WINDOW_MAGIC(window, false);
+
+    if (_this->SyncWindow) {
+        return _this->SyncWindow(_this, window);
+    } else {
+        return true;
+    }
 }

@@ -10,16 +10,6 @@
 #include "SDL_internal.h"
 #include "SDL_sysvideo.h"
 
-#define CHECK_WINDOW_MAGIC(window, result)                              \
-    CHECK_PARAM(!SDL_GetVideoDevice()) {                                \
-        SDL_UninitializedVideo();                                       \
-        return result;                                                  \
-    }                                                                   \
-    CHECK_PARAM(!SDL_ObjectValid(window, SDL_OBJECT_TYPE_WINDOW)) {     \
-        SDL_SetError("Invalid window");                                 \
-        return result;                                                  \
-    }
-
 SDL_Window ** SDLCALL SDL_GetWindows(int *count)
 {
     SDL_VideoDevice *_this = SDL_GetVideoDevice();

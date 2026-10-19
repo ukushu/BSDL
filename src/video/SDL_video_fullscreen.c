@@ -30,19 +30,6 @@ static bool SDL_SendsFullscreenDimensions(SDL_VideoDevice *device)
     return !!(device->device_caps & VIDEO_DEVICE_CAPS_SENDS_FULLSCREEN_DIMENSIONS);
 }
 
-static bool SDL_CheckWindowMagicForFullscreen(SDL_Window *window)
-{
-    if (!SDL_GetVideoDevice()) {
-        SDL_UninitializedVideo();
-        return false;
-    }
-    if (!SDL_ObjectValid(window, SDL_OBJECT_TYPE_WINDOW)) {
-        SDL_SetError("Invalid window");
-        return false;
-    }
-    return true;
-}
-
 #if defined(SDL_PLATFORM_MACOS) && defined(SDL_VIDEO_DRIVER_COCOA)
 extern bool Cocoa_IsWindowInFullscreenSpace(SDL_Window *window);
 extern bool Cocoa_IsWindowInFullscreenSpaceTransition(SDL_Window *window);
@@ -51,7 +38,7 @@ extern bool Cocoa_SetWindowFullscreenSpace(SDL_Window *window, bool state, bool 
 
 bool SDL_SetWindowFullscreenMode(SDL_Window *window, const SDL_DisplayMode *mode)
 {
-    if (!SDL_CheckWindowMagicForFullscreen(window)) {
+    if (!SDL_CheckWindowMagicForVideo(window)) {
         return false;
     }
     if (SDL_WINDOW_IS_POPUP(window)) {
@@ -94,7 +81,7 @@ bool SDL_SetWindowFullscreenMode(SDL_Window *window, const SDL_DisplayMode *mode
 
 const SDL_DisplayMode *SDL_GetWindowFullscreenMode(SDL_Window *window)
 {
-    if (!SDL_CheckWindowMagicForFullscreen(window)) {
+    if (!SDL_CheckWindowMagicForVideo(window)) {
         return NULL;
     }
     if (SDL_WINDOW_IS_POPUP(window)) {
@@ -254,7 +241,7 @@ bool SDL_UpdateFullscreenMode(SDL_Window *window, SDL_FullscreenOp fullscreen, b
     SDL_DisplayMode *mode = NULL;
     int i;
 
-    if (!SDL_CheckWindowMagicForFullscreen(window)) {
+    if (!SDL_CheckWindowMagicForVideo(window)) {
         return false;
     }
 
@@ -352,4 +339,39 @@ error:
         SDL_UpdateFullscreenMode(window, SDL_FULLSCREEN_OP_LEAVE, commit);
     }
     return false;
+}
+
+bool SDL_SetWindowFullscreen(SDL_Window *window, bool fullscreen)
+{
+    bool result;
+
+    CHECK_WINDOW_MAGIC(window, false);
+    CHECK_WINDOW_NOT_POPUP(window, false);
+
+    if (window->flags & SDL_WINDOW_HIDDEN) {
+        if (fullscreen) {
+            window->pending_flags |= SDL_WINDOW_FULLSCREEN;
+        } else {
+            window->pending_flags &= ~SDL_WINDOW_FULLSCREEN;
+        }
+        return true;
+    }
+
+    if (fullscreen) {
+        // Set the current fullscreen mode to the desired mode
+        SDL_copyp(&window->current_fullscreen_mode, &window->requested_fullscreen_mode);
+    }
+
+    result = SDL_UpdateFullscreenMode(window, fullscreen ? SDL_FULLSCREEN_OP_ENTER : SDL_FULLSCREEN_OP_LEAVE, true);
+
+    if (!fullscreen || !result) {
+        // Clear the current fullscreen mode.
+        SDL_zero(window->current_fullscreen_mode);
+    }
+
+    if (result) {
+        SDL_SyncIfRequired(window);
+    }
+
+    return result;
 }

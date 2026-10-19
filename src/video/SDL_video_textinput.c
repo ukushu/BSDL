@@ -23,16 +23,6 @@
 #include "SDL_sysvideo.h"
 #include "../SDL_hints_c.h"
 
-#define CHECK_WINDOW_MAGIC(window, result)                              \
-    CHECK_PARAM(!_this) {                                               \
-        SDL_UninitializedVideo();                                       \
-        return result;                                                  \
-    }                                                                   \
-    CHECK_PARAM(!SDL_ObjectValid(window, SDL_OBJECT_TYPE_WINDOW)) {     \
-        SDL_SetError("Invalid window");                                 \
-        return result;                                                  \
-    }
-
 static bool AutoShowingScreenKeyboard(void)
 {
     SDL_VideoDevice *_this = SDL_GetVideoDevice();
@@ -101,7 +91,6 @@ bool SDL_StartTextInputWithProperties(SDL_Window *window, SDL_PropertiesID props
 
 bool SDL_TextInputActive(SDL_Window *window)
 {
-    SDL_VideoDevice *_this = SDL_GetVideoDevice();
     CHECK_WINDOW_MAGIC(window, false);
 
     return window->text_input_active;
@@ -152,7 +141,6 @@ bool SDL_SetTextInputArea(SDL_Window *window, const SDL_Rect *rect, int cursor)
 
 bool SDL_GetTextInputArea(SDL_Window *window, SDL_Rect *rect, int *cursor)
 {
-    SDL_VideoDevice *_this = SDL_GetVideoDevice();
     CHECK_WINDOW_MAGIC(window, false);
 
     if (rect) {

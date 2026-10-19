@@ -26,16 +26,6 @@
 #include "SDL_rect_c.h"
 #include "SDL_surface_c.h"
 
-#define CHECK_WINDOW_MAGIC(window, result)                              \
-    CHECK_PARAM(!_this) {                                               \
-        SDL_UninitializedVideo();                                       \
-        return result;                                                  \
-    }                                                                   \
-    CHECK_PARAM(!SDL_ObjectValid(window, SDL_OBJECT_TYPE_WINDOW)) {     \
-        SDL_SetError("Invalid window");                                 \
-        return result;                                                  \
-    }
-
 // Support for framebuffer emulation using an accelerated renderer
 
 #define SDL_PROP_WINDOW_TEXTUREDATA_POINTER "SDL.internal.window.texturedata"
@@ -378,7 +368,6 @@ static SDL_Surface *SDL_CreateWindowFramebuffer(SDL_Window *window)
 
 bool SDL_WindowHasSurface(SDL_Window *window)
 {
-    SDL_VideoDevice *_this = SDL_GetVideoDevice();
     CHECK_WINDOW_MAGIC(window, false);
 
     return window->surface ? true : false;
@@ -386,7 +375,6 @@ bool SDL_WindowHasSurface(SDL_Window *window)
 
 SDL_Surface *SDL_GetWindowSurface(SDL_Window *window)
 {
-    SDL_VideoDevice *_this = SDL_GetVideoDevice();
     CHECK_WINDOW_MAGIC(window, NULL);
 
     if (!window->surface_valid) {
@@ -429,7 +417,6 @@ bool SDL_GetWindowSurfaceVSync(SDL_Window *window, int *vsync)
 
 bool SDL_UpdateWindowSurface(SDL_Window *window)
 {
-    SDL_VideoDevice *_this = SDL_GetVideoDevice();
     SDL_Rect full_rect;
 
     CHECK_WINDOW_MAGIC(window, false);

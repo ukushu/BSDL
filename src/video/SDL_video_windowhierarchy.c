@@ -23,22 +23,6 @@
 
 #include "SDL_sysvideo.h"
 
-#define CHECK_WINDOW_MAGIC(window, result)                              \
-    CHECK_PARAM(!_this) {                                               \
-        SDL_UninitializedVideo();                                       \
-        return result;                                                  \
-    }                                                                   \
-    CHECK_PARAM(!SDL_ObjectValid(window, SDL_OBJECT_TYPE_WINDOW)) {     \
-        SDL_SetError("Invalid window");                                 \
-        return result;                                                  \
-    }
-
-#define CHECK_WINDOW_NOT_POPUP(window, result)                         \
-    CHECK_PARAM(SDL_WINDOW_IS_POPUP(window)) {                          \
-        SDL_SetError("Operation invalid on popup windows");            \
-        return result;                                                  \
-    }
-
 void SDL_UpdateWindowHierarchy(SDL_Window *window, SDL_Window *parent)
 {
     // Unlink the window from the existing parent.

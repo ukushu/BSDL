@@ -1855,6 +1855,24 @@
     <ClCompile Include="..\..\src\video\SDL_video_windowhierarchy.c">
       <Filter>video</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\src\video\SDL_video_messagebox.c">
+      <Filter>video</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\video\SDL_video_windowinput.c">
+      <Filter>video</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\video\SDL_video_windowproperties.c">
+      <Filter>video</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\video\SDL_video_windowevents.c">
+      <Filter>video</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\video\SDL_video_windowstate.c">
+      <Filter>video</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\video\SDL_video_windowlifecycle.c">
+      <Filter>video</Filter>
+    </ClCompile>
     <ClCompile Include="..\..\src\video\SDL_video_vulkan.c">
       <Filter>video</Filter>
     </ClCompile>

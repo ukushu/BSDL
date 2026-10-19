@@ -57,16 +57,6 @@
 #define GL_RGBA_FLOAT_MODE_ARB 0x8820
 #endif /* GL_RGBA_FLOAT_MODE_ARB */
 
-#define CHECK_WINDOW_MAGIC(window, result)                              \
-    CHECK_PARAM(!_this) {                                               \
-        SDL_UninitializedVideo();                                       \
-        return result;                                                  \
-    }                                                                   \
-    CHECK_PARAM(!SDL_ObjectValid(window, SDL_OBJECT_TYPE_WINDOW)) {     \
-        SDL_SetError("Invalid window");                                 \
-        return result;                                                  \
-    }
-
 bool SDL_GL_LoadLibrary(const char *path)
 {
     SDL_VideoDevice *_this = SDL_GetVideoDevice();

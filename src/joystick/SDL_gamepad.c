@@ -2176,12 +2176,9 @@ SDL_JoystickID *SDL_GetGamepads(int *count)
     int num_gamepads = 0;
     SDL_JoystickID *joysticks = SDL_GetJoysticks(&num_joysticks);
     if (joysticks) {
-        int i;
-        for (i = num_joysticks - 1; i >= 0; --i) {
+        for (int i = 0; i < num_joysticks; ++i) {
             if (SDL_IsGamepad(joysticks[i])) {
-                ++num_gamepads;
-            } else {
-                SDL_memmove(&joysticks[i], &joysticks[i+1], (num_gamepads + 1) * sizeof(joysticks[i]));
+                joysticks[num_gamepads++] = joysticks[i];
             }
         }
     }

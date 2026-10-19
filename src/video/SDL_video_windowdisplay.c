@@ -35,19 +35,6 @@ static bool SDL_DriverSendsHDRChanges(SDL_VideoDevice *device)
     return !!(device->device_caps & VIDEO_DEVICE_CAPS_SENDS_HDR_CHANGES);
 }
 
-static bool SDL_CheckWindowMagic(SDL_Window *window)
-{
-    if (!SDL_GetVideoDevice()) {
-        SDL_UninitializedVideo();
-        return false;
-    }
-    if (!SDL_ObjectValid(window, SDL_OBJECT_TYPE_WINDOW)) {
-        SDL_SetError("Invalid window");
-        return false;
-    }
-    return true;
-}
-
 void SDL_OnDisplayAdded(SDL_VideoDisplay *display)
 {
     SDL_VideoDevice *device = SDL_GetVideoDevice();
@@ -76,7 +63,7 @@ SDL_DisplayID SDL_GetDisplayForWindowInternal(SDL_Window *window)
 
 SDL_VideoDisplay *SDL_GetVideoDisplayForWindow(SDL_Window *window)
 {
-    if (!SDL_CheckWindowMagic(window)) {
+    if (!SDL_CheckWindowMagicForVideo(window)) {
         return NULL;
     }
 
@@ -85,7 +72,7 @@ SDL_VideoDisplay *SDL_GetVideoDisplayForWindow(SDL_Window *window)
 
 SDL_DisplayData *SDL_GetDisplayDriverDataForWindow(SDL_Window *window)
 {
-    if (!SDL_CheckWindowMagic(window)) {
+    if (!SDL_CheckWindowMagicForVideo(window)) {
         return NULL;
     }
 
@@ -154,7 +141,7 @@ void SDL_SetDisplayHDRProperties(SDL_VideoDisplay *display, const SDL_HDROutputP
 
 SDL_DisplayID SDL_GetDisplayForWindow(SDL_Window *window)
 {
-    if (!SDL_CheckWindowMagic(window)) {
+    if (!SDL_CheckWindowMagicForVideo(window)) {
         return 0;
     }
 
@@ -245,7 +232,7 @@ float SDL_GetWindowPixelDensity(SDL_Window *window)
     int window_w, window_h, pixel_w, pixel_h;
     float pixel_density = 1.0f;
 
-    if (!SDL_CheckWindowMagic(window)) {
+    if (!SDL_CheckWindowMagicForVideo(window)) {
         return 0.0f;
     }
 
@@ -258,7 +245,7 @@ float SDL_GetWindowPixelDensity(SDL_Window *window)
 
 float SDL_GetWindowDisplayScale(SDL_Window *window)
 {
-    if (!SDL_CheckWindowMagic(window)) {
+    if (!SDL_CheckWindowMagicForVideo(window)) {
         return 0.0f;
     }
 

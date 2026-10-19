@@ -41,10 +41,6 @@
 #include <emscripten.h>
 #endif
 
-#ifdef SDL_PLATFORM_3DS
-#include <3ds.h>
-#endif
-
 // Available video drivers
 static VideoBootStrap *bootstrap[] = {
 #ifdef SDL_VIDEO_DRIVER_PRIVATE
@@ -128,26 +124,10 @@ static VideoBootStrap *bootstrap[] = {
     NULL
 };
 
-#define CHECK_WINDOW_MAGIC(window, result)                              \
-    CHECK_PARAM(!_this) {                                               \
-        SDL_UninitializedVideo();                                       \
-        return result;                                                  \
-    }                                                                   \
-    CHECK_PARAM(!SDL_ObjectValid(window, SDL_OBJECT_TYPE_WINDOW)) {     \
-        SDL_SetError("Invalid window");                                 \
-        return result;                                                  \
-    }
-
 #define CHECK_DISPLAY_MAGIC(display, result)                            \
     CHECK_PARAM(!display) {                                             \
         return result;                                                  \
     }                                                                   \
-
-#define CHECK_WINDOW_NOT_POPUP(window, result)                          \
-    CHECK_PARAM(SDL_WINDOW_IS_POPUP(window)) {                          \
-        SDL_SetError("Operation invalid on popup windows");             \
-        return result;                                                  \
-    }
 
 #if defined(SDL_PLATFORM_MACOS) && defined(SDL_VIDEO_DRIVER_COCOA)
 // Support for macOS fullscreen spaces, etc.
@@ -196,7 +176,6 @@ static Uint32 SDL_DefaultGraphicsBackends(SDL_VideoDevice *_this)
 }
 
 static SDL_VideoDevice *_this = NULL;
-static SDL_AtomicInt SDL_messagebox_count;
 
 bool SDL_UninitializedVideo(void)
 {
@@ -661,6 +640,54 @@ static bool SDL_PrepareWindowGraphics(SDL_VideoDevice *device, SDL_WindowFlags *
     return true;
 }
 
+static void SDL_InitializeWindowState(SDL_Window *window, SDL_PropertiesID props, SDL_Window *parent, SDL_WindowFlags *flags, SDL_DisplayID displayID, bool external_graphics_context)
+{
+    SDL_SetObjectValid(window, SDL_OBJECT_TYPE_WINDOW, true);
+    window->id = SDL_GetNextObjectID();
+    window->floating.x = window->windowed.x = window->x;
+    window->floating.y = window->windowed.y = window->y;
+    window->floating.w = window->windowed.w = window->w;
+    window->floating.h = window->windowed.h = window->h;
+    window->pending_displayID = displayID;
+
+    SDL_VideoDisplay *display = SDL_GetVideoDisplayForWindow(window);
+    if (display) {
+        SDL_SetWindowHDRProperties(window, &display->HDR, false);
+    }
+
+    if ((*flags & SDL_WINDOW_FULLSCREEN) || IsFullscreenOnly(_this)) {
+        SDL_Rect bounds;
+
+        SDL_GetDisplayBounds(display ? display->id : SDL_GetPrimaryDisplay(), &bounds);
+        window->x = bounds.x;
+        window->y = bounds.y;
+        window->w = bounds.w;
+        window->h = bounds.h;
+        window->pending_flags |= SDL_WINDOW_FULLSCREEN;
+        *flags |= SDL_WINDOW_FULLSCREEN;
+    }
+
+    window->flags = ((*flags & CREATE_FLAGS) | SDL_WINDOW_HIDDEN);
+    window->display_scale = 1.0f;
+    window->opacity = 1.0f;
+    window->next = _this->windows;
+    window->is_destroying = false;
+    window->displayID = SDL_GetDisplayForWindowInternal(window);
+    window->external_graphics_context = external_graphics_context;
+    window->constrain_popup = SDL_GetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_CONSTRAIN_POPUP_BOOLEAN, true);
+
+    if (!_this->SetWindowFillDocument) {
+        window->flags &= ~SDL_WINDOW_FILL_DOCUMENT;  // not an error, just unsupported here, so remove the flag.
+    }
+
+    if (_this->windows) {
+        _this->windows->prev = window;
+    }
+    _this->windows = window;
+
+    SDL_UpdateWindowHierarchy(window, parent);
+}
+
 SDL_Window *SDL_CreateWindowWithProperties(SDL_PropertiesID props)
 {
     SDL_Window *window;
@@ -715,53 +742,13 @@ SDL_Window *SDL_CreateWindowWithProperties(SDL_PropertiesID props)
     if (!window) {
         return NULL;
     }
-    SDL_SetObjectValid(window, SDL_OBJECT_TYPE_WINDOW, true);
-    window->id = SDL_GetNextObjectID();
-    window->floating.x = window->windowed.x = window->x = x;
-    window->floating.y = window->windowed.y = window->y = y;
-    window->floating.w = window->windowed.w = window->w = w;
-    window->floating.h = window->windowed.h = window->h = h;
+    window->x = x;
+    window->y = y;
+    window->w = w;
+    window->h = h;
     window->undefined_x = undefined_x;
     window->undefined_y = undefined_y;
-    window->pending_displayID = displayID;
-
-    SDL_VideoDisplay *display = SDL_GetVideoDisplayForWindow(window);
-    if (display) {
-        SDL_SetWindowHDRProperties(window, &display->HDR, false);
-    }
-
-    if (flags & SDL_WINDOW_FULLSCREEN || IsFullscreenOnly(_this)) {
-        SDL_Rect bounds;
-
-        SDL_GetDisplayBounds(display ? display->id : SDL_GetPrimaryDisplay(), &bounds);
-        window->x = bounds.x;
-        window->y = bounds.y;
-        window->w = bounds.w;
-        window->h = bounds.h;
-        window->pending_flags |= SDL_WINDOW_FULLSCREEN;
-        flags |= SDL_WINDOW_FULLSCREEN;
-    }
-
-    window->flags = ((flags & CREATE_FLAGS) | SDL_WINDOW_HIDDEN);
-    window->display_scale = 1.0f;
-    window->opacity = 1.0f;
-    window->next = _this->windows;
-    window->is_destroying = false;
-        window->displayID = SDL_GetDisplayForWindowInternal(window);
-    window->external_graphics_context = external_graphics_context;
-    window->constrain_popup = SDL_GetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_CONSTRAIN_POPUP_BOOLEAN, true);
-
-    if (!_this->SetWindowFillDocument) {
-        window->flags &= ~SDL_WINDOW_FILL_DOCUMENT;  // not an error, just unsupported here, so remove the flag.
-    }
-
-    if (_this->windows) {
-        _this->windows->prev = window;
-    }
-    _this->windows = window;
-
-    // Set the parent before creation.
-    SDL_UpdateWindowHierarchy(window, parent);
+    SDL_InitializeWindowState(window, props, parent, &flags, displayID, external_graphics_context);
 
     if (_this->CreateSDLWindow && !_this->CreateSDLWindow(_this, window, props)) {
         SDL_PushError();
@@ -1086,686 +1073,6 @@ bool SDL_ReconfigureWindow(SDL_Window *window, SDL_WindowFlags flags)
     return true;
 }
 
-bool SDL_SetWindowTitle(SDL_Window *window, const char *title)
-{
-    CHECK_WINDOW_MAGIC(window, false);
-    CHECK_WINDOW_NOT_POPUP(window, false);
-
-    if (title == window->title) {
-        return true;
-    }
-    if (!title) {
-        title = "";
-    }
-    if (window->title && SDL_strcmp(title, window->title) == 0) {
-        return true;
-    }
-
-    SDL_free(window->title);
-
-    window->title = SDL_strdup(title);
-
-    if (_this->SetWindowTitle) {
-        _this->SetWindowTitle(_this, window);
-    }
-    return true;
-}
-
-const char *SDL_GetWindowTitle(SDL_Window *window)
-{
-    CHECK_WINDOW_MAGIC(window, "");
-
-    return window->title ? window->title : "";
-}
-
-bool SDL_SetWindowIcon(SDL_Window *window, SDL_Surface *icon)
-{
-    CHECK_WINDOW_MAGIC(window, false);
-
-    CHECK_PARAM(!icon) {
-        return SDL_InvalidParamError("icon");
-    }
-
-    SDL_DestroySurface(window->icon);
-
-    // Convert the icon into ARGB8888
-    window->icon = SDL_ConvertSurface(icon, SDL_PIXELFORMAT_ARGB8888);
-    if (!window->icon) {
-        return false;
-    }
-
-    if (!_this->SetWindowIcon) {
-        return SDL_Unsupported();
-    }
-
-    return _this->SetWindowIcon(_this, window, window->icon);
-}
-
-bool SDL_SetWindowPosition(SDL_Window *window, int x, int y)
-{
-    SDL_DisplayID original_displayID;
-
-    CHECK_WINDOW_MAGIC(window, false);
-
-    const int w = window->last_size_pending ? window->pending.w : window->windowed.w;
-    const int h = window->last_size_pending ? window->pending.h : window->windowed.h;
-
-        original_displayID = SDL_GetDisplayForWindowInternal(window);
-    window->pending_displayID = 0;
-
-    if (SDL_WINDOWPOS_ISUNDEFINED(x)) {
-        x = window->windowed.x;
-    }
-    if (SDL_WINDOWPOS_ISUNDEFINED(y)) {
-        y = window->windowed.y;
-    }
-    if (SDL_WINDOWPOS_ISCENTERED(x) || SDL_WINDOWPOS_ISCENTERED(y)) {
-        SDL_DisplayID displayID = original_displayID;
-        SDL_Rect bounds;
-
-        if (SDL_WINDOWPOS_ISCENTERED(x) && (x & 0xFFFF)) {
-            displayID = (x & 0xFFFF);
-        } else if (SDL_WINDOWPOS_ISCENTERED(y) && (y & 0xFFFF)) {
-            displayID = (y & 0xFFFF);
-        }
-        if (displayID == 0 || SDL_GetDisplayIndex(displayID) < 0) {
-            displayID = SDL_GetPrimaryDisplay();
-        }
-
-        window->pending_displayID = displayID;
-
-        SDL_zero(bounds);
-        if (!SDL_GetDisplayUsableBounds(displayID, &bounds) || w > bounds.w || h > bounds.h) {
-            if (!SDL_GetDisplayBounds(displayID, &bounds)) {
-                return false;
-            }
-        }
-        if (SDL_WINDOWPOS_ISCENTERED(x)) {
-            x = bounds.x + (bounds.w - w) / 2;
-        }
-        if (SDL_WINDOWPOS_ISCENTERED(y)) {
-            y = bounds.y + (bounds.h - h) / 2;
-        }
-    } else {
-        /* See if the requested window position matches the origin of any displays and set
-         * the pending fullscreen display ID if it does. This needs to be set early in case
-         * the window is prevented from moving to the exact origin due to struts.
-         */
-        window->pending_displayID = SDL_GetDisplayAtOrigin(x, y);
-    }
-
-    window->pending.x = x;
-    window->pending.y = y;
-
-    /* Windows are placed at the coordinates received while in fullscreen after leaving fullscreen.
-     * Asynchronous backends need special handling in this case.
-     */
-    if (!_this->SyncWindow && (window->flags & SDL_WINDOW_FULLSCREEN)) {
-        window->floating.x = window->windowed.x = x;
-        window->floating.y = window->windowed.y = y;
-    }
-    window->undefined_x = false;
-    window->undefined_y = false;
-    window->last_position_pending = true;
-
-    if (_this->SetWindowPosition) {
-        const bool result = _this->SetWindowPosition(_this, window);
-        if (result) {
-            SDL_SyncIfRequired(window);
-        }
-        return result;
-    }
-
-    return SDL_Unsupported();
-}
-
-bool SDL_SetWindowBordered(SDL_Window *window, bool bordered)
-{
-    CHECK_WINDOW_MAGIC(window, false);
-    CHECK_WINDOW_NOT_POPUP(window, false);
-
-    if (!_this->SetWindowBordered) {
-        return SDL_Unsupported();
-    }
-
-    const bool want = bordered;
-    const bool have = !(window->flags & SDL_WINDOW_BORDERLESS);
-    if (want != have) {
-        if (want) {
-            window->flags &= ~SDL_WINDOW_BORDERLESS;
-        } else {
-            window->flags |= SDL_WINDOW_BORDERLESS;
-        }
-        _this->SetWindowBordered(_this, window, want);
-    }
-
-    return true;
-}
-
-bool SDL_SetWindowResizable(SDL_Window *window, bool resizable)
-{
-    CHECK_WINDOW_MAGIC(window, false);
-    CHECK_WINDOW_NOT_POPUP(window, false);
-
-    if (!_this->SetWindowResizable) {
-        return SDL_Unsupported();
-    }
-
-    const bool want = resizable;
-    const bool have = ((window->flags & SDL_WINDOW_RESIZABLE) != 0);
-    if (want != have) {
-        if (want) {
-            window->flags |= SDL_WINDOW_RESIZABLE;
-        } else {
-            window->flags &= ~SDL_WINDOW_RESIZABLE;
-            SDL_copyp(&window->windowed, &window->floating);
-        }
-        _this->SetWindowResizable(_this, window, want);
-    }
-
-    return true;
-}
-
-bool SDL_SetWindowAlwaysOnTop(SDL_Window *window, bool on_top)
-{
-    CHECK_WINDOW_MAGIC(window, false);
-    CHECK_WINDOW_NOT_POPUP(window, false);
-
-    if (!_this->SetWindowAlwaysOnTop) {
-        return SDL_Unsupported();
-    }
-
-    const bool want = on_top;
-    const bool have = ((window->flags & SDL_WINDOW_ALWAYS_ON_TOP) != 0);
-    if (want != have) {
-        if (want) {
-            window->flags |= SDL_WINDOW_ALWAYS_ON_TOP;
-        } else {
-            window->flags &= ~SDL_WINDOW_ALWAYS_ON_TOP;
-        }
-        _this->SetWindowAlwaysOnTop(_this, window, want);
-    }
-
-    return true;
-}
-
-bool SDL_GetWindowBordersSize(SDL_Window *window, int *top, int *left, int *bottom, int *right)
-{
-    int dummy = 0;
-
-    if (!top) {
-        top = &dummy;
-    }
-    if (!left) {
-        left = &dummy;
-    }
-    if (!right) {
-        right = &dummy;
-    }
-    if (!bottom) {
-        bottom = &dummy;
-    }
-
-    // Always initialize, so applications don't have to care
-    *top = *left = *bottom = *right = 0;
-
-    CHECK_WINDOW_MAGIC(window, false);
-
-    if (!_this->GetWindowBordersSize) {
-        return SDL_Unsupported();
-    }
-
-    return _this->GetWindowBordersSize(_this, window, top, left, bottom, right);
-}
-
-bool SDL_ShowWindow(SDL_Window *window)
-{
-    SDL_Window *child;
-    CHECK_WINDOW_MAGIC(window, false);
-
-    if (!(window->flags & SDL_WINDOW_HIDDEN)) {
-        return true;
-    }
-
-    // If the parent is hidden, set the flag to restore this when the parent is shown
-    if (window->parent && (window->parent->flags & SDL_WINDOW_HIDDEN)) {
-        window->restore_on_show = true;
-        return true;
-    }
-
-    if (_this->ShowWindow) {
-        _this->ShowWindow(_this, window);
-    } else {
-        SDL_SetMouseFocus(window);
-        SDL_SetKeyboardFocus(window);
-    }
-    SDL_SendWindowEvent(window, SDL_EVENT_WINDOW_SHOWN, 0, 0);
-
-    // Restore child windows
-    for (child = window->first_child; child; child = child->next_sibling) {
-        if (!child->restore_on_show && (child->flags & SDL_WINDOW_HIDDEN)) {
-            break;
-        }
-        SDL_ShowWindow(child);
-        child->restore_on_show = false;
-    }
-    return true;
-}
-
-bool SDL_HideWindow(SDL_Window *window)
-{
-    SDL_Window *child;
-    CHECK_WINDOW_MAGIC(window, false);
-
-    if (window->flags & SDL_WINDOW_HIDDEN) {
-        window->restore_on_show = false;
-        return true;
-    }
-
-    // Hide all child windows
-    for (child = window->first_child; child; child = child->next_sibling) {
-        if (child->flags & SDL_WINDOW_HIDDEN) {
-            break;
-        }
-        SDL_HideWindow(child);
-        child->restore_on_show = true;
-    }
-
-    // Store the flags for restoration later.
-    const SDL_WindowFlags pending_mask = (SDL_WINDOW_MAXIMIZED | SDL_WINDOW_MINIMIZED | SDL_WINDOW_FULLSCREEN | SDL_WINDOW_KEYBOARD_GRABBED | SDL_WINDOW_MOUSE_GRABBED);
-    window->pending_flags = (window->flags & pending_mask);
-
-    window->is_hiding = true;
-    if (_this->HideWindow) {
-        _this->HideWindow(_this, window);
-    } else {
-        SDL_SetMouseFocus(NULL);
-        SDL_SetKeyboardFocus(NULL);
-    }
-    window->is_hiding = false;
-    SDL_SendWindowEvent(window, SDL_EVENT_WINDOW_HIDDEN, 0, 0);
-    return true;
-}
-
-bool SDL_RaiseWindow(SDL_Window *window)
-{
-    CHECK_WINDOW_MAGIC(window, false);
-
-    if (window->flags & SDL_WINDOW_HIDDEN) {
-        return true;
-    }
-    if (_this->RaiseWindow) {
-        _this->RaiseWindow(_this, window);
-    }
-    return true;
-}
-
-bool SDL_MaximizeWindow(SDL_Window *window)
-{
-    CHECK_WINDOW_MAGIC(window, false);
-    CHECK_WINDOW_NOT_POPUP(window, false);
-
-    if (!_this->MaximizeWindow) {
-        return SDL_Unsupported();
-    }
-
-    if (!(window->flags & SDL_WINDOW_RESIZABLE)) {
-        return SDL_SetError("A window without the 'SDL_WINDOW_RESIZABLE' flag can't be maximized");
-    }
-
-    if (window->flags & SDL_WINDOW_HIDDEN) {
-        window->pending_flags |= SDL_WINDOW_MAXIMIZED;
-        return true;
-    }
-
-    _this->MaximizeWindow(_this, window);
-    SDL_SyncIfRequired(window);
-    return true;
-}
-
-bool SDL_MinimizeWindow(SDL_Window *window)
-{
-    CHECK_WINDOW_MAGIC(window, false);
-    CHECK_WINDOW_NOT_POPUP(window, false);
-
-    if (!_this->MinimizeWindow) {
-        return SDL_Unsupported();
-    }
-
-    if (window->flags & SDL_WINDOW_HIDDEN) {
-        window->pending_flags |= SDL_WINDOW_MINIMIZED;
-        return true;
-    }
-
-    _this->MinimizeWindow(_this, window);
-    SDL_SyncIfRequired(window);
-    return true;
-}
-
-bool SDL_RestoreWindow(SDL_Window *window)
-{
-    CHECK_WINDOW_MAGIC(window, false);
-    CHECK_WINDOW_NOT_POPUP(window, false);
-
-    if (!_this->RestoreWindow) {
-        return SDL_Unsupported();
-    }
-
-    if (window->flags & SDL_WINDOW_HIDDEN) {
-        window->pending_flags &= ~(SDL_WINDOW_MAXIMIZED | SDL_WINDOW_MINIMIZED);
-        return true;
-    }
-
-    _this->RestoreWindow(_this, window);
-    SDL_SyncIfRequired(window);
-    return true;
-}
-
-bool SDL_SetWindowFullscreen(SDL_Window *window, bool fullscreen)
-{
-    bool result;
-
-    CHECK_WINDOW_MAGIC(window, false);
-    CHECK_WINDOW_NOT_POPUP(window, false);
-
-    if (window->flags & SDL_WINDOW_HIDDEN) {
-        if (fullscreen) {
-            window->pending_flags |= SDL_WINDOW_FULLSCREEN;
-        } else {
-            window->pending_flags &= ~SDL_WINDOW_FULLSCREEN;
-        }
-        return true;
-    }
-
-    if (fullscreen) {
-        // Set the current fullscreen mode to the desired mode
-        SDL_copyp(&window->current_fullscreen_mode, &window->requested_fullscreen_mode);
-    }
-
-    result = SDL_UpdateFullscreenMode(window, fullscreen ? SDL_FULLSCREEN_OP_ENTER : SDL_FULLSCREEN_OP_LEAVE, true);
-
-    if (!fullscreen || !result) {
-        // Clear the current fullscreen mode.
-        SDL_zero(window->current_fullscreen_mode);
-    }
-
-    if (result) {
-        SDL_SyncIfRequired(window);
-    }
-
-    return result;
-}
-
-bool SDL_SyncWindow(SDL_Window *window)
-{
-    CHECK_WINDOW_MAGIC(window, false);
-
-    if (_this->SyncWindow) {
-        return _this->SyncWindow(_this, window);
-    } else {
-        return true;
-    }
-}
-
-bool SDL_SetWindowOpacity(SDL_Window *window, float opacity)
-{
-    bool result;
-
-    CHECK_WINDOW_MAGIC(window, false);
-
-    if (!_this->SetWindowOpacity) {
-        return SDL_Unsupported();
-    }
-
-    if (opacity < 0.0f) {
-        opacity = 0.0f;
-    } else if (opacity > 1.0f) {
-        opacity = 1.0f;
-    }
-
-    result = _this->SetWindowOpacity(_this, window, opacity);
-    if (result) {
-        window->opacity = opacity;
-    }
-
-    return result;
-}
-
-float SDL_GetWindowOpacity(SDL_Window *window)
-{
-    CHECK_WINDOW_MAGIC(window, -1.0f);
-
-    return window->opacity;
-}
-
-bool SDL_SetWindowFillDocument(SDL_Window *window, bool fill)
-{
-    CHECK_WINDOW_MAGIC(window, false);
-
-    const bool want = (fill != false); // normalize the flag.
-    const bool have = ((window->flags & SDL_WINDOW_FILL_DOCUMENT) != 0);
-    if ((want != have) && (_this->SetWindowFillDocument)) {
-        if (!_this->SetWindowFillDocument(_this, window, want)) {
-            return false;
-        } else if (want) {
-            window->flags |= SDL_WINDOW_FILL_DOCUMENT;
-        } else {
-            window->flags &= ~SDL_WINDOW_FILL_DOCUMENT;
-        }
-    }
-
-    return true;
-}
-
-void SDL_UpdateWindowGrab(SDL_Window *window)
-{
-    bool keyboard_grabbed, mouse_grabbed;
-
-    if (window->flags & SDL_WINDOW_INPUT_FOCUS) {
-        if (SDL_GetMouse()->relative_mode || (window->flags & SDL_WINDOW_MOUSE_GRABBED)) {
-            mouse_grabbed = true;
-        } else {
-            mouse_grabbed = false;
-        }
-
-        if (window->flags & SDL_WINDOW_KEYBOARD_GRABBED) {
-            keyboard_grabbed = true;
-        } else {
-            keyboard_grabbed = false;
-        }
-    } else {
-        mouse_grabbed = false;
-        keyboard_grabbed = false;
-    }
-
-    if (mouse_grabbed || keyboard_grabbed) {
-        if (_this->grabbed_window && (_this->grabbed_window != window)) {
-            // stealing a grab from another window!
-            _this->grabbed_window->flags &= ~(SDL_WINDOW_MOUSE_GRABBED | SDL_WINDOW_KEYBOARD_GRABBED);
-            if (_this->SetWindowMouseGrab) {
-                _this->SetWindowMouseGrab(_this, _this->grabbed_window, false);
-            }
-            if (_this->SetWindowKeyboardGrab) {
-                _this->SetWindowKeyboardGrab(_this, _this->grabbed_window, false);
-            }
-        }
-        _this->grabbed_window = window;
-    } else if (_this->grabbed_window == window) {
-        _this->grabbed_window = NULL; // ungrabbing input.
-    }
-
-    if (_this->SetWindowMouseGrab) {
-        if (!_this->SetWindowMouseGrab(_this, window, mouse_grabbed)) {
-            window->flags &= ~SDL_WINDOW_MOUSE_GRABBED;
-        }
-    }
-    if (_this->SetWindowKeyboardGrab) {
-        if (!_this->SetWindowKeyboardGrab(_this, window, keyboard_grabbed)) {
-            window->flags &= ~SDL_WINDOW_KEYBOARD_GRABBED;
-        }
-    }
-
-    if (_this->grabbed_window && !(_this->grabbed_window->flags & (SDL_WINDOW_MOUSE_GRABBED | SDL_WINDOW_KEYBOARD_GRABBED))) {
-        _this->grabbed_window = NULL;
-    }
-}
-
-bool SDL_SetWindowKeyboardGrab(SDL_Window *window, bool grabbed)
-{
-    CHECK_WINDOW_MAGIC(window, false);
-    CHECK_WINDOW_NOT_POPUP(window, false);
-
-    if (window->flags & SDL_WINDOW_HIDDEN) {
-        if (grabbed) {
-            window->pending_flags |= SDL_WINDOW_KEYBOARD_GRABBED;
-        } else {
-            window->pending_flags &= ~SDL_WINDOW_KEYBOARD_GRABBED;
-        }
-        return true;
-    }
-
-    if (!!grabbed == !!(window->flags & SDL_WINDOW_KEYBOARD_GRABBED)) {
-        return true;
-    }
-    if (grabbed) {
-        window->flags |= SDL_WINDOW_KEYBOARD_GRABBED;
-    } else {
-        window->flags &= ~SDL_WINDOW_KEYBOARD_GRABBED;
-    }
-    SDL_UpdateWindowGrab(window);
-
-    if (grabbed && !(window->flags & SDL_WINDOW_KEYBOARD_GRABBED)) {
-        return false;
-    }
-    return true;
-}
-
-bool SDL_SetWindowMouseGrab(SDL_Window *window, bool grabbed)
-{
-    CHECK_WINDOW_MAGIC(window, false);
-    CHECK_WINDOW_NOT_POPUP(window, false);
-
-    if (window->flags & SDL_WINDOW_HIDDEN) {
-        if (grabbed) {
-            window->pending_flags |= SDL_WINDOW_MOUSE_GRABBED;
-        } else {
-            window->pending_flags &= ~SDL_WINDOW_MOUSE_GRABBED;
-        }
-        return true;
-    }
-
-    if (!!grabbed == !!(window->flags & SDL_WINDOW_MOUSE_GRABBED)) {
-        return true;
-    }
-    if (grabbed) {
-        window->flags |= SDL_WINDOW_MOUSE_GRABBED;
-    } else {
-        window->flags &= ~SDL_WINDOW_MOUSE_GRABBED;
-    }
-    SDL_UpdateWindowGrab(window);
-
-    if (grabbed && !(window->flags & SDL_WINDOW_MOUSE_GRABBED)) {
-        return false;
-    }
-    return true;
-}
-
-bool SDL_GetWindowKeyboardGrab(SDL_Window *window)
-{
-    CHECK_WINDOW_MAGIC(window, false);
-    return window == _this->grabbed_window && (_this->grabbed_window->flags & SDL_WINDOW_KEYBOARD_GRABBED);
-}
-
-bool SDL_GetWindowMouseGrab(SDL_Window *window)
-{
-    CHECK_WINDOW_MAGIC(window, false);
-    return window == _this->grabbed_window && (_this->grabbed_window->flags & SDL_WINDOW_MOUSE_GRABBED);
-}
-
-SDL_Window *SDL_GetGrabbedWindow(void)
-{
-    if (_this && _this->grabbed_window &&
-        (_this->grabbed_window->flags & (SDL_WINDOW_MOUSE_GRABBED | SDL_WINDOW_KEYBOARD_GRABBED)) != 0) {
-        return _this->grabbed_window;
-    } else {
-        return NULL;
-    }
-}
-
-bool SDL_SetWindowMouseRect(SDL_Window *window, const SDL_Rect *rect)
-{
-    CHECK_WINDOW_MAGIC(window, false);
-
-    if (!_this->SetWindowMouseRect) {
-        return SDL_Unsupported();
-    }
-
-    SDL_Rect zero = { 0, 0, 0, 0 };
-    if (!rect) {
-        rect = &zero;
-    }
-
-    if (SDL_memcmp(&window->mouse_rect, rect, sizeof(*rect)) == 0) {
-        return true;
-    }
-    SDL_memcpy(&window->mouse_rect, rect, sizeof(*rect));
-
-    return _this->SetWindowMouseRect(_this, window);
-}
-
-const SDL_Rect *SDL_GetWindowMouseRect(SDL_Window *window)
-{
-    CHECK_WINDOW_MAGIC(window, NULL);
-
-    if (SDL_RectEmpty(&window->mouse_rect)) {
-        return NULL;
-    } else {
-        return &window->mouse_rect;
-    }
-}
-
-bool SDL_SetWindowRelativeMouseMode(SDL_Window *window, bool enabled)
-{
-    CHECK_WINDOW_MAGIC(window, false);
-
-    /* If the app toggles relative mode directly, it probably shouldn't
-     * also be emulating it using repeated mouse warps, so disable
-     * mouse warp emulation by default.
-     */
-    SDL_DisableMouseWarpEmulation();
-
-    if (enabled == SDL_GetWindowRelativeMouseMode(window)) {
-        return true;
-    }
-
-    if (enabled) {
-        window->flags |= SDL_WINDOW_MOUSE_RELATIVE_MODE;
-    } else {
-        window->flags &= ~SDL_WINDOW_MOUSE_RELATIVE_MODE;
-    }
-
-    if (!SDL_UpdateRelativeMouseMode()) {
-        if (enabled) {
-            window->flags &= ~SDL_WINDOW_MOUSE_RELATIVE_MODE;
-        } else {
-            window->flags |= SDL_WINDOW_MOUSE_RELATIVE_MODE;
-        }
-        return false;
-    }
-    return true;
-}
-
-bool SDL_GetWindowRelativeMouseMode(SDL_Window *window)
-{
-    CHECK_WINDOW_MAGIC(window, false);
-
-    if (window->flags & SDL_WINDOW_MOUSE_RELATIVE_MODE) {
-        return true;
-    } else {
-        return false;
-    }
-}
-
 void SDL_OnWindowShown(SDL_Window *window)
 {
     // Set window state if we have pending window flags cached
@@ -1783,136 +1090,6 @@ void SDL_OnWindowHidden(SDL_Window *window)
 
     // The window is already hidden at this point, so just change the mode back if necessary.
     SDL_UpdateFullscreenMode(window, SDL_FULLSCREEN_OP_LEAVE, false);
-}
-
-void SDL_OnWindowDisplayChanged(SDL_Window *window)
-{
-    // Don't run this if a fullscreen change was made in an event watcher callback in response to a display changed event.
-    if (window->update_fullscreen_on_display_changed && (window->flags & SDL_WINDOW_FULLSCREEN)) {
-        const bool auto_mode_switch = SDL_GetHintBoolean(SDL_HINT_VIDEO_MATCH_EXCLUSIVE_MODE_ON_MOVE, true);
-
-        if (auto_mode_switch && (window->requested_fullscreen_mode.w != 0 || window->requested_fullscreen_mode.h != 0)) {
-            SDL_DisplayID displayID = SDL_GetDisplayForWindowPosition(window);
-            bool include_high_density_modes = false;
-
-            if (window->requested_fullscreen_mode.pixel_density > 1.0f) {
-                include_high_density_modes = true;
-            }
-            const bool found_match = SDL_GetClosestFullscreenDisplayMode(displayID, window->requested_fullscreen_mode.w, window->requested_fullscreen_mode.h,
-                                                                         window->requested_fullscreen_mode.refresh_rate, include_high_density_modes, &window->current_fullscreen_mode);
-
-            // If a mode without matching dimensions was not found, just go to fullscreen desktop.
-            if (!found_match ||
-                window->requested_fullscreen_mode.w != window->current_fullscreen_mode.w ||
-                window->requested_fullscreen_mode.h != window->current_fullscreen_mode.h) {
-                SDL_zero(window->current_fullscreen_mode);
-            }
-        } else {
-            SDL_zero(window->current_fullscreen_mode);
-        }
-
-        if (SDL_WINDOW_FULLSCREEN_VISIBLE(window)) {
-            SDL_UpdateFullscreenMode(window, SDL_FULLSCREEN_OP_UPDATE, true);
-        }
-    }
-
-    SDL_CheckWindowPixelSizeChanged(window);
-}
-
-void SDL_OnWindowMoved(SDL_Window *window)
-{
-    SDL_CheckWindowDisplayChanged(window);
-}
-
-void SDL_OnWindowResized(SDL_Window *window)
-{
-    SDL_CheckWindowDisplayChanged(window);
-    SDL_CheckWindowPixelSizeChanged(window);
-    SDL_CheckWindowSafeAreaChanged(window);
-
-    if ((window->flags & SDL_WINDOW_TRANSPARENT) && _this->UpdateWindowShape) {
-        SDL_Surface *surface = (SDL_Surface *)SDL_GetPointerProperty(window->props, SDL_PROP_WINDOW_SHAPE_POINTER, NULL);
-        if (surface) {
-            _this->UpdateWindowShape(_this, window, surface);
-        }
-    }
-}
-
-void SDL_CheckWindowPixelSizeChanged(SDL_Window *window)
-{
-    int pixel_w = 0, pixel_h = 0;
-
-    SDL_GetWindowSizeInPixels(window, &pixel_w, &pixel_h);
-    SDL_SendWindowEvent(window, SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED, pixel_w, pixel_h);
-
-    SDL_CheckWindowDisplayScaleChanged(window);
-}
-
-void SDL_OnWindowPixelSizeChanged(SDL_Window *window)
-{
-    window->surface_valid = false;
-}
-
-void SDL_OnWindowLiveResizeUpdate(SDL_Window *window)
-{
-    if (SDL_HasMainCallbacks()) {
-        SDL_IterateMainCallbacks(false);
-    } else {
-        // Send an expose event so the application can redraw
-        SDL_SendWindowEvent(window, SDL_EVENT_WINDOW_EXPOSED, 1, 0);
-    }
-
-    SDL_PumpEventMaintenance();
-}
-
-void SDL_OnWindowMinimized(SDL_Window *window)
-{
-    if (window->flags & SDL_WINDOW_FULLSCREEN) {
-        SDL_UpdateFullscreenMode(window, SDL_FULLSCREEN_OP_LEAVE, false);
-    }
-}
-
-void SDL_OnWindowMaximized(SDL_Window *window)
-{
-}
-
-void SDL_OnWindowRestored(SDL_Window *window)
-{
-    /*
-     * FIXME: Is this fine to just remove this, or should it be preserved just
-     * for the fullscreen case? In principle it seems like just hiding/showing
-     * windows shouldn't affect the stacking order; maybe the right fix is to
-     * re-decouple OnWindowShown and OnWindowRestored.
-     */
-    // SDL_RaiseWindow(window);
-
-    if (window->flags & SDL_WINDOW_FULLSCREEN) {
-        SDL_UpdateFullscreenMode(window, SDL_FULLSCREEN_OP_ENTER, false);
-    }
-}
-
-void SDL_OnWindowEnter(SDL_Window *window)
-{
-    if (_this->OnWindowEnter) {
-        _this->OnWindowEnter(_this, window);
-    }
-    SDL_UpdateRelativeMouseMode();
-}
-
-void SDL_OnWindowLeave(SDL_Window *window)
-{
-    SDL_UpdateRelativeMouseMode();
-}
-
-void SDL_OnWindowFocusGained(SDL_Window *window)
-{
-    SDL_Mouse *mouse = SDL_GetMouse();
-
-    if (mouse && mouse->relative_mode) {
-        SDL_SetMouseFocus(window);
-    }
-
-    SDL_UpdateWindowGrab(window);
 }
 
 static bool SDL_ShouldMinimizeOnFocusLoss(SDL_Window *window)
@@ -2009,124 +1186,6 @@ void SDL_RemoveWindowRenderer(SDL_Window *window, SDL_Renderer *renderer)
     }
 }
 
-static void SDL_UnlinkWindow(SDL_Window *window)
-{
-    // Unlink the window from its siblings.
-    SDL_UpdateWindowHierarchy(window, NULL);
-
-    // Unlink the window from the global window list
-    if (window->next) {
-        window->next->prev = window->prev;
-    }
-    if (window->prev) {
-        window->prev->next = window->next;
-    } else {
-        _this->windows = window->next;
-    }
-}
-
-void SDL_DestroyWindow(SDL_Window *window)
-{
-    CHECK_WINDOW_MAGIC(window,);
-
-    window->is_destroying = true;
-
-    // Destroy any child windows of this window
-    while (window->first_child) {
-        SDL_DestroyWindow(window->first_child);
-    }
-
-    SDL_SendWindowEvent(window, SDL_EVENT_WINDOW_DESTROYED, 0, 0);
-
-    SDL_DestroyWindowSurface(window);
-
-    SDL_Renderer *renderer = SDL_GetRenderer(window);
-    if (renderer) {
-        SDL_DestroyRendererWithoutFreeing(renderer);
-    }
-
-    // Restore video mode, etc.
-    SDL_UpdateFullscreenMode(window, SDL_FULLSCREEN_OP_LEAVE, true);
-    if (!(window->flags & SDL_WINDOW_EXTERNAL)) {
-        SDL_HideWindow(window);
-    }
-
-    SDL_DestroyProperties(window->text_input_props);
-
-    SDL_DestroyWindowTexture(_this, window);
-    SDL_DestroyProperties(window->props);
-
-    /* Clear the modal status, but don't unset the parent just yet, as it
-     * may be needed later in the destruction process if a backend needs
-     * to update the input focus.
-     */
-    if (_this->SetWindowModal && (window->flags & SDL_WINDOW_MODAL)) {
-        _this->SetWindowModal(_this, window, false);
-    }
-
-    // Make sure the destroyed window isn't referenced by any display as a fullscreen window.
-    for (int i = 0; i < _this->num_displays; ++i) {
-        if (_this->displays[i]->fullscreen_window == window) {
-            _this->displays[i]->fullscreen_window = NULL;
-        }
-    }
-
-    // Make sure this window no longer has focus
-    if (SDL_GetKeyboardFocus() == window) {
-        SDL_SetKeyboardFocus(NULL);
-    }
-    if ((window->flags & SDL_WINDOW_MOUSE_CAPTURE)) {
-        SDL_UpdateMouseCapture(true);
-    }
-    if (SDL_GetMouseFocus() == window) {
-        SDL_SetMouseFocus(NULL);
-    }
-
-    // Make no context current if this is the current context window
-    if (window->flags & SDL_WINDOW_OPENGL) {
-        if (_this->current_glwin == window) {
-            SDL_GL_MakeCurrent(window, NULL);
-        }
-    }
-
-    if (_this->DestroyWindow) {
-        _this->DestroyWindow(_this, window);
-    }
-
-    // Unload the graphics libraries after the window is destroyed, which may clean up EGL surfaces
-    if (window->flags & SDL_WINDOW_OPENGL) {
-        SDL_GL_UnloadLibrary();
-    }
-    if (window->flags & SDL_WINDOW_VULKAN) {
-        SDL_Vulkan_UnloadLibrary();
-    }
-
-    if (_this->grabbed_window == window) {
-        _this->grabbed_window = NULL; // ungrabbing input.
-    }
-
-    if (_this->current_glwin == window) {
-        _this->current_glwin = NULL;
-    }
-
-    SDL_CompareAndSwapAtomicPointer(&_this->wakeup_window, window, NULL);
-
-    // Now invalidate magic
-    SDL_SetObjectValid(window, SDL_OBJECT_TYPE_WINDOW, false);
-
-    // Free memory associated with the window
-    SDL_free(window->title);
-    SDL_DestroySurface(window->icon);
-
-    SDL_UnlinkWindow(window);
-
-    SDL_free(window->renderers);
-    SDL_free(window);
-
-#ifdef SDL_VIDEO_DRIVER_UIKIT
-    SDL_UpdateLifecycleObserver();
-#endif
-}
 
 bool SDL_ScreenSaverEnabled(void)
 {
@@ -2224,12 +1283,7 @@ void SDL_QuitVideo(void)
     SDL_QuitPen();
 }
 
-int SDL_GetMessageBoxCount(void)
-{
-    return SDL_GetAtomicInt(&SDL_messagebox_count);
-}
-
-static bool SDL_ShowMessageBoxWithFallback(const SDL_MessageBoxData *messageboxdata, int *buttonID)
+bool SDL_ShowMessageBoxWithFallback(const SDL_MessageBoxData *messageboxdata, int *buttonID)
 {
     bool result = false;
 
@@ -2266,141 +1320,6 @@ static bool SDL_ShowMessageBoxWithFallback(const SDL_MessageBoxData *messageboxd
         }
     }
     return result;
-}
-
-bool SDL_ShowMessageBox(const SDL_MessageBoxData *messageboxdata, int *buttonID)
-{
-    int dummybutton;
-    bool result = false;
-    bool show_cursor_prev;
-    SDL_Window *current_window;
-    SDL_MessageBoxData mbdata;
-
-    CHECK_PARAM(!messageboxdata) {
-        return SDL_InvalidParamError("messageboxdata");
-    }
-    CHECK_PARAM(messageboxdata->numbuttons < 0) {
-        return SDL_SetError("Invalid number of buttons");
-    }
-
-    // in case either the title or message was a pointer from SDL_GetError(), make a copy
-    // now, as we'll likely overwrite error state in here.
-    bool titleisstack = false, msgisstack = false;
-    char *titlecpy = NULL;
-    char *msgcpy = NULL;
-    if (messageboxdata->title) {
-        const size_t slen = SDL_strlen(messageboxdata->title) + 1;
-        titlecpy = SDL_small_alloc(char, slen, &titleisstack);
-        if (!titlecpy) {
-            return false;
-        }
-        SDL_memcpy(titlecpy, messageboxdata->title, slen);
-    }
-
-    if (messageboxdata->message) {
-        const size_t slen = SDL_strlen(messageboxdata->message) + 1;
-        msgcpy = SDL_small_alloc(char, slen, &msgisstack);
-        if (!msgcpy) {
-            SDL_small_free(titlecpy, titleisstack);
-            return false;
-        }
-        SDL_memcpy(msgcpy, messageboxdata->message, slen);
-    }
-
-    (void)SDL_AtomicIncRef(&SDL_messagebox_count);
-
-    current_window = SDL_GetKeyboardFocus();
-    SDL_UpdateMouseCapture(false);
-    SDL_SetRelativeMouseMode(false);
-    show_cursor_prev = SDL_CursorVisible();
-    SDL_ShowCursor();
-    SDL_ResetKeyboard();
-
-    if (!buttonID) {
-        buttonID = &dummybutton;
-    }
-
-    SDL_memcpy(&mbdata, messageboxdata, sizeof(*messageboxdata));
-    mbdata.title = titlecpy;
-    if (!mbdata.title) {
-        mbdata.title = "";
-    }
-    mbdata.message = msgcpy;
-    if (!mbdata.message) {
-        mbdata.message = "";
-    }
-    messageboxdata = &mbdata;
-
-    SDL_ClearError();
-
-    result = SDL_ShowMessageBoxWithFallback(messageboxdata, buttonID);
-
-    if (!result) {
-        const char *error = SDL_GetError();
-
-        if (!*error) {
-            SDL_SetError("No message system available");
-        }
-    } else {
-        SDL_ClearError();
-    }
-
-    (void)SDL_AtomicDecRef(&SDL_messagebox_count);
-
-    if (current_window) {
-        SDL_RaiseWindow(current_window);
-    }
-
-    if (!show_cursor_prev) {
-        SDL_HideCursor();
-    }
-    SDL_UpdateRelativeMouseMode();
-    SDL_UpdateMouseCapture(false);
-
-    SDL_small_free(msgcpy, msgisstack);
-    SDL_small_free(titlecpy, titleisstack);
-
-    return result;
-}
-
-bool SDL_ShowSimpleMessageBox(SDL_MessageBoxFlags flags, const char *title, const char *message, SDL_Window *window)
-{
-#if defined(SDL_PLATFORM_3DS)
-    errorConf errCnf;
-    bool hasGpuRight;
-
-    // If the video subsystem has not been initialised, set up graphics temporarily
-    hasGpuRight = gspHasGpuRight();
-    if (!hasGpuRight)
-        gfxInitDefault();
-
-    errorInit(&errCnf, ERROR_TEXT_WORD_WRAP, CFG_LANGUAGE_EN);
-    errorText(&errCnf, message);
-    errorDisp(&errCnf);
-
-    if (!hasGpuRight)
-        gfxExit();
-
-    return true;
-#else
-    SDL_MessageBoxData data;
-    SDL_MessageBoxButtonData button;
-
-    SDL_zero(data);
-    data.flags = flags;
-    data.title = title;
-    data.message = message;
-    data.numbuttons = 1;
-    data.buttons = &button;
-    data.window = window;
-
-    SDL_zero(button);
-    button.flags |= SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT;
-    button.flags |= SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT;
-    button.text = "OK";
-
-    return SDL_ShowMessageBox(&data, NULL);
-#endif
 }
 
 bool SDL_ShouldAllowTopmost(void)
