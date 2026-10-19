@@ -20,12 +20,14 @@
 */
 #include "SDL_internal.h"
 #include "SDL_sysrender.h"
+#include "SDL_render_internal.h"
 
 #define CHECK_TEXTURE_MAGIC(texture, result)                            \
     CHECK_PARAM(!SDL_ObjectValid(texture, SDL_OBJECT_TYPE_TEXTURE)) {   \
         SDL_InvalidParamError("texture");                               \
         return result;                                                  \
     }
+
 
 bool SDL_RendererSupportsBlendMode(SDL_Renderer *renderer, SDL_BlendMode blendMode)
 {
@@ -241,6 +243,58 @@ bool SDL_GetTextureScaleMode(SDL_Texture *texture, SDL_ScaleMode *scaleMode)
 
     if (scaleMode) {
         *scaleMode = texture->scaleMode;
+    }
+    return true;
+}
+
+bool SDL_SetRenderTextureAddressMode(SDL_Renderer *renderer, SDL_TextureAddressMode u_mode, SDL_TextureAddressMode v_mode)
+{
+    CHECK_RENDERER_MAGIC(renderer, false);
+
+    renderer->texture_address_mode_u = u_mode;
+    renderer->texture_address_mode_v = v_mode;
+    return true;
+}
+
+bool SDL_GetRenderTextureAddressMode(SDL_Renderer *renderer, SDL_TextureAddressMode *u_mode, SDL_TextureAddressMode *v_mode)
+{
+    if (u_mode) {
+        *u_mode = SDL_TEXTURE_ADDRESS_INVALID;
+    }
+    if (v_mode) {
+        *v_mode = SDL_TEXTURE_ADDRESS_INVALID;
+    }
+
+    CHECK_RENDERER_MAGIC(renderer, false);
+
+    if (u_mode) {
+        *u_mode = renderer->texture_address_mode_u;
+    }
+    if (v_mode) {
+        *v_mode = renderer->texture_address_mode_v;
+    }
+    return true;
+}
+
+bool SDL_SetDefaultTextureScaleMode(SDL_Renderer *renderer, SDL_ScaleMode scale_mode)
+{
+    CHECK_RENDERER_MAGIC(renderer, false);
+
+    renderer->scale_mode = scale_mode;
+
+    return true;
+}
+
+bool SDL_GetDefaultTextureScaleMode(SDL_Renderer *renderer, SDL_ScaleMode *scale_mode)
+{
+    if (scale_mode) {
+        *scale_mode = SDL_SCALEMODE_LINEAR;
+    }
+
+    CHECK_RENDERER_MAGIC(renderer, false);
+
+    if (scale_mode) {
+        *scale_mode = renderer->scale_mode;
     }
     return true;
 }

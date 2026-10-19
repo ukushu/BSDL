@@ -423,6 +423,16 @@ static int SDLCALL joystick_testMappings(void *arg)
     return TEST_COMPLETED;
 }
 
+static int SDLCALL joystick_gamepadButtonLabelsForType(void *arg)
+{
+    SDLTest_AssertCheck(SDL_GetGamepadButtonLabelForType(SDL_GAMEPAD_TYPE_UNKNOWN, SDL_GAMEPAD_BUTTON_SOUTH) == SDL_GAMEPAD_BUTTON_LABEL_A, "Unknown type uses ABXY south label");
+    SDLTest_AssertCheck(SDL_GetGamepadButtonLabelForType(SDL_GAMEPAD_TYPE_GAMECUBE, SDL_GAMEPAD_BUTTON_EAST) == SDL_GAMEPAD_BUTTON_LABEL_X, "GameCube uses AXBY east label");
+    SDLTest_AssertCheck(SDL_GetGamepadButtonLabelForType(SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_PRO, SDL_GAMEPAD_BUTTON_SOUTH) == SDL_GAMEPAD_BUTTON_LABEL_B, "Switch Pro uses BAYX south label");
+    SDLTest_AssertCheck(SDL_GetGamepadButtonLabelForType(SDL_GAMEPAD_TYPE_PS4, SDL_GAMEPAD_BUTTON_NORTH) == SDL_GAMEPAD_BUTTON_LABEL_TRIANGLE, "PS4 uses Sony north label");
+    SDLTest_AssertCheck(SDL_GetGamepadButtonLabelForType(SDL_GAMEPAD_TYPE_PS5, SDL_GAMEPAD_BUTTON_EAST) == SDL_GAMEPAD_BUTTON_LABEL_CIRCLE, "PS5 uses Sony east label");
+    return TEST_COMPLETED;
+}
+
 static int SDLCALL joystick_mappingElementParsing(void *arg)
 {
     SDL_VirtualJoystickDesc desc;
@@ -802,6 +812,9 @@ static const SDLTest_TestCaseReference joystickTestSInputMapping = {
 static const SDLTest_TestCaseReference joystickTestMappingLabelHints = {
     joystick_mappingLabelHints, "joystick_mappingLabelHints", "Legacy label hints map buttons to positions", TEST_ENABLED
 };
+static const SDLTest_TestCaseReference joystickTestGamepadButtonLabelsForType = {
+    joystick_gamepadButtonLabelsForType, "joystick_gamepadButtonLabelsForType", "Button labels follow the gamepad face style", TEST_ENABLED
+};
 static const SDLTest_TestCaseReference joystickTestGamepadNameConversions = {
     joystick_gamepadNameConversions, "joystick_gamepadNameConversions", "Gamepad names and enums round-trip", TEST_ENABLED
 };
@@ -822,6 +835,7 @@ static const SDLTest_TestCaseReference *joystickTests[] = {
     &joystickTestSInputMapping,
     &joystickTestGamepadNameConversions,
     &joystickTestMappingLabelHints,
+    &joystickTestGamepadButtonLabelsForType,
     &joystickTest3,
     NULL
 };

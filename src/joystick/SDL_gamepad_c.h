@@ -24,6 +24,29 @@
 
 #include "SDL_internal.h"
 
+#define SDL_GAMEPAD_CRC_FIELD "crc:"
+#define SDL_GAMEPAD_CRC_FIELD_SIZE 4 // hard-coded for speed
+#define SDL_GAMEPAD_PLATFORM_FIELD "platform:"
+#define SDL_GAMEPAD_PLATFORM_FIELD_SIZE SDL_strlen(SDL_GAMEPAD_PLATFORM_FIELD)
+
+typedef enum
+{
+    SDL_GAMEPAD_FACE_STYLE_UNKNOWN,
+    SDL_GAMEPAD_FACE_STYLE_ABXY,
+    SDL_GAMEPAD_FACE_STYLE_AXBY,
+    SDL_GAMEPAD_FACE_STYLE_BAYX,
+    SDL_GAMEPAD_FACE_STYLE_SONY,
+} SDL_GamepadFaceStyle;
+
+extern SDL_GamepadFaceStyle SDL_GetGamepadFaceStyleFromString(const char *string);
+extern SDL_GamepadFaceStyle SDL_GetGamepadFaceStyleForGamepadType(SDL_GamepadType type);
+extern SDL_GamepadButtonLabel SDL_GetGamepadButtonLabelForFaceStyle(SDL_GamepadFaceStyle face_style, SDL_GamepadButton button);
+extern char *SDL_PrivateGetGamepadGUIDFromMappingString(const char *mapping);
+extern char *SDL_PrivateGetGamepadNameFromMappingString(const char *mapping);
+extern char *SDL_PrivateGetGamepadMappingFromMappingString(const char *mapping);
+extern Uint16 SDL_NormalizeGamepadMappingCRC(SDL_GUID *guid, char **mapping);
+extern char *SDL_CreateGamepadMappingString(const char *name, const char *mapping, SDL_GUID guid);
+
 // Useful functions and variables from SDL_gamepad.c
 
 extern SDL_GamepadButton SDL_PrivateGetGamepadButtonFromString(const char *str, bool axby, bool baxy);

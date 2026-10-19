@@ -142,6 +142,9 @@
     <ClCompile Include="..\..\src\render\opengles2\SDL_shaders_gles2.c" />
     <ClCompile Include="..\..\src\render\SDL_blendmode.c" />
     <ClCompile Include="..\..\src\render\SDL_render.c" />
+    <ClCompile Include="..\..\src\render\SDL_render_color.c" />
+    <ClCompile Include="..\..\src\render\SDL_render_coordinates.c" />
+    <ClInclude Include="..\..\src\render\SDL_render_internal.h" />
     <ClCompile Include="..\..\src\render\SDL_render_debug.c" />
     <ClCompile Include="..\..\src\render\SDL_render_texture_state.c" />
     <ClCompile Include="..\..\src\render\SDL_render_texture_update.c" />
@@ -221,6 +224,8 @@
     <ClCompile Include="..\..\src\video\SDL_video_gl.c" />
     <ClCompile Include="..\..\src\video\SDL_video_modes.c" />
     <ClCompile Include="..\..\src\video\SDL_video_textinput.c" />
+    <ClCompile Include="..\..\src\video\SDL_video_windowgeometry.c" />
+    <ClCompile Include="..\..\src\video\SDL_video_windowregistry.c" />
     <ClCompile Include="..\..\src\video\SDL_video_windowtexture.c" />
     <ClCompile Include="..\..\src\video\SDL_video_vulkan.c" />
     <ClCompile Include="..\..\src\video\SDL_video_unsupported.c" />

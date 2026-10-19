@@ -1268,6 +1268,8 @@
 │   │   ├── controller_type.h
 │   │   ├── SDL_gamepad_c.h
 │   │   ├── SDL_gamepad_db.h
+│   │   ├── SDL_gamepad_labels.c
+│   │   ├── SDL_gamepad_mapping.c
 │   │   ├── SDL_gamepad_names.c
 │   │   ├── SDL_gamepad_sinput.c
 │   │   ├── SDL_gamepad.c
@@ -1592,6 +1594,8 @@
 │   │   │   ├── SDL_drawpoint.c
 │   │   │   ├── SDL_drawpoint.h
 │   │   │   ├── SDL_render_sw_c.h
+│   │   │   ├── SDL_render_sw_geometry.c
+│   │   │   ├── SDL_render_sw_geometry.h
 │   │   │   ├── SDL_render_sw.c
 │   │   │   ├── SDL_triangle.c
 │   │   │   └── SDL_triangle.h
@@ -1638,6 +1642,9 @@
 │   │   ├── SDL_render_texture_update.c
 │   │   ├── SDL_render_unsupported.c
 │   │   ├── SDL_render.c
+│   │   ├── SDL_render_color.c
+│   │   ├── SDL_render_coordinates.c
+│   │   ├── SDL_render_internal.h
 │   │   ├── SDL_sysrender.h
 │   │   ├── SDL_yuv_sw_c.h
 │   │   └── SDL_yuv_sw.c
@@ -2344,6 +2351,9 @@
 │   │   ├── SDL_video_unsupported.c
 │   │   ├── SDL_video_unsupported.h
 │   │   ├── SDL_video_vulkan.c
+│   │   ├── SDL_video_windowgeometry.c
+│   │   ├── SDL_video_windowplacement.c
+│   │   ├── SDL_video_windowregistry.c
 │   │   ├── SDL_video_windowtexture.c
 │   │   ├── SDL_video.c
 │   │   ├── SDL_vulkan_internal.h

@@ -566,6 +566,8 @@ extern void SDL_SetDisplayHDRProperties(SDL_VideoDisplay *display, const SDL_HDR
 extern bool SDL_SetDisplayModeForDisplay(SDL_VideoDisplay *display, SDL_DisplayMode *mode);
 extern SDL_VideoDisplay *SDL_GetVideoDisplay(SDL_DisplayID display);
 extern SDL_DisplayID SDL_GetDisplayForWindowPosition(SDL_Window *window);
+extern SDL_DisplayID SDL_ResolveWindowPosition(int *window_x, int *window_y, int w, int h, bool *undefined_x, bool *undefined_y);
+extern SDL_DisplayID SDL_GetDisplayAtOrigin(int x, int y);
 extern SDL_VideoDisplay *SDL_GetVideoDisplayForWindow(SDL_Window *window);
 extern SDL_VideoDisplay *SDL_GetVideoDisplayForFullscreenWindow(SDL_Window *window);
 extern int SDL_GetDisplayIndex(SDL_DisplayID displayID);
@@ -586,6 +588,9 @@ extern bool SDL_ShouldFocusPopup(SDL_Window *window);
 extern bool SDL_ShouldRelinquishPopupFocus(SDL_Window *window, SDL_Window **new_focus);
 
 extern void SDL_OnDisplayAdded(SDL_VideoDisplay *display);
+extern void SDL_CheckWindowDisplayChanged(SDL_Window *window);
+extern void SDL_CheckWindowDisplayScaleChanged(SDL_Window *window);
+extern SDL_DisplayID SDL_GetDisplayForWindowInternal(SDL_Window *window);
 extern void SDL_OnDisplayMoved(SDL_VideoDisplay *display);
 extern void SDL_OnWindowShown(SDL_Window *window);
 extern void SDL_OnWindowHidden(SDL_Window *window);
@@ -604,6 +609,8 @@ extern void SDL_OnWindowFocusLost(SDL_Window *window);
 extern void SDL_OnWindowDisplayChanged(SDL_Window *window);
 extern void SDL_UpdateWindowGrab(SDL_Window *window);
 extern bool SDL_UpdateFullscreenMode(SDL_Window *window, SDL_FullscreenOp fullscreen, bool commit);
+extern bool SDL_GetVideoSyncHint(void);
+extern void SDL_SyncIfRequired(SDL_Window *window);
 extern SDL_Window *SDL_GetToplevelForKeyboardFocus(void);
 
 extern bool SDL_ShouldAllowTopmost(void);

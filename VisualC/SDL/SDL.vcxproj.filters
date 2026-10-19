@@ -855,6 +855,9 @@
     <ClInclude Include="..\..\src\render\SDL_sysrender.h">
       <Filter>render</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\src\render\SDL_render_internal.h">
+      <Filter>render</Filter>
+    </ClInclude>
     <ClInclude Include="..\..\src\render\SDL_yuv_sw_c.h">
       <Filter>render</Filter>
     </ClInclude>
@@ -895,6 +898,9 @@
       <Filter>render\software</Filter>
     </ClInclude>
     <ClInclude Include="..\..\src\render\software\SDL_render_sw_c.h">
+      <Filter>render\software</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\render\software\SDL_render_sw_geometry.h">
       <Filter>render\software</Filter>
     </ClInclude>
     <ClInclude Include="..\..\src\render\software\SDL_triangle.h">
@@ -1534,6 +1540,12 @@
     <ClCompile Include="..\..\src\joystick\SDL_gamepad.c">
       <Filter>joystick</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\src\joystick\SDL_gamepad_labels.c">
+      <Filter>joystick</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\joystick\SDL_gamepad_mapping.c">
+      <Filter>joystick</Filter>
+    </ClCompile>
     <ClCompile Include="..\..\src\joystick\SDL_gamepad_names.c">
       <Filter>joystick</Filter>
     </ClCompile>
@@ -1792,6 +1804,15 @@
     <ClCompile Include="..\..\src\video\SDL_video_textinput.c">
       <Filter>video</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\src\video\SDL_video_windowplacement.c">
+      <Filter>video</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\video\SDL_video_windowgeometry.c">
+      <Filter>video</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\video\SDL_video_windowregistry.c">
+      <Filter>video</Filter>
+    </ClCompile>
     <ClCompile Include="..\..\src\video\SDL_video_windowtexture.c">
       <Filter>video</Filter>
     </ClCompile>
@@ -1954,6 +1975,12 @@
     <ClCompile Include="..\..\src\render\SDL_render.c">
       <Filter>render</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\src\render\SDL_render_color.c">
+      <Filter>render</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\render\SDL_render_coordinates.c">
+      <Filter>render</Filter>
+    </ClCompile>
     <ClCompile Include="..\..\src\render\SDL_render_debug.c">
       <Filter>render</Filter>
     </ClCompile>
@@ -2009,6 +2036,9 @@
       <Filter>render\software</Filter>
     </ClCompile>
     <ClCompile Include="..\..\src\render\software\SDL_render_sw.c">
+      <Filter>render\software</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\render\software\SDL_render_sw_geometry.c">
       <Filter>render\software</Filter>
     </ClCompile>
     <ClCompile Include="..\..\src\render\software\SDL_triangle.c">
