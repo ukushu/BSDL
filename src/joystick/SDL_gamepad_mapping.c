@@ -11,6 +11,102 @@
 #include "SDL_gamepad_c.h"
 #include "SDL_joystick_c.h"
 
+bool SDL_ParseGamepadMappingOutput(const char *mapping, const char *szGameButton, SDL_GamepadBinding *bind)
+{
+    SDL_GamepadButton button;
+    SDL_GamepadAxis axis;
+    char half_axis_output = 0;
+    bool axby_mapping = false;
+    bool baxy_mapping = false;
+
+    if (*szGameButton == '+' || *szGameButton == '-') {
+        half_axis_output = *szGameButton++;
+    }
+
+    if (SDL_strstr(mapping, ",hint:SDL_GAMECONTROLLER_USE_GAMECUBE_LABELS:=1") != NULL) {
+        axby_mapping = true;
+    }
+    if (SDL_strstr(mapping, ",hint:SDL_GAMECONTROLLER_USE_BUTTON_LABELS:=1") != NULL) {
+        baxy_mapping = true;
+    }
+
+    // FIXME: We fix these up when loading the mapping, does this ever get hit?
+    //SDL_assert(!axby_mapping && !baxy_mapping);
+
+    axis = SDL_GetGamepadAxisFromString(szGameButton);
+    button = SDL_PrivateGetGamepadButtonFromString(szGameButton, axby_mapping, baxy_mapping);
+    if (axis != SDL_GAMEPAD_AXIS_INVALID) {
+        bind->output_type = SDL_GAMEPAD_BINDTYPE_AXIS;
+        bind->output.axis.axis = axis;
+        if (axis == SDL_GAMEPAD_AXIS_LEFT_TRIGGER || axis == SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) {
+            bind->output.axis.axis_min = 0;
+            bind->output.axis.axis_max = SDL_JOYSTICK_AXIS_MAX;
+        } else {
+            if (half_axis_output == '+') {
+                bind->output.axis.axis_min = 0;
+                bind->output.axis.axis_max = SDL_JOYSTICK_AXIS_MAX;
+            } else if (half_axis_output == '-') {
+                bind->output.axis.axis_min = 0;
+                bind->output.axis.axis_max = SDL_JOYSTICK_AXIS_MIN;
+            } else {
+                bind->output.axis.axis_min = SDL_JOYSTICK_AXIS_MIN;
+                bind->output.axis.axis_max = SDL_JOYSTICK_AXIS_MAX;
+            }
+        }
+    } else if (button != SDL_GAMEPAD_BUTTON_INVALID) {
+        bind->output_type = SDL_GAMEPAD_BINDTYPE_BUTTON;
+        bind->output.button = button;
+    } else {
+        return false;
+    }
+    return true;
+}
+
+bool SDL_ParseGamepadMappingInput(const char *szJoystickButton, SDL_GamepadBinding *bind)
+{
+    bool invert_input = false;
+    char half_axis_input = 0;
+
+    if (*szJoystickButton == '+' || *szJoystickButton == '-') {
+        half_axis_input = *szJoystickButton++;
+    }
+    if (szJoystickButton[SDL_strlen(szJoystickButton) - 1] == '~') {
+        invert_input = true;
+    }
+
+    if (szJoystickButton[0] == 'a' && SDL_isdigit((unsigned char)szJoystickButton[1])) {
+        bind->input_type = SDL_GAMEPAD_BINDTYPE_AXIS;
+        bind->input.axis.axis = SDL_atoi(&szJoystickButton[1]);
+        if (half_axis_input == '+') {
+            bind->input.axis.axis_min = 0;
+            bind->input.axis.axis_max = SDL_JOYSTICK_AXIS_MAX;
+        } else if (half_axis_input == '-') {
+            bind->input.axis.axis_min = 0;
+            bind->input.axis.axis_max = SDL_JOYSTICK_AXIS_MIN;
+        } else {
+            bind->input.axis.axis_min = SDL_JOYSTICK_AXIS_MIN;
+            bind->input.axis.axis_max = SDL_JOYSTICK_AXIS_MAX;
+        }
+        if (invert_input) {
+            int tmp = bind->input.axis.axis_min;
+            bind->input.axis.axis_min = bind->input.axis.axis_max;
+            bind->input.axis.axis_max = tmp;
+        }
+    } else if (szJoystickButton[0] == 'b' && SDL_isdigit((unsigned char)szJoystickButton[1])) {
+        bind->input_type = SDL_GAMEPAD_BINDTYPE_BUTTON;
+        bind->input.button = SDL_atoi(&szJoystickButton[1]);
+    } else if (szJoystickButton[0] == 'h' && SDL_isdigit((unsigned char)szJoystickButton[1]) &&
+               szJoystickButton[2] == '.' && SDL_isdigit((unsigned char)szJoystickButton[3])) {
+        int hat = SDL_atoi(&szJoystickButton[1]);
+        int mask = SDL_atoi(&szJoystickButton[3]);
+        bind->input_type = SDL_GAMEPAD_BINDTYPE_HAT;
+        bind->input.hat.hat = hat;
+        bind->input.hat.hat_mask = mask;
+    } else {
+        return false;
+    }
+    return true;
+}
 /*
  * grab the guid string from a mapping string
  */

@@ -20,6 +20,55 @@
 */
 #include "SDL_internal.h"
 #include "SDL_events_c.h"
+#include "../SDL_hints_c.h"
+
+int SDL_EventLoggingVerbosity = 0;
+
+static void SDLCALL SDL_EventLoggingChanged(void *userdata, const char *name, const char *oldValue, const char *hint)
+{
+    SDL_EventLoggingVerbosity = (hint && *hint) ? SDL_clamp(SDL_atoi(hint), 0, 3) : 0;
+}
+
+void SDL_InitEventLogging(void)
+{
+    SDL_AddHintCallback(SDL_HINT_EVENT_LOGGING, SDL_EventLoggingChanged, NULL);
+}
+
+void SDL_QuitEventLogging(void)
+{
+    SDL_RemoveHintCallback(SDL_HINT_EVENT_LOGGING, SDL_EventLoggingChanged, NULL);
+}
+
+void SDL_LogEvent(const SDL_Event *event)
+{
+    if (!event) {
+        return;
+    }
+
+    // sensor/mouse/pen/finger/pinch motion are spammy, ignore these if they aren't demanded.
+    if ((SDL_EventLoggingVerbosity < 2) &&
+        ((event->type == SDL_EVENT_MOUSE_MOTION) ||
+         (event->type == SDL_EVENT_FINGER_MOTION) ||
+         (event->type == SDL_EVENT_PEN_AXIS) ||
+         (event->type == SDL_EVENT_PEN_MOTION) ||
+         (event->type == SDL_EVENT_PINCH_UPDATE) ||
+         (event->type == SDL_EVENT_GAMEPAD_AXIS_MOTION) ||
+         (event->type == SDL_EVENT_GAMEPAD_SENSOR_UPDATE) ||
+         (event->type == SDL_EVENT_GAMEPAD_TOUCHPAD_MOTION) ||
+         (event->type == SDL_EVENT_GAMEPAD_UPDATE_COMPLETE) ||
+         (event->type == SDL_EVENT_JOYSTICK_AXIS_MOTION) ||
+         (event->type == SDL_EVENT_JOYSTICK_UPDATE_COMPLETE) ||
+         (event->type == SDL_EVENT_SENSOR_UPDATE))) {
+        return;
+    }
+
+    char buf[256];
+    const int rc = SDL_GetEventDescription(event, buf, sizeof (buf));
+    SDL_assert(rc < sizeof (buf));  // if this overflows, we should make `buf` larger, but this is currently larger than the max SDL_GetEventDescription returns.
+    if (buf[0]) {
+        SDL_Log("SDL EVENT: %s", buf);
+    }
+}
 
 int SDL_GetEventDescription(const SDL_Event *event, char *buf, int buflen)
 {
@@ -510,4 +559,3 @@ int SDL_GetEventDescription(const SDL_Event *event, char *buf, int buflen)
     }
     return retval;
 }
-

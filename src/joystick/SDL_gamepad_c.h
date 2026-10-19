@@ -50,6 +50,8 @@ extern char *SDL_CreateGamepadMappingString(const char *name, const char *mappin
 // Useful functions and variables from SDL_gamepad.c
 
 extern SDL_GamepadButton SDL_PrivateGetGamepadButtonFromString(const char *str, bool axby, bool baxy);
+extern bool SDL_ParseGamepadMappingOutput(const char *mapping, const char *game_button, SDL_GamepadBinding *bind);
+extern bool SDL_ParseGamepadMappingInput(const char *joystick_button, SDL_GamepadBinding *bind);
 extern void SDL_CreateMappingStringForSInputGamepad(Uint16 version, Uint8 face_style, char *mapping_string, size_t mapping_string_len);
 
 // Initialization and shutdown functions

@@ -693,6 +693,8 @@
     <ClCompile Include="..\..\src\events\SDL_dropevents.c" />
     <ClCompile Include="..\..\src\events\SDL_eventdescription.c" />
     <ClCompile Include="..\..\src\events\SDL_events.c" />
+    <ClCompile Include="..\..\src\events\SDL_events_pump.c" />
+    <ClCompile Include="..\..\src\events\SDL_events_enabled.c" />
     <ClCompile Include="..\..\src\events\SDL_events_temporary_memory.c" />
     <ClCompile Include="..\..\src\events\SDL_events_mainthread.c" />
     <ClCompile Include="..\..\src\events\SDL_eventwatch.c" />
@@ -934,6 +936,7 @@
     <ClCompile Include="..\..\src\video\SDL_video_displays.c" />
     <ClCompile Include="..\..\src\video\SDL_video_windowdisplay.c" />
     <ClCompile Include="..\..\src\video\SDL_video_gl.c" />
+    <ClCompile Include="..\..\src\video\SDL_video_metal.c" />
     <ClCompile Include="..\..\src\video\SDL_video_modes.c" />
     <ClCompile Include="..\..\src\video\SDL_video_fullscreen.c" />
     <ClCompile Include="..\..\src\video\SDL_video_textinput.c" />

@@ -54,18 +54,31 @@ extern void SDL_DestroyEventLock(void);
 // Start and stop the event processing loop
 extern bool SDL_StartEventLoop(void);
 extern void SDL_StopEventLoop(void);
+extern int SDL_GetPendingEventSentinels(void);
+extern int SDL_PeepEventsInternal(SDL_Event *events, int numevents, SDL_EventAction action, Uint32 minType, Uint32 maxType, bool include_sentinel);
+extern void SDL_QuitEventEnabled(void);
 extern void SDL_QuitInterrupt(void);
+
+extern void SDL_InitEventPumping(void);
+extern void SDL_QuitEventPumping(void);
 
 extern void SDL_SendAppEvent(SDL_EventType eventType);
 extern void SDL_SendKeymapChangedEvent(void);
 extern void SDL_SendLocaleChangedEvent(void);
 extern void SDL_SendSystemThemeChangedEvent(void);
+extern void SDL_LogEvent(const SDL_Event *event);
+extern void SDL_InitEventLogging(void);
+extern void SDL_QuitEventLogging(void);
+extern int SDL_EventLoggingVerbosity;
+extern void SDL_QuitEventWatchers(void);
+extern bool SDL_DispatchEventWatchers(SDL_Event *event);
 
 extern void *SDL_AllocateTemporaryMemory(size_t size);
 extern const char *SDL_CreateTemporaryString(const char *string);
 extern void *SDL_ClaimTemporaryMemory(const void *mem);
 extern void SDL_FreeTemporaryMemory(void);
 extern void SDL_AttachTemporaryMemory(SDL_TemporaryMemory **event_memory, const void *mem);
+extern void SDL_TransferTemporaryMemoryToEvent(SDL_TemporaryMemory **event_memory, SDL_Event *event);
 extern void SDL_TransferTemporaryMemoryFromEvent(SDL_TemporaryMemory **event_memory);
 
 extern void SDL_PumpEventMaintenance(void);

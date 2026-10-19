@@ -576,6 +576,7 @@ extern SDL_DisplayData *SDL_GetDisplayDriverDataForWindow(SDL_Window *window);
 extern int SDL_GetMessageBoxCount(void);
 extern void SDL_SetWindowHDRProperties(SDL_Window *window, const SDL_HDROutputProperties *HDR, bool send_event);
 extern void SDL_SetWindowSafeAreaInsets(SDL_Window *window, int left, int right, int top, int bottom);
+extern void SDL_CheckWindowSafeAreaChanged(SDL_Window *window);
 
 extern void SDL_GL_DeduceMaxSupportedESProfile(int *major, int *minor);
 

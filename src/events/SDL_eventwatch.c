@@ -23,11 +23,8 @@
 #include "SDL_eventwatch_c.h"
 #include "SDL_events_c.h"
 
+static SDL_EventWatchList SDL_event_watchers;
 
-bool SDL_InitEventWatchList(SDL_EventWatchList *list)
-{
-    return true;
-}
 
 void SDL_QuitEventWatchList(SDL_EventWatchList *list)
 {
@@ -37,6 +34,62 @@ void SDL_QuitEventWatchList(SDL_EventWatchList *list)
         list->count = 0;
     }
     SDL_zero(list->filter);
+}
+
+void SDL_QuitEventWatchers(void)
+{
+    SDL_QuitEventWatchList(&SDL_event_watchers);
+}
+
+bool SDL_DispatchEventWatchers(SDL_Event *event)
+{
+    if (event->type == SDL_EVENT_POLL_SENTINEL) {
+        return true;
+    }
+    return SDL_DispatchEventWatchList(&SDL_event_watchers, event);
+}
+
+void SDL_SetEventFilter(SDL_EventFilter filter, void *userdata)
+{
+    SDL_LockMutex(SDL_event_lock);
+    {
+        // Set filter and discard pending events
+        SDL_event_watchers.filter.callback = filter;
+        SDL_event_watchers.filter.userdata = userdata;
+        if (filter) {
+            SDL_FilterEvents(filter, userdata);
+        }
+    }
+    SDL_UnlockMutex(SDL_event_lock);
+}
+
+bool SDL_GetEventFilter(SDL_EventFilter *filter, void **userdata)
+{
+    SDL_EventWatcher event_filter;
+
+    SDL_LockMutex(SDL_event_lock);
+    {
+        event_filter = SDL_event_watchers.filter;
+    }
+    SDL_UnlockMutex(SDL_event_lock);
+
+    if (filter) {
+        *filter = event_filter.callback;
+    }
+    if (userdata) {
+        *userdata = event_filter.userdata;
+    }
+    return event_filter.callback != NULL;
+}
+
+bool SDL_AddEventWatch(SDL_EventFilter filter, void *userdata)
+{
+    return SDL_AddEventWatchList(&SDL_event_watchers, filter, userdata);
+}
+
+void SDL_RemoveEventWatch(SDL_EventFilter filter, void *userdata)
+{
+    SDL_RemoveEventWatchList(&SDL_event_watchers, filter, userdata);
 }
 
 bool SDL_DispatchEventWatchList(SDL_EventWatchList *list, SDL_Event *event)

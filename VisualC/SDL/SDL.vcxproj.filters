@@ -1501,6 +1501,12 @@
     <ClCompile Include="..\..\src\events\SDL_events.c">
       <Filter>events</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\src\events\SDL_events_pump.c">
+      <Filter>events</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\events\SDL_events_enabled.c">
+      <Filter>events</Filter>
+    </ClCompile>
     <ClCompile Include="..\..\src\events\SDL_events_temporary_memory.c">
       <Filter>events</Filter>
     </ClCompile>
@@ -1814,6 +1820,9 @@
       <Filter>video</Filter>
     </ClCompile>
     <ClCompile Include="..\..\src\video\SDL_video_gl.c">
+      <Filter>video</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\video\SDL_video_metal.c">
       <Filter>video</Filter>
     </ClCompile>
     <ClCompile Include="..\..\src\video\SDL_video_modes.c">
