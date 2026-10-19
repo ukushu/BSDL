@@ -55,6 +55,8 @@ extern void SDL_CreateMappingStringForSInputGamepad(Uint16 version, Uint8 face_s
 // Initialization and shutdown functions
 extern bool SDL_InitGamepadMappings(void);
 extern void SDL_QuitGamepadMappings(void);
+extern void SDL_InitGamepadVIDPIDLists(void);
+extern void SDL_QuitGamepadVIDPIDLists(void);
 extern bool SDL_InitGamepads(void);
 extern void SDL_QuitGamepads(void);
 

@@ -15,6 +15,7 @@
 - Events/joystick: черга й callback-и подій, створення віртуального joystick/gamepad, читання та зміна кнопок/осей; перевірити підписи face buttons для ABXY, AXBY, BAYX і Sony стилів.
 - Software geometry fallback: прямокутні quad-и, текстуровані та нетекстуровані кольорові quad-и, індекси 8/16/32-bit, raw geometry і fallback-трикутники; перевірити, що черга команд та відновлення draw state не змінилися.
 - Window placement/display selection: point/rect display lookup, popup coordinate conversion, pending/fullscreen display selection and fallback to the primary display.
+- Video sync hint: toggle `SDL_HINT_VIDEO_SYNC_WINDOW_OPERATIONS` at runtime and verify window operations follow the updated hint; confirm fullscreen-mode changes remain synchronous on macOS Cocoa transitions and do not affect behavior when the hint is disabled.
 
 ## Матриця платформ
 
@@ -61,6 +62,19 @@
 
 Цей Linux прогін перевіряє спільний код і X11 поведінку; він не закриває Windows/macOS рядки матриці. Windows native/MSVC та macOS native/Xcode виконання лишаються обов'язковими перед платформним прийманням.
 
+### Перевірки renderer refactor на Windows і macOS
+
+Після переносу logical presentation, coordinate conversion та GPU custom render-state API виконати окремо на native Windows і macOS:
+
+- Перевірити logical size, letterbox/overscan/integer scale, viewport і safe area; зіставити координати вікна, renderer output, mouse/touch/pen/drop події та pixel size після resize, зміни DPI і переміщення між дисплеями. На Windows використати різні DPI monitors; на macOS перевірити Retina 1x/2x drawable.
+- Перевірити `SDL_SetRenderDrawColor`, draw color/alpha scale, blend mode, color scale mode та HDR output properties на кожному доступному backend. Порівняти framebuffer/readback для clear і primitives, перевірити послідовні зміни стану між кадрами, reset після resize та коректні SDL errors для непідтримуваного HDR/color mode. На Windows перевірити D3D12 і Vulkan, якщо доступні; на macOS — Metal.
+- Перевірити renderer/window association, name/properties і output size для window renderer після resize, DPI change та window recreation; звірити pixel size на mixed-DPI Windows displays і Retina drawable на macOS. Перевірити offscreen та software renderer: output size має бути коректним згідно API.
+- Перевірити geometry triangles з/без texture, 8/16/32-bit indices, автоматичний clamp/wrap UV та software fallback; повторити з logical scaling і після resize/DPI зміни, звіривши framebuffer/readback на кожній платформі.
+- Зібрати `testgpurender_effects` і `testgpurender_msdf`; створити GPU render state, встановити vertex/fragment shader, sampler та uniform-и, намалювати кадр і перевірити readback. Повторити після resize/window recreation, щоб перевірити чергу команд і життєвий цикл ресурсів.
+- Перевірити backend помилку/відсутній GPU та збереження SDL error. Зафіксувати реальний backend/device; для Windows перевірити D3D12 і Vulkan, якщо доступні, для macOS — Metal (Vulkan лише якщо backend зібраний).
+
+`deus check .` не запускає `testgpurender_effects` і `testgpurender_msdf` окремими CTest цілями. Їхній build і native runtime результат записувати окремо; пропуск через відсутній backend/GPU позначати Skipped із причиною.
+
 Поточне середовище Linux має активну X11 сесію й AMD Radeon RX 5700 (RADV). Конфігурація Deus з `SDL_X11=ON`, `SDL_WAYLAND=ON`, `SDLTEST_VIDEO_DRIVER=x11` успішно збирається. У повному прогоні `deus check .` від 2026-10-19 усі 25 CTest цілей виконались: 23 пройшли, дві (`testautomation` і `testautomation-no-simd`) завершились помилкою через відомий `render_testColorspaceLinear` (картка 000007). У звичайному automation target було 4 пропуски, у no-SIMD — 12; пропуск не є успіхом і має оцінюватися за потрібним драйвером. `video_testFullscreenEnterLeave` і `mouse_getMouseFocus` у цьому прогоні пройшли; їхні попередні нестабільні результати лишаються зафіксованими окремо в картках 000008 і 000040.
 
 На реальному RX 5700 пройшли Vulkan device lifecycle, buffer copy, повторне створення малих буферів і renderer clear/lines/points/geometry/readback, 1024 зміни color scale та `SDL_RenderPresent`. Тест Vulkan command queue перевіряє примітиви й довгу серію змін кольору окремо. Змішаний сценарій, що виявив no-SIMD зміну кольорів попередніх ліній, не включений до успішних перевірок; його окрема помилка зареєстрована в картці 000043, і її треба виправити там та додати регресійне покриття. Помилка acquire наступного swapchain image також лишається неперевіреним failure path (картка 000044). Wayland лише компілюється: активного compositor немає. Wayland runtime, Windows D3D12 і macOS Metal ще потребують відповідних native-перевірок, включно з GPU presenting.
@@ -106,3 +120,31 @@ Fullscreen enter/leave, display mode switching та `SDL_UpdateFullscreenMode` �
 Після переносу geometry API `deus check .` успішно зібрав проєкт; CTest — 23/25. `video_getSetWindowPosition`, size/minimum/maximum tests та create-minimized/maximized пройшли в обох automation прогонах. Єдині два падіння — відомий `render_testColorspaceLinear` (000007): звичайний прогін 428/433 passed, 1 failed, 4 skipped; no-SIMD 420/433 passed, 1 failed, 12 skipped. `git diff --check` чистий.
 
 Window list/ID/parent/properties/flags accessors винесено до `SDL_video_windowregistry.c`; пошук ID продовжує обходити той самий window list, а invalid ID зберігає SDL error. Файл підключено у Visual Studio, GDK і Xcode. Після цього переносу `deus check .` зібрався; CTest — 23/25 із тими самими двома `render_testColorspaceLinear` помилками (000007). `video_getWindowFlags`, `video_getWindowId` і `video_destroyWindowUnlinksList` пройшли в обох automation прогонах; звичайний automation — 428/433 passed, 4 skipped; no-SIMD — 420/433 passed, 12 skipped. Visual Studio XML, Xcode project lint і `git diff --check` пройшли.
+
+GPU custom render-state create/update/destroy API винесено до `SDL_render_gpu_state.c`; dependency-aware command flush лишився в renderer core як внутрішній helper. Виправлено OOM failure path додавання uniform buffer: після realloc state більше не лишається з dangling array pointer, якщо allocation uniform data падає. `testgpurender_effects` і `testgpurender_msdf` використовують цей API, але `deus check .` не запускає їх окремими CTest цілями; runtime GPU перевірка лишається платформною. Файл додано до Visual Studio, GDK і Xcode projects. Після переносу `deus check .` зібрався; CTest — 23/25, дві automation цілі впали лише на відомому `render_testColorspaceLinear` (000007): звичайна 428/433 passed, 1 failed, 4 skipped; no-SIMD 420/433 passed, 1 failed, 12 skipped. `git diff --check`, Visual Studio XML і Xcode project lint пройшли.
+
+Public logical presentation setter/getters і safe-area conversion винесено в `SDL_render_coordinates.c` поруч із coordinate conversion. Перерахунок viewport/command state лишився у core як `SDL_UpdateLogicalPresentation`, доступний тільки через внутрішній renderer header. `render_testLogicalSize` і `render_testLogicalLinesGeometry` покривають logical presentation; `testwm` і `testsprite` викликають safe-area API.
+
+Після цих переносів `deus check .` успішно зібрався; `render_testLogicalSize` і `render_testLogicalLinesGeometry` пройшли в обох automation targets. CTest — 23/25, єдині дві помилки — відомий `render_testColorspaceLinear` (000007): звичайний automation 428/433 passed, 1 failed, 4 skipped; no-SIMD 420/433 passed, 1 failed, 12 skipped. `git diff --check` чистий.
+
+Gamepad blacklist і VID/PID allow/ignore lists перенесено в `SDL_gamepad_filter.c`; init/shutdown списків зберігаються під joystick lock. Остання збірка `SDL3-shared` пройшла без попереджень; Visual Studio project XML, Xcode project lint і `git diff --check` пройшли. Після цього переносу gamepad runtime тести ще не запускалися.
+
+Texture format selection, fallback creation, texture initialization, create/from-surface APIs і texture size/property access винесено в `SDL_render_texture_create.c`. Розрахунок pixel viewport/clip лишився спільним у renderer core і оголошений через внутрішній renderer header. `SDL3-shared` зібрався; повний automation прогін після переносу не запускався.
+
+Texture palette attachment/detachment та palette/property/size access винесено в наявний `SDL_render_texture_state.c`. Dependency-aware palette flush лишився у core як внутрішній helper. `SDL3-shared` після переносу зібрався; runtime automation не запускався.
+
+`deus check .` після gamepad filter і renderer texture refactor (2026-10-19) пройшов configure/build, CTest — 23/25. Звичайний automation: 428/433 passed, `render_testColorspaceLinear` failed (000007), 4 skipped; no-SIMD: 419/433 passed, `mouse_getMouseFocus` failed (000040) і `render_testColorspaceLinear` failed (000007), 12 skipped. Решта CTest цілей пройшла. Збережені seeds: normal `R4F2MTWKAXTQKHKA`, no-SIMD `QC4OATU3NGMXGRP7`.
+
+Point/line/rect/fill-rect APIs та їх queue/geometry fallback винесено в `SDL_render_primitives.c`. Після переносу пройшли вибіркові тести `render_testLogicalLinesGeometry`, `render_testSoftwareGeometryQuads`, `render_testTextureCreationProperties` і `render_testSoftwareTexturePalette` (кожен окремо, 1/1). `SDL3-shared` зібрався; повний `deus check .` після цього переносу не запускався.
+
+Texture draw APIs (copy, affine, rotated, tiled, 9-grid) винесено в `SDL_render_texture_draw.c`; palette synchronization використовується спільно з geometry API через `SDL_render_texture_state.c`. `SDL3-shared` зібрався, а `render_testGeometryAutoTextureAddress`, `render_testTextureCreationProperties`, `render_testTextureState` і `render_testSoftwareTextureFallback` пройшли окремо (1/1 кожен). Повний `deus check .` після цього переносу не запускався.
+
+Viewport, clip rect і render scale APIs перенесено в `SDL_render_coordinates.c`; спільні pixel viewport/clip та queue invalidation викликаються через internal renderer helpers. `render_testLogicalSize`, `render_testLogicalLinesGeometry` і `render_testSoftwareRendererFlushSequence` пройшли вибірково (1/1 кожен). `SDL3-shared` зібрався; повний прогін після переносу не запускався.
+
+Draw color, color scale, blend mode, color scale mode і HDR output state APIs винесено в `SDL_render_draw_state.c`; renderer lifecycle та command queue лишилися в core. `SDL3-shared` зібрався, `render_testBlendModes` пройшов (1/1), `git diff --check` чистий. Файл зареєстровано у Visual Studio, GDK і Xcode projects. Повний automation прогін після переносу не запускався.
+
+Renderer/window association, renderer name/properties і output-size accessors винесено в `SDL_render_info.c`; вибір драйвера, створення та lifecycle лишилися в core. `SDL3-shared` зібрався, `render_testSoftwareRendererFlushSequence` пройшов (1/1). Native Windows-перевірка включає mixed-DPI resize, macOS — Retina drawable/window recreation; обидві мають покривати offscreen/software renderer. Повний прогін після переносу не запускався.
+
+`SDL_RenderGeometry`/`SDL_RenderGeometryRaw` та перевірки індексів/UV винесено в `SDL_render_geometry.c`; command queue geometry API лишився у renderer core. Після `SDL3-shared` build пройшов `render_testGeometryRawIndexWidths` (1/1); Visual Studio XML і Xcode project перевірено. Перевірити software fallback, texture palette sync, auto UV clamp/wrap та 8/16/32-bit індекси на Windows mixed-DPI і macOS Retina. Повний прогін після переносу не запускався.
+
+Стан `SDL_HINT_VIDEO_SYNC_WINDOW_OPERATIONS`, його callback і `SDL_SyncIfRequired` винесено в `SDL_video_sync.c`; callback як і раніше реєструється після успішної video initialization. Після цього `SDL3-shared` зібрався без попереджень, а `video_testFullscreenEnterLeave` пройшов (1/1) на X11. Перевірка hint runtime toggle та синхронного fullscreen mode transition на Cocoa лишається платформною.

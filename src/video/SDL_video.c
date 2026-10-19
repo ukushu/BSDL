@@ -177,26 +177,6 @@ static bool IsFullscreenOnly(SDL_VideoDevice *_this)
     return !!(_this->device_caps & VIDEO_DEVICE_CAPS_FULLSCREEN_ONLY);
 }
 
-// Hint to treat all window ops as synchronous
-static bool syncHint;
-
-static void SDL_SyncHintWatcher(void *userdata, const char *name, const char *oldValue, const char *newValue)
-{
-    syncHint = SDL_GetStringBoolean(newValue, false);
-}
-
-void SDL_SyncIfRequired(SDL_Window *window)
-{
-    if (syncHint) {
-        SDL_SyncWindow(window);
-    }
-}
-
-bool SDL_GetVideoSyncHint(void)
-{
-    return syncHint;
-}
-
 static void SDL_UpdateWindowHierarchy(SDL_Window *window, SDL_Window *parent)
 {
     // Unlink the window from the existing parent.
@@ -418,7 +398,7 @@ bool SDL_InitVideo(const char *driver_name)
         return SDL_SetError("The video driver did not add any displays");
     }
 
-    SDL_AddHintCallback(SDL_HINT_VIDEO_SYNC_WINDOW_OPERATIONS, SDL_SyncHintWatcher, NULL);
+    SDL_InitVideoSyncHint();
 
     /* Disable the screen saver by default. This is a change from <= 2.0.1,
        but most things using SDL are games or media players; you wouldn't

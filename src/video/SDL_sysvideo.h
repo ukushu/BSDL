@@ -611,6 +611,7 @@ extern void SDL_UpdateWindowGrab(SDL_Window *window);
 extern bool SDL_UpdateFullscreenMode(SDL_Window *window, SDL_FullscreenOp fullscreen, bool commit);
 extern bool SDL_GetVideoSyncHint(void);
 extern void SDL_SyncIfRequired(SDL_Window *window);
+extern void SDL_InitVideoSyncHint(void);
 extern SDL_Window *SDL_GetToplevelForKeyboardFocus(void);
 
 extern bool SDL_ShouldAllowTopmost(void);

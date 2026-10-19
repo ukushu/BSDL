@@ -10,6 +10,8 @@
 #ifndef SDL_render_internal_h_
 #define SDL_render_internal_h_
 
+#define SDL_PROP_TEXTURE_PARENT_POINTER "SDL.internal.texture.parent"
+
 #define CHECK_RENDERER_MAGIC_BUT_NOT_DESTROYED_FLAG(renderer, result)   \
     CHECK_PARAM(!SDL_ObjectValid(renderer, SDL_OBJECT_TYPE_RENDERER)) { \
         SDL_InvalidParamError("renderer");                              \

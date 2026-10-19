@@ -298,3 +298,178 @@ bool SDL_GetDefaultTextureScaleMode(SDL_Renderer *renderer, SDL_ScaleMode *scale
     }
     return true;
 }
+
+SDL_PropertiesID SDL_GetTextureProperties(SDL_Texture *texture)
+{
+    CHECK_TEXTURE_MAGIC(texture, 0);
+
+    if (texture->props == 0) {
+        texture->props = SDL_CreateProperties();
+    }
+    return texture->props;
+}
+
+bool SDL_GetTextureSize(SDL_Texture *texture, float *w, float *h)
+{
+    if (w) {
+        *w = 0;
+    }
+    if (h) {
+        *h = 0;
+    }
+
+    CHECK_TEXTURE_MAGIC(texture, false);
+
+    if (w) {
+        *w = (float)texture->w;
+    }
+    if (h) {
+        *h = (float)texture->h;
+    }
+    return true;
+}
+
+static void DetachTexturePalette(SDL_Texture *texture)
+{
+    if (texture->public_palette) {
+        SDL_Renderer *renderer = texture->renderer;
+        SDL_DestroyPalette(texture->public_palette);
+
+        if (!texture->native) {
+            // Clean up the texture palette
+            --texture->palette->refcount;
+            if (texture->palette->refcount == 0) {
+                SDL_FlushRenderCommandsIfPaletteNeeded(renderer, texture->palette);
+                renderer->DestroyPalette(renderer, texture->palette);
+                SDL_RemoveFromHashTable(renderer->palettes, texture->public_palette);
+            }
+            texture->palette = NULL;
+        }
+    }
+}
+
+static bool AttachTexturePalette(SDL_Texture *texture, SDL_Palette *palette)
+{
+    SDL_Renderer *renderer = texture->renderer;
+
+    texture->public_palette = palette;
+    texture->palette_version = 0;
+
+    if (texture->public_palette) {
+        ++texture->public_palette->refcount;
+
+        if (!texture->native) {
+            if (SDL_FindInHashTable(renderer->palettes, palette, (const void **)&texture->palette)) {
+                ++texture->palette->refcount;
+            } else {
+                SDL_TexturePalette *texture_palette = (SDL_TexturePalette *)SDL_calloc(1, sizeof(*texture_palette));
+                if (!texture_palette) {
+                    SDL_SetTexturePalette(texture, NULL);
+                    return false;
+                }
+                if (!renderer->CreatePalette(renderer, texture_palette)) {
+                    renderer->DestroyPalette(renderer, texture_palette);
+                    SDL_SetTexturePalette(texture, NULL);
+                    return false;
+                }
+                texture->palette = texture_palette;
+                texture->palette->refcount = 1;
+
+                if (!SDL_InsertIntoHashTable(renderer->palettes, palette, texture->palette, false)) {
+                    SDL_SetTexturePalette(texture, NULL);
+                    return false;
+                }
+            }
+        }
+
+        if (!texture->native && renderer->ChangeTexturePalette) {
+            renderer->ChangeTexturePalette(renderer, texture);
+        }
+    }
+    return true;
+}
+
+bool SDL_SetTexturePalette(SDL_Texture *texture, SDL_Palette *palette)
+{
+    CHECK_TEXTURE_MAGIC(texture, false);
+
+    CHECK_PARAM(!SDL_ISPIXELFORMAT_INDEXED(texture->format)) {
+        return SDL_SetError("Texture isn't palettized format");
+    }
+
+    CHECK_PARAM(palette && palette->ncolors > (1 << SDL_BITSPERPIXEL(texture->format))) {
+        return SDL_SetError("Palette doesn't match surface format");
+    }
+
+    if (palette != texture->public_palette) {
+        DetachTexturePalette(texture);
+        if (!AttachTexturePalette(texture, palette)) {
+            return false;
+        }
+        if (texture->palette_surface) {
+            SDL_SetSurfacePalette(texture->palette_surface, palette);
+        }
+    }
+    return true;
+}
+
+SDL_Palette *SDL_GetTexturePalette(SDL_Texture *texture)
+{
+    CHECK_TEXTURE_MAGIC(texture, NULL);
+
+    return texture->public_palette;
+}
+
+bool SDL_UpdateTexturePalette(SDL_Texture *texture)
+{
+    SDL_Renderer *renderer = texture->renderer;
+    SDL_Palette *public = texture->public_palette;
+
+    if (!SDL_ISPIXELFORMAT_INDEXED(texture->format)) {
+        return true;
+    }
+
+    if (!public) {
+        return SDL_SetError("Texture doesn't have a palette");
+    }
+
+    if (texture->native) {
+        // Keep the native texture in sync with palette updates
+        if (texture->palette_version == public->version) {
+            return true;
+        }
+
+        if (!SDL_FlushRenderCommandsIfTextureNeeded(texture->native)) {
+            return false;
+        }
+
+        SDL_Surface *surface;
+        bool result = SDL_LockTextureToSurface(texture->native, NULL, &surface);
+        if (result) {
+            result = SDL_BlitSurface(texture->palette_surface, NULL, surface, NULL);
+            SDL_UnlockTexture(texture->native);
+        }
+        if (!result) {
+            return false;
+        }
+        texture->palette_version = public->version;
+        return true;
+    }
+
+    SDL_TexturePalette *palette = texture->palette;
+    if (palette->version != public->version) {
+        // Keep the native palette in sync with palette updates
+        if (!SDL_FlushRenderCommandsIfPaletteNeeded(renderer, palette)) {
+            return false;
+        }
+
+        if (!renderer->UpdatePalette(renderer, palette, public->ncolors, public->colors)) {
+            return false;
+        }
+
+        palette->version = public->version;
+    }
+
+    palette->last_command_generation = renderer->render_command_generation;
+    return true;
+}

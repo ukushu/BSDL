@@ -1540,6 +1540,9 @@
     <ClCompile Include="..\..\src\joystick\SDL_gamepad.c">
       <Filter>joystick</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\src\joystick\SDL_gamepad_filter.c">
+      <Filter>joystick</Filter>
+    </ClCompile>
     <ClCompile Include="..\..\src\joystick\SDL_gamepad_labels.c">
       <Filter>joystick</Filter>
     </ClCompile>
@@ -1810,6 +1813,9 @@
     <ClCompile Include="..\..\src\video\SDL_video_windowgeometry.c">
       <Filter>video</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\src\video\SDL_video_sync.c">
+      <Filter>video</Filter>
+    </ClCompile>
     <ClCompile Include="..\..\src\video\SDL_video_windowregistry.c">
       <Filter>video</Filter>
     </ClCompile>
@@ -1975,10 +1981,31 @@
     <ClCompile Include="..\..\src\render\SDL_render.c">
       <Filter>render</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\src\render\SDL_render_draw_state.c">
+      <Filter>render</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\render\SDL_render_info.c">
+      <Filter>render</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\render\SDL_render_geometry.c">
+      <Filter>render</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\render\SDL_render_texture_draw.c">
+      <Filter>render</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\render\SDL_render_primitives.c">
+      <Filter>render</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\render\SDL_render_texture_create.c">
+      <Filter>render</Filter>
+    </ClCompile>
     <ClCompile Include="..\..\src\render\SDL_render_color.c">
       <Filter>render</Filter>
     </ClCompile>
     <ClCompile Include="..\..\src\render\SDL_render_coordinates.c">
+      <Filter>render</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\render\SDL_render_gpu_state.c">
       <Filter>render</Filter>
     </ClCompile>
     <ClCompile Include="..\..\src\render\SDL_render_debug.c">

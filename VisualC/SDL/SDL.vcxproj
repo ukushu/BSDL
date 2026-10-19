@@ -864,6 +864,7 @@
     <ClCompile Include="..\..\src\joystick\hidapi\SDL_hidapi_zuiki.c" />
     <ClCompile Include="..\..\src\joystick\hidapi\SDL_report_descriptor.c" />
     <ClCompile Include="..\..\src\joystick\SDL_gamepad.c" />
+    <ClCompile Include="..\..\src\joystick\SDL_gamepad_filter.c" />
     <ClCompile Include="..\..\src\joystick\SDL_gamepad_labels.c" />
     <ClCompile Include="..\..\src\joystick\SDL_gamepad_mapping.c" />
     <ClCompile Include="..\..\src\joystick\SDL_gamepad_names.c" />
@@ -905,8 +906,15 @@
     <ClCompile Include="..\..\src\render\opengles2\SDL_shaders_gles2.c" />
     <ClCompile Include="..\..\src\render\SDL_blendmode.c" />
     <ClCompile Include="..\..\src\render\SDL_render.c" />
+    <ClCompile Include="..\..\src\render\SDL_render_draw_state.c" />
+    <ClCompile Include="..\..\src\render\SDL_render_info.c" />
+    <ClCompile Include="..\..\src\render\SDL_render_geometry.c" />
+    <ClCompile Include="..\..\src\render\SDL_render_texture_draw.c" />
+    <ClCompile Include="..\..\src\render\SDL_render_primitives.c" />
+    <ClCompile Include="..\..\src\render\SDL_render_texture_create.c" />
     <ClCompile Include="..\..\src\render\SDL_render_color.c" />
     <ClCompile Include="..\..\src\render\SDL_render_coordinates.c" />
+    <ClCompile Include="..\..\src\render\SDL_render_gpu_state.c" />
     <ClCompile Include="..\..\src\render\SDL_render_debug.c" />
     <ClCompile Include="..\..\src\render\SDL_render_texture_state.c" />
     <ClCompile Include="..\..\src\render\SDL_render_texture_update.c" />
@@ -1001,6 +1009,7 @@
     <ClCompile Include="..\..\src\video\SDL_video_textinput.c" />
     <ClCompile Include="..\..\src\video\SDL_video_windowplacement.c" />
     <ClCompile Include="..\..\src\video\SDL_video_windowgeometry.c" />
+    <ClCompile Include="..\..\src\video\SDL_video_sync.c" />
     <ClCompile Include="..\..\src\video\SDL_video_windowregistry.c" />
     <ClCompile Include="..\..\src\video\SDL_video_windowtexture.c" />
     <ClCompile Include="..\..\src\video\SDL_video_vulkan.c" />
