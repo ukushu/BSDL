@@ -150,6 +150,8 @@
 		B1E0D000000000000000002A /* SDL_video_modes.c in Sources */ = {isa = PBXBuildFile; fileRef = B1E0D000000000000000002B /* SDL_video_modes.c */; };
 		B1E0D0000000000000000022 /* SDL_video_textinput.c in Sources */ = {isa = PBXBuildFile; fileRef = B1E0D0000000000000000023 /* SDL_video_textinput.c */; };
 		B1E0D0000000000000000024 /* SDL_video_windowtexture.c in Sources */ = {isa = PBXBuildFile; fileRef = B1E0D0000000000000000025 /* SDL_video_windowtexture.c */; };
+		F05100000000000000000001 /* SDL_video_windowstatus.c in Sources */ = {isa = PBXBuildFile; fileRef = F05100000000000000000002 /* SDL_video_windowstatus.c */; };
+		F05200000000000000000001 /* SDL_video_windowhierarchy.c in Sources */ = {isa = PBXBuildFile; fileRef = F05200000000000000000002 /* SDL_video_windowhierarchy.c */; };
 		B1E0D0000000000000000026 /* SDL_video_vulkan.c in Sources */ = {isa = PBXBuildFile; fileRef = B1E0D0000000000000000027 /* SDL_video_vulkan.c */; };
 		A7D8AC2D23E2514100DCD162 /* SDL_surface.c in Sources */ = {isa = PBXBuildFile; fileRef = A7D8A61423E2513D00DCD162 /* SDL_surface.c */; };
 		A7D8AC3323E2514100DCD162 /* SDL_RLEaccel.c in Sources */ = {isa = PBXBuildFile; fileRef = A7D8A61523E2513D00DCD162 /* SDL_RLEaccel.c */; };
@@ -787,6 +789,8 @@
 		B1E0D000000000000000002B /* SDL_video_modes.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_video_modes.c; sourceTree = "<group>"; };
 		B1E0D0000000000000000023 /* SDL_video_textinput.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_video_textinput.c; sourceTree = "<group>"; };
 		B1E0D0000000000000000025 /* SDL_video_windowtexture.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_video_windowtexture.c; sourceTree = "<group>"; };
+		F05100000000000000000002 /* SDL_video_windowstatus.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_video_windowstatus.c; sourceTree = "<group>"; };
+		F05200000000000000000002 /* SDL_video_windowhierarchy.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_video_windowhierarchy.c; sourceTree = "<group>"; };
 		B1E0D0000000000000000027 /* SDL_video_vulkan.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_video_vulkan.c; sourceTree = "<group>"; };
 		A7D8A61423E2513D00DCD162 /* SDL_surface.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_surface.c; sourceTree = "<group>"; };
 		A7D8A61523E2513D00DCD162 /* SDL_RLEaccel.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SDL_RLEaccel.c; sourceTree = "<group>"; };
@@ -1858,6 +1862,8 @@
 				0B1E0D00000000000000001F /* SDL_video_windowregistry.c */,
 				B1E0D0000000000000000023 /* SDL_video_textinput.c */,
 				B1E0D0000000000000000025 /* SDL_video_windowtexture.c */,
+				F05100000000000000000002 /* SDL_video_windowstatus.c */,
+				F05200000000000000000002 /* SDL_video_windowhierarchy.c */,
 				B1E0D0000000000000000027 /* SDL_video_vulkan.c */,
 				F3DDCC522AFD42B600B0842B /* SDL_video_c.h */,
 				E4F7981F2AD8D87F00669F54 /* SDL_video_unsupported.c */,
@@ -3402,6 +3408,8 @@
 				B1E0D000000000000000002A /* SDL_video_modes.c in Sources */,
 				B1E0D0000000000000000022 /* SDL_video_textinput.c in Sources */,
 				B1E0D0000000000000000024 /* SDL_video_windowtexture.c in Sources */,
+				F05100000000000000000001 /* SDL_video_windowstatus.c in Sources */,
+				F05200000000000000000001 /* SDL_video_windowhierarchy.c in Sources */,
 				B1E0D0000000000000000026 /* SDL_video_vulkan.c in Sources */,
 				A7D8BA5B23E2514400DCD162 /* SDL_shaders_gles2.c in Sources */,
 				A7D8B14023E2514200DCD162 /* SDL_blit_1.c in Sources */,

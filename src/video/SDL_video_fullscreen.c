@@ -45,8 +45,69 @@ static bool SDL_CheckWindowMagicForFullscreen(SDL_Window *window)
 
 #if defined(SDL_PLATFORM_MACOS) && defined(SDL_VIDEO_DRIVER_COCOA)
 extern bool Cocoa_IsWindowInFullscreenSpace(SDL_Window *window);
+extern bool Cocoa_IsWindowInFullscreenSpaceTransition(SDL_Window *window);
 extern bool Cocoa_SetWindowFullscreenSpace(SDL_Window *window, bool state, bool blocking);
 #endif
+
+bool SDL_SetWindowFullscreenMode(SDL_Window *window, const SDL_DisplayMode *mode)
+{
+    if (!SDL_CheckWindowMagicForFullscreen(window)) {
+        return false;
+    }
+    if (SDL_WINDOW_IS_POPUP(window)) {
+        return SDL_SetError("Operation invalid on popup windows");
+    }
+
+    if (mode) {
+        if (!SDL_GetFullscreenModeMatch(mode)) {
+            return SDL_SetError("Invalid fullscreen display mode");
+        }
+
+        // Save the mode so we can look up the closest match later
+        SDL_copyp(&window->requested_fullscreen_mode, mode);
+    } else {
+        SDL_zero(window->requested_fullscreen_mode);
+    }
+
+    /* Copy to the current mode now, in case an asynchronous fullscreen window request
+     * is in progress. It will be overwritten if a new request is made.
+     */
+    SDL_copyp(&window->current_fullscreen_mode, &window->requested_fullscreen_mode);
+
+#if defined(SDL_PLATFORM_MACOS) && defined(SDL_VIDEO_DRIVER_COCOA)
+    /* If this is called while in the middle of a Cocoa fullscreen spaces transition,
+     * wait until the transition has completed, or the window can wind up in a weird,
+     * broken state if a mode switch occurs while in a fullscreen space.
+     */
+    SDL_VideoDevice *device = SDL_GetVideoDevice();
+    if (SDL_strcmp(device->name, "cocoa") == 0 && Cocoa_IsWindowInFullscreenSpaceTransition(window)) {
+        SDL_SyncWindow(window);
+    }
+#endif
+    if (SDL_WINDOW_FULLSCREEN_VISIBLE(window)) {
+        SDL_UpdateFullscreenMode(window, SDL_FULLSCREEN_OP_UPDATE, true);
+        SDL_SyncIfRequired(window);
+    }
+
+    return true;
+}
+
+const SDL_DisplayMode *SDL_GetWindowFullscreenMode(SDL_Window *window)
+{
+    if (!SDL_CheckWindowMagicForFullscreen(window)) {
+        return NULL;
+    }
+    if (SDL_WINDOW_IS_POPUP(window)) {
+        SDL_SetError("Operation invalid on popup windows");
+        return NULL;
+    }
+
+    if (window->flags & SDL_WINDOW_FULLSCREEN) {
+        return SDL_GetFullscreenModeMatch(&window->current_fullscreen_mode);
+    } else {
+        return SDL_GetFullscreenModeMatch(&window->requested_fullscreen_mode);
+    }
+}
 
 static SDL_VideoDisplay *SDL_GetFullscreenDisplay(SDL_Window *window, bool entering)
 {

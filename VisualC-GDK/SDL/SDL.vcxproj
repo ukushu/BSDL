@@ -944,6 +944,8 @@
     <ClCompile Include="..\..\src\video\SDL_video_sync.c" />
     <ClCompile Include="..\..\src\video\SDL_video_windowregistry.c" />
     <ClCompile Include="..\..\src\video\SDL_video_windowtexture.c" />
+    <ClCompile Include="..\..\src\video\SDL_video_windowstatus.c" />
+    <ClCompile Include="..\..\src\video\SDL_video_windowhierarchy.c" />
     <ClCompile Include="..\..\src\video\SDL_video_vulkan.c" />
     <ClCompile Include="..\..\src\video\SDL_video_unsupported.c" />
     <ClCompile Include="..\..\src\video\SDL_vulkan_utils.c" />

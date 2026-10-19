@@ -1849,6 +1849,12 @@
     <ClCompile Include="..\..\src\video\SDL_video_windowtexture.c">
       <Filter>video</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\src\video\SDL_video_windowstatus.c">
+      <Filter>video</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\video\SDL_video_windowhierarchy.c">
+      <Filter>video</Filter>
+    </ClCompile>
     <ClCompile Include="..\..\src\video\SDL_video_vulkan.c">
       <Filter>video</Filter>
     </ClCompile>

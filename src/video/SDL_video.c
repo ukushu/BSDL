@@ -152,7 +152,6 @@ static VideoBootStrap *bootstrap[] = {
 #if defined(SDL_PLATFORM_MACOS) && defined(SDL_VIDEO_DRIVER_COCOA)
 // Support for macOS fullscreen spaces, etc.
 extern bool Cocoa_IsWindowInFullscreenSpace(SDL_Window *window);
-extern bool Cocoa_IsWindowInFullscreenSpaceTransition(SDL_Window *window);
 extern bool Cocoa_SetWindowFullscreenSpace(SDL_Window *window, bool state, bool blocking);
 extern bool Cocoa_IsShowingModalDialog(SDL_Window *window);
 #endif
@@ -174,33 +173,6 @@ static bool SDL_ModeSwitchingEmulated(SDL_VideoDevice *_this)
 static bool IsFullscreenOnly(SDL_VideoDevice *_this)
 {
     return !!(_this->device_caps & VIDEO_DEVICE_CAPS_FULLSCREEN_ONLY);
-}
-
-static void SDL_UpdateWindowHierarchy(SDL_Window *window, SDL_Window *parent)
-{
-    // Unlink the window from the existing parent.
-    if (window->parent) {
-        if (window->next_sibling) {
-            window->next_sibling->prev_sibling = window->prev_sibling;
-        }
-        if (window->prev_sibling) {
-            window->prev_sibling->next_sibling = window->next_sibling;
-        } else {
-            window->parent->first_child = window->next_sibling;
-        }
-
-        window->parent = NULL;
-    }
-
-    if (parent) {
-        window->parent = parent;
-
-        window->next_sibling = parent->first_child;
-        if (parent->first_child) {
-            parent->first_child->prev_sibling = window;
-        }
-        parent->first_child = window;
-    }
 }
 
 static Uint32 SDL_DefaultGraphicsBackends(SDL_VideoDevice *_this)
@@ -467,56 +439,6 @@ SDL_SystemTheme SDL_GetSystemTheme(void)
         return _this->system_theme;
     } else {
         return SDL_SYSTEM_THEME_UNKNOWN;
-    }
-}
-
-bool SDL_SetWindowFullscreenMode(SDL_Window *window, const SDL_DisplayMode *mode)
-{
-    CHECK_WINDOW_MAGIC(window, false);
-    CHECK_WINDOW_NOT_POPUP(window, false);
-
-    if (mode) {
-        if (!SDL_GetFullscreenModeMatch(mode)) {
-            return SDL_SetError("Invalid fullscreen display mode");
-        }
-
-        // Save the mode so we can look up the closest match later
-        SDL_copyp(&window->requested_fullscreen_mode, mode);
-    } else {
-        SDL_zero(window->requested_fullscreen_mode);
-    }
-
-    /* Copy to the current mode now, in case an asynchronous fullscreen window request
-     * is in progress. It will be overwritten if a new request is made.
-     */
-    SDL_copyp(&window->current_fullscreen_mode, &window->requested_fullscreen_mode);
-
-#if defined(SDL_PLATFORM_MACOS) && defined(SDL_VIDEO_DRIVER_COCOA)
-    /* If this is called while in the middle of a Cocoa fullscreen spaces transition,
-     * wait until the transition has completed, or the window can wind up in a weird,
-     * broken state if a mode switch occurs while in a fullscreen space.
-     */
-    if (SDL_strcmp(_this->name, "cocoa") == 0 && Cocoa_IsWindowInFullscreenSpaceTransition(window)) {
-        SDL_SyncWindow(window);
-    }
-#endif
-    if (SDL_WINDOW_FULLSCREEN_VISIBLE(window)) {
-        SDL_UpdateFullscreenMode(window, SDL_FULLSCREEN_OP_UPDATE, true);
-        SDL_SyncIfRequired(window);
-    }
-
-    return true;
-}
-
-const SDL_DisplayMode *SDL_GetWindowFullscreenMode(SDL_Window *window)
-{
-    CHECK_WINDOW_MAGIC(window, NULL);
-    CHECK_WINDOW_NOT_POPUP(window, NULL);
-
-    if (window->flags & SDL_WINDOW_FULLSCREEN) {
-        return SDL_GetFullscreenModeMatch(&window->current_fullscreen_mode);
-    } else {
-        return SDL_GetFullscreenModeMatch(&window->requested_fullscreen_mode);
     }
 }
 
@@ -1616,127 +1538,6 @@ float SDL_GetWindowOpacity(SDL_Window *window)
     return window->opacity;
 }
 
-bool SDL_SetWindowParent(SDL_Window *window, SDL_Window *parent)
-{
-    CHECK_WINDOW_MAGIC(window, false);
-    CHECK_WINDOW_NOT_POPUP(window, false);
-
-    if (parent) {
-        CHECK_WINDOW_MAGIC(parent, false);
-        CHECK_WINDOW_NOT_POPUP(parent, false);
-    }
-
-    if (window == parent) {
-        return SDL_SetError("Cannot set the parent of a window to itself.");
-    }
-
-    if (!_this->SetWindowParent) {
-        return SDL_Unsupported();
-    }
-
-    if (window->flags & SDL_WINDOW_MODAL) {
-        return SDL_SetError("Modal windows cannot change parents; call SDL_SetWindowModal() to clear modal status first.");
-    }
-
-    if (window->parent == parent) {
-        return true;
-    }
-
-    const bool ret = _this->SetWindowParent(_this, window, parent);
-    SDL_UpdateWindowHierarchy(window, ret ? parent : NULL);
-
-    return ret;
-}
-
-bool SDL_SetWindowModal(SDL_Window *window, bool modal)
-{
-    CHECK_WINDOW_MAGIC(window, false);
-    CHECK_WINDOW_NOT_POPUP(window, false);
-
-    if (!_this->SetWindowModal) {
-        return SDL_Unsupported();
-    }
-
-    if (modal) {
-        if (!window->parent) {
-            return SDL_SetError("Window must have a parent to enable the modal state; use SDL_SetWindowParent() to set the parent first.");
-        }
-        window->flags |= SDL_WINDOW_MODAL;
-    } else if (window->flags & SDL_WINDOW_MODAL) {
-        window->flags &= ~SDL_WINDOW_MODAL;
-    } else {
-        return true; // Already not modal, so nothing to do.
-    }
-
-    if (window->flags & SDL_WINDOW_HIDDEN) {
-        return true;
-    }
-
-    return _this->SetWindowModal(_this, window, modal);
-}
-
-bool SDL_ShouldRelinquishPopupFocus(SDL_Window *window, SDL_Window **new_focus)
-{
-    SDL_Window *focus = window->parent;
-    bool set_focus = !!(window->flags & SDL_WINDOW_INPUT_FOCUS);
-
-    // Find the highest level window, up to the toplevel parent, that isn't being hidden or destroyed, and can grab the keyboard focus.
-    while (SDL_WINDOW_IS_POPUP(focus) && ((focus->flags & SDL_WINDOW_NOT_FOCUSABLE) || focus->is_hiding || focus->is_destroying)) {
-        focus = focus->parent;
-
-        // If some window in the chain currently had focus, set it to the new lowest-level window.
-        if (!set_focus) {
-            set_focus = !!(focus->flags & SDL_WINDOW_INPUT_FOCUS);
-        }
-    }
-
-    *new_focus = focus;
-    return set_focus;
-}
-
-bool SDL_ShouldFocusPopup(SDL_Window *window)
-{
-    SDL_Window *toplevel_parent;
-    for (toplevel_parent = window->parent; SDL_WINDOW_IS_POPUP(toplevel_parent); toplevel_parent = toplevel_parent->parent) {
-    }
-
-    SDL_Window *current_focus = toplevel_parent->keyboard_focus;
-    bool found_higher_focus = false;
-
-    /* Traverse the window tree from the currently focused window to the toplevel parent and see if we encounter
-     * the new focus request. If the new window is found, a higher-level window already has focus.
-     */
-    SDL_Window *w;
-    for (w = current_focus; w != toplevel_parent; w = w->parent) {
-        if (w == window) {
-            found_higher_focus = true;
-            break;
-        }
-    }
-
-    return !found_higher_focus || w == toplevel_parent;
-}
-
-bool SDL_SetWindowFocusable(SDL_Window *window, bool focusable)
-{
-    CHECK_WINDOW_MAGIC(window, false);
-
-    const bool want = (focusable != false); // normalize the flag.
-    const bool have = !(window->flags & SDL_WINDOW_NOT_FOCUSABLE);
-    if ((want != have) && (_this->SetWindowFocusable)) {
-        if (want) {
-            window->flags &= ~SDL_WINDOW_NOT_FOCUSABLE;
-        } else {
-            window->flags |= SDL_WINDOW_NOT_FOCUSABLE;
-        }
-        if (!_this->SetWindowFocusable(_this, window, want)) {
-            return false;
-        }
-    }
-
-    return true;
-}
-
 bool SDL_SetWindowFillDocument(SDL_Window *window, bool fill)
 {
     CHECK_WINDOW_MAGIC(window, false);
@@ -1963,72 +1764,6 @@ bool SDL_GetWindowRelativeMouseMode(SDL_Window *window)
     } else {
         return false;
     }
-}
-
-bool SDL_FlashWindow(SDL_Window *window, SDL_FlashOperation operation)
-{
-    CHECK_WINDOW_MAGIC(window, false);
-    CHECK_WINDOW_NOT_POPUP(window, false);
-
-    if (_this->FlashWindow) {
-        return _this->FlashWindow(_this, window, operation);
-    }
-
-    return SDL_Unsupported();
-}
-
-bool SDL_SetWindowProgressState(SDL_Window *window, SDL_ProgressState state)
-{
-    CHECK_WINDOW_MAGIC(window, false);
-    CHECK_WINDOW_NOT_POPUP(window, false);
-
-    CHECK_PARAM(state < SDL_PROGRESS_STATE_NONE || state > SDL_PROGRESS_STATE_ERROR) {
-        return SDL_InvalidParamError("state");
-    }
-
-    window->progress_state = state;
-
-    if (_this->ApplyWindowProgress) {
-        if (!_this->ApplyWindowProgress(_this, window)) {
-            return false;
-        }
-    }
-
-    return true;
-}
-
-SDL_ProgressState SDL_GetWindowProgressState(SDL_Window *window)
-{
-    CHECK_WINDOW_MAGIC(window, SDL_PROGRESS_STATE_INVALID);
-    CHECK_WINDOW_NOT_POPUP(window, SDL_PROGRESS_STATE_INVALID);
-
-    return window->progress_state;
-}
-
-bool SDL_SetWindowProgressValue(SDL_Window *window, float value)
-{
-    CHECK_WINDOW_MAGIC(window, false);
-    CHECK_WINDOW_NOT_POPUP(window, false);
-
-    value = SDL_clamp(value, 0.0f, 1.f);
-
-    window->progress_value = value;
-
-    if (_this->ApplyWindowProgress) {
-        if (!_this->ApplyWindowProgress(_this, window)) {
-            return false;
-        }
-    }
-
-    return true;
-}
-
-float SDL_GetWindowProgressValue(SDL_Window *window)
-{
-    CHECK_WINDOW_MAGIC(window, -1.0f);
-    CHECK_WINDOW_NOT_POPUP(window, -1.0f);
-
-    return window->progress_value;
 }
 
 void SDL_OnWindowShown(SDL_Window *window)

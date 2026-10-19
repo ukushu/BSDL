@@ -344,6 +344,47 @@ static int SDLCALL video_rejectsModalWithoutParent(void *arg)
     return TEST_COMPLETED;
 }
 
+static int SDLCALL video_windowHierarchy(void *arg)
+{
+    SDL_Window *parent = SDL_CreateWindow("hierarchy parent", 64, 64, SDL_WINDOW_HIDDEN);
+    SDL_Window *child = SDL_CreateWindow("hierarchy child", 64, 64, SDL_WINDOW_HIDDEN);
+    bool parent_set;
+
+    if (!SDLTest_AssertCheck(parent && child, "Create hierarchy windows: %s", SDL_GetError())) {
+        destroyVideoSuiteTestWindow(child);
+        destroyVideoSuiteTestWindow(parent);
+        return TEST_ABORTED;
+    }
+
+    SDLTest_AssertCheck(SDL_GetWindowParent(child) == NULL, "New window has no parent");
+    SDLTest_AssertCheck(!SDL_SetWindowParent(child, child), "A window cannot parent itself");
+    SDLTest_AssertCheck(SDL_strcmp(SDL_GetError(), "Cannot set the parent of a window to itself.") == 0,
+                        "Self-parenting error is preserved: %s", SDL_GetError());
+
+    parent_set = SDL_SetWindowParent(child, parent);
+    SDLTest_AssertCheck(SDL_GetWindowParent(child) == (parent_set ? parent : NULL),
+                        "Parent relationship matches backend result");
+
+    if (parent_set && SDL_SetWindowModal(child, true)) {
+        SDLTest_AssertCheck((SDL_GetWindowFlags(child) & SDL_WINDOW_MODAL) != 0, "Modal flag is set");
+        SDLTest_AssertCheck(!SDL_SetWindowParent(child, NULL), "Modal window cannot be reparented");
+        SDLTest_AssertCheck(SDL_strcmp(SDL_GetError(), "Modal windows cannot change parents; call SDL_SetWindowModal() to clear modal status first.") == 0,
+                            "Modal reparent error is preserved: %s", SDL_GetError());
+        SDLTest_AssertCheck(SDL_GetWindowParent(child) == parent, "Failed reparent keeps parent relationship");
+        SDL_ClearError();
+        SDLTest_AssertCheck(SDL_SetWindowModal(child, false), "Clear modal state: %s", SDL_GetError());
+        SDLTest_AssertCheck((SDL_GetWindowFlags(child) & SDL_WINDOW_MODAL) == 0, "Modal flag is cleared");
+    }
+
+    if (parent_set && SDL_GetWindowParent(child) == parent && SDL_SetWindowParent(child, NULL)) {
+        SDLTest_AssertCheck(SDL_GetWindowParent(child) == NULL, "Unparented window has no parent");
+    }
+
+    destroyVideoSuiteTestWindow(child);
+    destroyVideoSuiteTestWindow(parent);
+    return TEST_COMPLETED;
+}
+
 static int SDLCALL video_rejectsConflictingGraphicsFlags(void *arg)
 {
     const SDL_WindowFlags flags = SDL_WINDOW_OPENGL | SDL_WINDOW_VULKAN;
@@ -2826,6 +2867,10 @@ static const SDLTest_TestCaseReference videoTestRejectsModalWithoutParent = {
     video_rejectsModalWithoutParent, "video_rejectsModalWithoutParent", "Reject modal windows without a parent", TEST_ENABLED
 };
 
+static const SDLTest_TestCaseReference videoTestWindowHierarchy = {
+    video_windowHierarchy, "video_windowHierarchy", "Keep parent and modal state consistent", TEST_ENABLED
+};
+
 static const SDLTest_TestCaseReference videoTestRejectsConflictingGraphicsFlags = {
     video_rejectsConflictingGraphicsFlags, "video_rejectsConflictingGraphicsFlags", "Reject conflicting graphics flags", TEST_ENABLED
 };
@@ -3313,6 +3358,7 @@ static const SDLTest_TestCaseReference *videoTests[] = {
     &videoTestCreateWindowVariousSizes,
     &videoTestCreateWindowVariousFlags,
     &videoTestRejectsModalWithoutParent,
+    &videoTestWindowHierarchy,
     &videoTestRejectsConflictingGraphicsFlags,
     &videoTestFullscreenEnterLeave,
     &videoTestGetWindowFlags,
