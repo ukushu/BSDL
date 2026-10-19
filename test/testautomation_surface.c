@@ -2500,6 +2500,32 @@ static const SDLTest_TestCaseReference surfaceTestConvertFailurePreservesSource 
     surface_testConvertFailurePreservesSource, "surface_testConvertFailurePreservesSource", "Failed conversion preserves its error and source", TEST_ENABLED
 };
 
+static int SDLCALL surface_testConvertMJPGCopy(void *arg)
+{
+    const Uint8 jpeg_data[] = { 0xff, 0xd8, 0xff, 0xd9, 0x11, 0x22, 0x33, 0x44 };
+    SDL_Surface *source = SDL_CreateSurfaceFrom(2, 1, SDL_PIXELFORMAT_MJPG, (void *)jpeg_data, sizeof(jpeg_data));
+    SDL_Surface *converted;
+
+    if (!SDLTest_AssertCheck(source != NULL, "Create MJPG source: %s", SDL_GetError())) {
+        return TEST_ABORTED;
+    }
+
+    converted = SDL_ConvertSurfaceAndColorspace(source, SDL_PIXELFORMAT_MJPG, NULL, SDL_COLORSPACE_UNKNOWN, 0);
+    SDLTest_AssertCheck(converted != NULL, "Copy MJPG surface: %s", SDL_GetError());
+    if (converted) {
+        SDLTest_AssertCheck(converted->pitch == source->pitch, "Copied MJPG pitch");
+        SDLTest_AssertCheck(SDL_memcmp(converted->pixels, jpeg_data, sizeof(jpeg_data)) == 0, "Copied MJPG data");
+    }
+
+    SDL_DestroySurface(converted);
+    SDL_DestroySurface(source);
+    return TEST_COMPLETED;
+}
+
+static const SDLTest_TestCaseReference surfaceTestConvertMJPGCopy = {
+    surface_testConvertMJPGCopy, "surface_testConvertMJPGCopy", "Copy MJPG surface without decoding", TEST_ENABLED
+};
+
 static int SDLCALL surface_testPixelBoundsPreserveSource(void *arg)
 {
     SDL_Surface *surface = SDL_CreateSurface(1, 1, SDL_PIXELFORMAT_RGBA32);
@@ -2570,6 +2596,7 @@ static const SDLTest_TestCaseReference *surfaceTests[] = {
     &surfaceTestConvertIndexedColorKey,
     &surfaceTestConvertMetadata,
     &surfaceTestConvertFailurePreservesSource,
+    &surfaceTestConvertMJPGCopy,
     &surfaceTestPixelBoundsPreserveSource,
     &surfaceTestYUVPlaneOrder,
     NULL
