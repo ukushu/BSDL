@@ -272,3 +272,25 @@ Surface conversion із відновленням color key/palette/source state 
 Linux/X11 прогін `deus check . --no-parallel` з `SDLTEST_VIDEO_DRIVER=x11`: configure/build успішні, CTest 23/25. Звичайний automation — 436 total, 429 passed, 2 failed, 5 skipped: відомі `render_testColorspaceLinear` (000007) та нестабільний `video_getSetWindowPosition` (000045). No-SIMD — 436 total, 422 passed, 1 failed, 13 skipped: лише 000007. Audio тест пройшов в обох режимах; обидва Wayland тести пропущені. Нових підтверджених падінь немає. Після прогону локальний CMake cache повернено до `SDLTEST_VIDEO_DRIVER=dummy`.
 
 Решта поточного роадмапу потребує runtime перевірки на відповідному backend: Wayland input/drop і show/hide — compositor, `WIN_WindowProc` і D3D12 — native Windows, Cocoa — native macOS. Через відсутність цих середовищ поведінкові зміни там не внесено. Винесення Vulkan allocator/defrag у новий файл залишилося без вузького API через спільний renderer/command-buffer state; без виміряного bottleneck performance зміни не робили.
+
+
+## Відкриті пункти після HEAD `574086077` (2026-10-20)
+
+Підтверджено кодом: перейменовано `audio_pauseUnpauseAudio` → `audio_openCloseAcrossDriversAndSpecs`; у `Wayland_ShowWindow` виділено локальні xdg popup/toplevel та libdecor setup helpers; прибрано невикористане `WM_INPUT` визначення. Зміни зберегли межі файлів і public API. Перейменування відповідає тесту; Wayland helpers зменшили `Wayland_ShowWindow`, але їхня runtime поведінка ще не підтверджена.
+
+Тести Wayland мають вузьке покриття. `video_waylandShowHideLifecycle` перевіряє властивість xdg surface відразу після `SDL_ShowWindow`, до configure/map completion. Popup тест чекає появи xdg popup, але перевірка pointer create/clear сама по собі не доводить server-side map/unmap, libdecor, custom/external surface, порядок callback/event чи коректний cleanup після помилки. Перед закриттям пункту 2 у Wayland сесії перевірити чи ці assertions стабільні й, якщо ні, чекати відповідну подію/configure; додати лише перевірку, що ловить підтверджену прогалину. Не розширювати тести на всі шляхи без причини.
+
+### Залишок роботи агента
+
+Аудит `src/video/wayland/SDL_waylandevents.c` завершено: `keyboard_handle_key` послідовно тримає timestamp/keymap/IME/modifier/event/repeat state, а `data_device_handle_drop` — MIME/portal/fallback/cleanup state. Вузької фази з незалежними параметрами немає; виділення helper-ів додало б зв’язність і ризик зміни порядку. Drop-помилки залишаються окремою bug card 000046.
+
+1. Wayland show/hide та input/drop: прогнати characterization тести у реальному compositor і посилити assertions лише за підтвердженою прогалиною.
+2. `src/video/windows/SDL_windowsevents.c`: оглянути `WIN_WindowProc`; виділяти handler лише для групи повідомлень з чіткою відповідальністю, зберігши `CallWindowProc`, returns, IME, modal hooks і reentrancy. `WM_INPUT` dead path уже видалено; не повертати його. Потрібні native Windows/MSVC перевірки.
+3. `src/video/cocoa/SDL_cocoawindow.m`: оглянути `Cocoa_CreateWindow` та `windowDidExitFullScreen`; виділяти локальну фазу лише якщо вона зменшує зв’язність/складність без нового власника стану. Потрібна native macOS/Xcode перевірка.
+4. `src/gpu/d3d12/SDL_gpu_d3d12.c`: оглянути `D3D12_CreateDevice`; дозволене лише виділення завершеної стадії з вузькими параметрами й однозначним cleanup. Потрібні native D3D12 build/runtime перевірки.
+
+### Перевірки й відкладене
+
+Останній підтверджений Linux dummy прогін після змін: CTest 25/25; automation 436 total, 0 failed (14 skipped звичайний, 22 no-SIMD). X11: CTest 23/25; звичайний прогін має два відомі падіння 000007/000045, no-SIMD — 000007. Wayland тести в обох конфігураціях пропущені; Wayland runtime не пройшов. Windows, macOS і D3D12 native перевірки не виконані.
+
+Структурні пропозиції щодо нових модулів Vulkan/D3D12/Metal вилучено: наразі немає доведеної межі з вузьким приватним API; великий файл сам по собі не аргумент. Performance оптимізації немає без виміряного bottleneck. Існуючі баги не включати в цей рефакторинг.
