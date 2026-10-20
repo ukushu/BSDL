@@ -694,6 +694,18 @@ static SDL_AudioDevice *CreateAudioPlaybackDevice(const char *name, const char *
     return CreatePhysicalAudioDevice(name, unique_id, false, spec, handle, &current_audio.playback_device_count);
 }
 
+static void QueuePendingAudioDeviceEvents(SDL_PendingAudioDeviceEvent *first, SDL_PendingAudioDeviceEvent *last)
+{
+    if (first) {
+        SDL_LockRWLockForWriting(current_audio.subsystem_rwlock);
+        SDL_assert(current_audio.pending_events_tail != NULL);
+        SDL_assert(current_audio.pending_events_tail->next == NULL);
+        current_audio.pending_events_tail->next = first;
+        current_audio.pending_events_tail = last;
+        SDL_UnlockRWLock(current_audio.subsystem_rwlock);
+    }
+}
+
 // The audio backends call this when a new device is plugged in.
 SDL_AudioDevice *SDL_AddAudioDevice(bool recording, const char *name, const char *unique_id, const SDL_AudioSpec *inspec, void *handle)
 {
@@ -725,12 +737,7 @@ SDL_AudioDevice *SDL_AddAudioDevice(bool recording, const char *name, const char
             p->type = SDL_EVENT_AUDIO_DEVICE_ADDED;
             p->devid = device->instance_id;
             p->next = NULL;
-            SDL_LockRWLockForWriting(current_audio.subsystem_rwlock);
-            SDL_assert(current_audio.pending_events_tail != NULL);
-            SDL_assert(current_audio.pending_events_tail->next == NULL);
-            current_audio.pending_events_tail->next = p;
-            current_audio.pending_events_tail = p;
-            SDL_UnlockRWLock(current_audio.subsystem_rwlock);
+            QueuePendingAudioDeviceEvents(p, p);
         }
     }
 
@@ -807,14 +814,7 @@ static void SDLCALL SDL_AudioDeviceDisconnected_OnMainThread(void *userdata)
     ReleaseAudioDevice(device);
 
     if (first_disconnect) {
-        if (pending.next) {  // NULL if event is disabled or disaster struck.
-            SDL_LockRWLockForWriting(current_audio.subsystem_rwlock);
-            SDL_assert(current_audio.pending_events_tail != NULL);
-            SDL_assert(current_audio.pending_events_tail->next == NULL);
-            current_audio.pending_events_tail->next = pending.next;
-            current_audio.pending_events_tail = pending_tail;
-            SDL_UnlockRWLock(current_audio.subsystem_rwlock);
-        }
+        QueuePendingAudioDeviceEvents(pending.next, pending_tail);
 
         UnrefPhysicalAudioDevice(device);
     }
@@ -2574,14 +2574,7 @@ void SDL_DefaultAudioDeviceChanged(SDL_AudioDevice *new_default_device)
         UnrefPhysicalAudioDevice(current_default_device);
     }
 
-    if (pending.next) {
-        SDL_LockRWLockForWriting(current_audio.subsystem_rwlock);
-        SDL_assert(current_audio.pending_events_tail != NULL);
-        SDL_assert(current_audio.pending_events_tail->next == NULL);
-        current_audio.pending_events_tail->next = pending.next;
-        current_audio.pending_events_tail = pending_tail;
-        SDL_UnlockRWLock(current_audio.subsystem_rwlock);
-    }
+    QueuePendingAudioDeviceEvents(pending.next, pending_tail);
 }
 
 bool SDL_AudioDeviceFormatChangedAlreadyLocked(SDL_AudioDevice *device, const SDL_AudioSpec *newspec, int new_sample_frames)
@@ -2648,14 +2641,7 @@ bool SDL_AudioDeviceFormatChangedAlreadyLocked(SDL_AudioDevice *device, const SD
             AppendPendingAudioDeviceEvent(&pending_tail, SDL_EVENT_AUDIO_DEVICE_FORMAT_CHANGED, logdev->instance_id);
         }
 
-        if (pending.next) {
-            SDL_LockRWLockForWriting(current_audio.subsystem_rwlock);
-            SDL_assert(current_audio.pending_events_tail != NULL);
-            SDL_assert(current_audio.pending_events_tail->next == NULL);
-            current_audio.pending_events_tail->next = pending.next;
-            current_audio.pending_events_tail = pending_tail;
-            SDL_UnlockRWLock(current_audio.subsystem_rwlock);
-        }
+        QueuePendingAudioDeviceEvents(pending.next, pending_tail);
     }
 
     if (kill_device) {

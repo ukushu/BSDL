@@ -10132,6 +10132,87 @@ static bool VULKAN_WaitForSwapchain(
     return true;
 }
 
+static VulkanTextureContainer *VULKAN_INTERNAL_RecordSwapchainImage(
+    VulkanCommandBuffer *vulkanCommandBuffer,
+    WindowData *windowData,
+    Uint32 swapchainImageIndex)
+{
+    VulkanRenderer *renderer = vulkanCommandBuffer->renderer;
+    VulkanTextureContainer *swapchainTextureContainer = &windowData->textureContainers[swapchainImageIndex];
+    VulkanPresentData *presentData;
+
+    // We need a special execution dependency with pWaitDstStageMask or image transition can start before acquire finishes
+
+    VkImageMemoryBarrier imageBarrier;
+    imageBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    imageBarrier.pNext = NULL;
+    imageBarrier.srcAccessMask = 0;
+    imageBarrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    imageBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    imageBarrier.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    imageBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    imageBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    imageBarrier.image = swapchainTextureContainer->activeTexture->image;
+    imageBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    imageBarrier.subresourceRange.baseMipLevel = 0;
+    imageBarrier.subresourceRange.levelCount = 1;
+    imageBarrier.subresourceRange.baseArrayLayer = 0;
+    imageBarrier.subresourceRange.layerCount = 1;
+
+    renderer->vkCmdPipelineBarrier(
+        vulkanCommandBuffer->commandBuffer,
+        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+        0,
+        0,
+        NULL,
+        0,
+        NULL,
+        1,
+        &imageBarrier);
+
+    // Set up present struct
+
+    if (vulkanCommandBuffer->presentDataCount == vulkanCommandBuffer->presentDataCapacity) {
+        vulkanCommandBuffer->presentDataCapacity += 1;
+        vulkanCommandBuffer->presentDatas = SDL_realloc(
+            vulkanCommandBuffer->presentDatas,
+            vulkanCommandBuffer->presentDataCapacity * sizeof(VulkanPresentData));
+    }
+
+    presentData = &vulkanCommandBuffer->presentDatas[vulkanCommandBuffer->presentDataCount];
+    vulkanCommandBuffer->presentDataCount += 1;
+
+    presentData->windowData = windowData;
+    presentData->swapchainImageIndex = swapchainImageIndex;
+
+    // Set up present semaphores
+
+    if (vulkanCommandBuffer->waitSemaphoreCount == vulkanCommandBuffer->waitSemaphoreCapacity) {
+        vulkanCommandBuffer->waitSemaphoreCapacity += 1;
+        vulkanCommandBuffer->waitSemaphores = SDL_realloc(
+            vulkanCommandBuffer->waitSemaphores,
+            vulkanCommandBuffer->waitSemaphoreCapacity * sizeof(VkSemaphore));
+    }
+
+    vulkanCommandBuffer->waitSemaphores[vulkanCommandBuffer->waitSemaphoreCount] =
+        windowData->imageAvailableSemaphore[windowData->frameCounter];
+    vulkanCommandBuffer->waitSemaphoreCount += 1;
+
+    if (vulkanCommandBuffer->signalSemaphoreCount == vulkanCommandBuffer->signalSemaphoreCapacity) {
+        vulkanCommandBuffer->signalSemaphoreCapacity += 1;
+        vulkanCommandBuffer->signalSemaphores = SDL_realloc(
+            vulkanCommandBuffer->signalSemaphores,
+            vulkanCommandBuffer->signalSemaphoreCapacity * sizeof(VkSemaphore));
+    }
+
+    vulkanCommandBuffer->signalSemaphores[vulkanCommandBuffer->signalSemaphoreCount] =
+        windowData->renderFinishedSemaphore[swapchainImageIndex];
+    vulkanCommandBuffer->signalSemaphoreCount += 1;
+
+    return swapchainTextureContainer;
+}
+
 static bool VULKAN_INTERNAL_AcquireSwapchainTexture(
     bool block,
     SDL_GPUCommandBuffer *commandBuffer,
@@ -10146,7 +10227,6 @@ static bool VULKAN_INTERNAL_AcquireSwapchainTexture(
     WindowData *windowData;
     VkResult acquireResult = VK_SUCCESS;
     VulkanTextureContainer *swapchainTextureContainer = NULL;
-    VulkanPresentData *presentData;
 
     *swapchainTexture = NULL;
     if (swapchainTextureWidth) {
@@ -10274,76 +10354,10 @@ static bool VULKAN_INTERNAL_AcquireSwapchainTexture(
         *swapchainTextureHeight = windowData->height;
     }
 
-    swapchainTextureContainer = &windowData->textureContainers[swapchainImageIndex];
-
-    // We need a special execution dependency with pWaitDstStageMask or image transition can start before acquire finishes
-
-    VkImageMemoryBarrier imageBarrier;
-    imageBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    imageBarrier.pNext = NULL;
-    imageBarrier.srcAccessMask = 0;
-    imageBarrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-    imageBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    imageBarrier.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    imageBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    imageBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    imageBarrier.image = swapchainTextureContainer->activeTexture->image;
-    imageBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    imageBarrier.subresourceRange.baseMipLevel = 0;
-    imageBarrier.subresourceRange.levelCount = 1;
-    imageBarrier.subresourceRange.baseArrayLayer = 0;
-    imageBarrier.subresourceRange.layerCount = 1;
-
-    renderer->vkCmdPipelineBarrier(
-        vulkanCommandBuffer->commandBuffer,
-        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-        0,
-        0,
-        NULL,
-        0,
-        NULL,
-        1,
-        &imageBarrier);
-
-    // Set up present struct
-
-    if (vulkanCommandBuffer->presentDataCount == vulkanCommandBuffer->presentDataCapacity) {
-        vulkanCommandBuffer->presentDataCapacity += 1;
-        vulkanCommandBuffer->presentDatas = SDL_realloc(
-            vulkanCommandBuffer->presentDatas,
-            vulkanCommandBuffer->presentDataCapacity * sizeof(VulkanPresentData));
-    }
-
-    presentData = &vulkanCommandBuffer->presentDatas[vulkanCommandBuffer->presentDataCount];
-    vulkanCommandBuffer->presentDataCount += 1;
-
-    presentData->windowData = windowData;
-    presentData->swapchainImageIndex = swapchainImageIndex;
-
-    // Set up present semaphores
-
-    if (vulkanCommandBuffer->waitSemaphoreCount == vulkanCommandBuffer->waitSemaphoreCapacity) {
-        vulkanCommandBuffer->waitSemaphoreCapacity += 1;
-        vulkanCommandBuffer->waitSemaphores = SDL_realloc(
-            vulkanCommandBuffer->waitSemaphores,
-            vulkanCommandBuffer->waitSemaphoreCapacity * sizeof(VkSemaphore));
-    }
-
-    vulkanCommandBuffer->waitSemaphores[vulkanCommandBuffer->waitSemaphoreCount] =
-        windowData->imageAvailableSemaphore[windowData->frameCounter];
-    vulkanCommandBuffer->waitSemaphoreCount += 1;
-
-    if (vulkanCommandBuffer->signalSemaphoreCount == vulkanCommandBuffer->signalSemaphoreCapacity) {
-        vulkanCommandBuffer->signalSemaphoreCapacity += 1;
-        vulkanCommandBuffer->signalSemaphores = SDL_realloc(
-            vulkanCommandBuffer->signalSemaphores,
-            vulkanCommandBuffer->signalSemaphoreCapacity * sizeof(VkSemaphore));
-    }
-
-    vulkanCommandBuffer->signalSemaphores[vulkanCommandBuffer->signalSemaphoreCount] =
-        windowData->renderFinishedSemaphore[swapchainImageIndex];
-    vulkanCommandBuffer->signalSemaphoreCount += 1;
+    swapchainTextureContainer = VULKAN_INTERNAL_RecordSwapchainImage(
+        vulkanCommandBuffer,
+        windowData,
+        swapchainImageIndex);
 
     *swapchainTexture = (SDL_GPUTexture *)swapchainTextureContainer;
     return true;

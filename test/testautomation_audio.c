@@ -1630,8 +1630,13 @@ static int SDLCALL audio_reopenPhysicalDeviceWithHigherSpec(void *arg)
     const SDL_AudioSpec low = { SDL_AUDIO_S16, 1, 22050 };
     SDL_AudioSpec high;
     SDL_AudioSpec actual;
+    SDL_Event events[64];
+    SDL_AudioDeviceID *physical_devices;
     SDL_AudioDeviceID first;
     SDL_AudioDeviceID second;
+    int physical_count = 0;
+    int event_count;
+    bool found_first = false;
     const char *driver = SDL_GetCurrentAudioDriver();
 
     if (!driver || SDL_strcmp(driver, "dummy") != 0) {
@@ -1647,6 +1652,8 @@ static int SDLCALL audio_reopenPhysicalDeviceWithHigherSpec(void *arg)
         SDL_CloseAudioDevice(first);
         return TEST_ABORTED;
     }
+    SDL_PumpEvents();
+    SDL_FlushEvent(SDL_EVENT_AUDIO_DEVICE_FORMAT_CHANGED);
     high = actual;
     high.freq += 1000;
 
@@ -1655,6 +1662,25 @@ static int SDLCALL audio_reopenPhysicalDeviceWithHigherSpec(void *arg)
         SDL_CloseAudioDevice(first);
         return TEST_ABORTED;
     }
+    SDLTest_AssertCheck(SDL_PeepEvents(events, SDL_arraysize(events), SDL_PEEKEVENT,
+                                       SDL_EVENT_AUDIO_DEVICE_FORMAT_CHANGED, SDL_EVENT_AUDIO_DEVICE_FORMAT_CHANGED) == 0,
+                        "Format change events wait for event pump");
+    SDL_PumpEvents();
+    event_count = SDL_PeepEvents(events, SDL_arraysize(events), SDL_GETEVENT,
+                                 SDL_EVENT_AUDIO_DEVICE_FORMAT_CHANGED, SDL_EVENT_AUDIO_DEVICE_FORMAT_CHANGED);
+    physical_devices = SDL_GetAudioPlaybackDevices(&physical_count);
+    if (SDLTest_AssertCheck(physical_devices != NULL && physical_count == 1, "Dummy driver has one physical playback device")) {
+        if (SDLTest_AssertCheck(event_count >= 2 && event_count < SDL_arraysize(events),
+                                "Format change notifies the physical and existing logical devices: %d", event_count)) {
+            SDLTest_AssertCheck(events[0].adevice.which == physical_devices[0], "Physical format event arrives first");
+            for (int i = 1; i < event_count; ++i) {
+                found_first |= (events[i].adevice.which == first);
+                SDLTest_AssertCheck(events[i].adevice.which != second, "New logical device has no earlier format event");
+            }
+            SDLTest_AssertCheck(found_first, "Existing logical device receives a format event after the physical device");
+        }
+    }
+    SDL_free(physical_devices);
     SDLTest_AssertCheck(second != first, "Each open receives a distinct logical device ID");
     if (SDLTest_AssertCheck(SDL_GetAudioDeviceFormat(first, &actual, NULL), "Get reopened physical device format")) {
         SDLTest_AssertCheck(actual.format == high.format && actual.channels == high.channels && actual.freq == high.freq,
