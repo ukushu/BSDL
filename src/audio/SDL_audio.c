@@ -1365,7 +1365,7 @@ static bool CaptureAndDistributeAudio(SDL_AudioDevice *device)
     }
 
     // this SHOULD NOT BLOCK, as we are holding a lock right now. Block in WaitRecordingDevice!
-    int br = device->RecordDevice(device, device->work_buffer, device->buffer_size);
+    const int br = device->RecordDevice(device, device->work_buffer, device->buffer_size);
     if (br < 0) { // uhoh, device failed for some reason!
         return false;
     }
@@ -1378,19 +1378,20 @@ static bool CaptureAndDistributeAudio(SDL_AudioDevice *device)
             }
 
             void *output_buffer = device->work_buffer;
+            int output_bytes = br;
+            SDL_AudioSpec output_spec;
+            SDL_copyp(&output_spec, &device->spec);
 
             // I don't know why someone would want a postmix on a recording device, but we offer it for API consistency.
             if (logdev->postmix || (logdev->gain != 1.0f)) {
                 // move to float format.
-                SDL_AudioSpec outspec;
-                SDL_copyp(&outspec, &device->spec);
-                outspec.format = SDL_AUDIO_F32;
+                output_spec.format = SDL_AUDIO_F32;
                 output_buffer = device->postmix_buffer;
                 const int frames = br / SDL_AUDIO_FRAMESIZE(device->spec);
-                br = frames * SDL_AUDIO_FRAMESIZE(outspec);
-                ConvertAudio(frames, device->work_buffer, device->spec.format, outspec.channels, NULL, device->postmix_buffer, SDL_AUDIO_F32, outspec.channels, NULL, NULL, logdev->gain);
+                output_bytes = frames * SDL_AUDIO_FRAMESIZE(output_spec);
+                ConvertAudio(frames, device->work_buffer, device->spec.format, output_spec.channels, NULL, device->postmix_buffer, SDL_AUDIO_F32, output_spec.channels, NULL, NULL, logdev->gain);
                 if (logdev->postmix) {
-                    logdev->postmix(logdev->postmix_userdata, &outspec, device->postmix_buffer, br);
+                    logdev->postmix(logdev->postmix_userdata, &output_spec, device->postmix_buffer, output_bytes);
                 }
             }
 
@@ -1406,15 +1407,15 @@ static bool CaptureAndDistributeAudio(SDL_AudioDevice *device)
                 // generally channel maps will line up, but if the audio stream's chmap has been explicitly changed, do a final swizzle to stream layout.
                 if (!SDL_AudioChannelMapsEqual(device->spec.channels, stream->src_chmap, device->chmap)) {
                     final_buf = device->mix_buffer; // this is otherwise unused on recording devices, so it makes convenient scratch space here.
-                    ConvertAudio(br / SDL_AUDIO_FRAMESIZE(device->spec), output_buffer, device->spec.format, device->spec.channels, NULL,
-                                 final_buf, device->spec.format, device->spec.channels, stream->src_chmap, NULL, 1.0f);
+                    ConvertAudio(output_bytes / SDL_AUDIO_FRAMESIZE(output_spec), output_buffer, output_spec.format, output_spec.channels, NULL,
+                                 final_buf, output_spec.format, output_spec.channels, stream->src_chmap, NULL, 1.0f);
                 }
 
                 /* this will hold a lock on `stream` while putting. We don't explicitly lock the streams
                    for iterating here because the binding linked list can only change while the device lock is held.
                    (we _do_ lock the stream during binding/unbinding to make sure that two threads can't try to bind
                    the same stream to different devices at the same time, though.) */
-                if (!SDL_PutAudioStreamData(stream, final_buf, br)) {
+                if (!SDL_PutAudioStreamData(stream, final_buf, output_bytes)) {
                     // oh crud, we probably ran out of memory. This is possibly an overreaction to kill the audio device, but it's likely the whole thing is going down in a moment anyhow.
                     failed = true;
                     break;
@@ -2132,6 +2133,15 @@ bool SDL_SetAudioPostmixCallback(SDL_AudioDeviceID devid, SDL_AudioPostmixCallba
 static bool LockAudioStreamsForBinding(SDL_AudioStream * const *streams, int num_streams)
 {
     bool result = true;
+
+    // ponytail: O(n²) duplicate scan; use a set if binding batches become large.
+    for (int i = 0; i < num_streams; i++) {
+        for (int j = 0; j < i; j++) {
+            if (streams[i] == streams[j]) {
+                return SDL_SetError("Stream #%d is repeated in the binding list", i);
+            }
+        }
+    }
 
     // Lock all streams before checking bindings so the batch succeeds or fails as a whole.
     for (int i = 0; i < num_streams; i++) {

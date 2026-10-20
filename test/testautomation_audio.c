@@ -1388,6 +1388,14 @@ static int SDLCALL audio_bindStreamsAtomically(void *arg)
         goto cleanup;
     }
 
+    SDL_AudioStream *duplicate_streams[2] = { streams[0], streams[0] };
+    SDLTest_AssertCheck(!SDL_BindAudioStreams(device, duplicate_streams, 2), "Binding a repeated stream fails");
+    SDLTest_AssertCheck(SDL_GetAudioStreamDevice(streams[0]) == 0, "Repeated stream remains unbound");
+    if (!SDLTest_AssertCheck(SDL_BindAudioStream(device, streams[0]), "Bind one stream after rejected duplicate: %s", SDL_GetError())) {
+        goto cleanup;
+    }
+    SDL_UnbindAudioStream(streams[0]);
+
     if (!SDLTest_AssertCheck(SDL_BindAudioStreams(device, streams, 2), "Bind two streams: %s", SDL_GetError())) {
         goto cleanup;
     }
@@ -1430,6 +1438,17 @@ static void SDLCALL audio_postmixCallback(void *userdata, const SDL_AudioSpec *s
         SDL_SetAtomicInt(&state->valid_format, 1);
     }
     SDL_AddAtomicInt(&state->calls, 1);
+}
+
+static void SDLCALL audio_recordingPatternPostmixCallback(void *userdata, const SDL_AudioSpec *spec, float *buffer, int buflen)
+{
+    audio_postmixCallback(userdata, spec, buffer, buflen);
+    if (spec && spec->format == SDL_AUDIO_F32 && spec->channels == 2) {
+        for (int i = 0; i < buflen / (int)sizeof(float); i += 2) {
+            buffer[i] = 0.25f;
+            buffer[i + 1] = -0.5f;
+        }
+    }
 }
 
 static int SDLCALL audio_playbackPostmixCallback(void *arg)
@@ -1511,6 +1530,105 @@ static int SDLCALL audio_recordingPostmixCallback(void *arg)
     SDL_UnbindAudioStream(stream);
     SDL_DestroyAudioStream(stream);
     SDL_CloseAudioDevice(device);
+    return TEST_COMPLETED;
+}
+
+static int SDLCALL audio_recordingLogicalDeviceByteCount(void *arg)
+{
+    const SDL_AudioSpec desired = { SDL_AUDIO_S16, 2, 48000 };
+    const int reversed_stereo_map[] = { 1, 0 };
+    SDL_AudioDeviceID with_postmix = 0;
+    SDL_AudioDeviceID without_postmix = 0;
+    SDL_AudioStream *with_postmix_stream = NULL;
+    SDL_AudioStream *without_postmix_stream = NULL;
+    AudioPostmixCallbackState state;
+    int with_postmix_bytes = 0;
+    int without_postmix_bytes = 0;
+    int calls_before_pause;
+    int allowed_byte_difference;
+    Sint16 first_frame[2];
+    SDL_AudioSpec actual;
+    int sample_frames = 0;
+    int capture_bytes;
+
+    (void)arg;
+    SDL_zero(state);
+    if (!SDL_GetCurrentAudioDriver() || SDL_strcmp(SDL_GetCurrentAudioDriver(), "dummy") != 0) {
+        return TEST_SKIPPED;
+    }
+
+    // Logical devices are prepended to the physical device list, so open the plain device first.
+    without_postmix = SDL_OpenAudioDevice(SDL_AUDIO_DEVICE_DEFAULT_RECORDING, &desired);
+    with_postmix = SDL_OpenAudioDevice(SDL_AUDIO_DEVICE_DEFAULT_RECORDING, &desired);
+    if (!SDLTest_AssertCheck(with_postmix != 0 && without_postmix != 0, "Open two dummy recording logical devices: %s", SDL_GetError())) {
+        goto cleanup;
+    }
+    if (!SDLTest_AssertCheck(SDL_GetAudioDeviceFormat(with_postmix, &actual, &sample_frames), "Get recording device format: %s", SDL_GetError())) {
+        goto cleanup;
+    }
+    capture_bytes = sample_frames * SDL_AUDIO_FRAMESIZE(actual);
+    SDL_PauseAudioDevice(with_postmix);
+    SDL_PauseAudioDevice(without_postmix);
+    with_postmix_stream = SDL_CreateAudioStream(NULL, &desired);
+    without_postmix_stream = SDL_CreateAudioStream(NULL, &desired);
+    if (!SDLTest_AssertCheck(with_postmix_stream && without_postmix_stream, "Create recording streams: %s", SDL_GetError())) {
+        goto cleanup;
+    }
+    if (!SDLTest_AssertCheck(SDL_BindAudioStream(with_postmix, with_postmix_stream), "Bind postmix recording stream: %s", SDL_GetError()) ||
+        !SDLTest_AssertCheck(SDL_BindAudioStream(without_postmix, without_postmix_stream), "Bind plain recording stream: %s", SDL_GetError()) ||
+        !SDLTest_AssertCheck(SDL_SetAudioPostmixCallback(with_postmix, audio_recordingPatternPostmixCallback, &state), "Set recording postmix callback: %s", SDL_GetError()) ||
+        !SDLTest_AssertCheck(SDL_SetAudioStreamInputChannelMap(with_postmix_stream, reversed_stereo_map, SDL_arraysize(reversed_stereo_map)), "Set postmix stream channel map: %s", SDL_GetError())) {
+        goto cleanup;
+    }
+    SDL_ResumeAudioDevice(with_postmix);
+    SDL_ResumeAudioDevice(without_postmix);
+
+    for (int i = 0; i < 100 && SDL_GetAtomicInt(&state.calls) < 5; ++i) {
+        SDL_Delay(10);
+    }
+    calls_before_pause = SDL_GetAtomicInt(&state.calls);
+    SDL_PauseAudioDevice(without_postmix);
+    SDL_PauseAudioDevice(with_postmix);
+    // Captures between the two pauses reach only the postmix stream.
+    allowed_byte_difference = (SDL_GetAtomicInt(&state.calls) - calls_before_pause + 1) * capture_bytes;
+    with_postmix_bytes = SDL_GetAudioStreamAvailable(with_postmix_stream);
+    without_postmix_bytes = SDL_GetAudioStreamAvailable(without_postmix_stream);
+    SDLTest_AssertCheck(with_postmix_bytes > 0 && without_postmix_bytes > 0, "Both recording streams receive data");
+    SDLTest_AssertCheck(SDL_GetAtomicInt(&state.calls) >= 5 && SDL_GetAtomicInt(&state.valid_format) == 1,
+                        "Postmix ran with F32 data before the plain logical device");
+    SDLTest_AssertCheck(SDL_abs(with_postmix_bytes - without_postmix_bytes) <= allowed_byte_difference,
+                        "Logical recording byte counts match within the pause gap: %d vs %d (allowed %d)",
+                        with_postmix_bytes, without_postmix_bytes, allowed_byte_difference);
+    if (with_postmix_bytes >= (int)sizeof(first_frame)) {
+        if (SDLTest_AssertCheck(SDL_GetAudioStreamData(with_postmix_stream, first_frame, sizeof(first_frame)) == (int)sizeof(first_frame),
+                                "Read mapped recording frame")) {
+            SDLTest_AssertCheck(first_frame[0] == 8192 && first_frame[1] == -16384,
+                                "Mapped F32 capture preserves channel samples: %d, %d", first_frame[0], first_frame[1]);
+        }
+    }
+
+cleanup:
+    if (with_postmix) {
+        SDL_SetAudioPostmixCallback(with_postmix, NULL, NULL);
+        SDL_PauseAudioDevice(with_postmix);
+    }
+    if (without_postmix) {
+        SDL_PauseAudioDevice(without_postmix);
+    }
+    if (with_postmix_stream) {
+        SDL_UnbindAudioStream(with_postmix_stream);
+        SDL_DestroyAudioStream(with_postmix_stream);
+    }
+    if (without_postmix_stream) {
+        SDL_UnbindAudioStream(without_postmix_stream);
+        SDL_DestroyAudioStream(without_postmix_stream);
+    }
+    if (with_postmix) {
+        SDL_CloseAudioDevice(with_postmix);
+    }
+    if (without_postmix) {
+        SDL_CloseAudioDevice(without_postmix);
+    }
     return TEST_COMPLETED;
 }
 
@@ -1827,6 +1945,10 @@ static const SDLTest_TestCaseReference audioTestRecordingPostmix = {
     audio_recordingPostmixCallback, "audio_recordingPostmixCallback", "Checks the recording conversion and postmix path.", TEST_ENABLED
 };
 
+static const SDLTest_TestCaseReference audioTestRecordingLogicalDeviceByteCount = {
+    audio_recordingLogicalDeviceByteCount, "audio_recordingLogicalDeviceByteCount", "Checks recording byte counts are independent between logical devices.", TEST_ENABLED
+};
+
 /* Sequence of Audio test cases */
 static const SDLTest_TestCaseReference *audioTests[] = {
     &audioTestLoadWAVStructure,
@@ -1838,7 +1960,7 @@ static const SDLTest_TestCaseReference *audioTests[] = {
     &audioTest10,
     &audioTest12, &audioTest13, &audioTest14, &audioTest15, &audioTest16,
     &audioTest17, &audioTest18, &audioTestBindStreams, &audioTestReopenHigherSpec,
-    &audioTestPlaybackPostmix, &audioTestRecordingPostmix, NULL
+    &audioTestPlaybackPostmix, &audioTestRecordingPostmix, &audioTestRecordingLogicalDeviceByteCount, NULL
 };
 
 /* Audio test suite (global) */
