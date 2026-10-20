@@ -280,16 +280,20 @@ Linux/X11 прогін `deus check . --no-parallel` з `SDLTEST_VIDEO_DRIVER=x11
 
 Тести Wayland мають вузьке покриття. `video_waylandShowHideLifecycle` перевіряє властивість xdg surface відразу після `SDL_ShowWindow`, до configure/map completion. Popup тест чекає появи xdg popup, але перевірка pointer create/clear сама по собі не доводить server-side map/unmap, libdecor, custom/external surface, порядок callback/event чи коректний cleanup після помилки. Перед закриттям пункту 2 у Wayland сесії перевірити чи ці assertions стабільні й, якщо ні, чекати відповідну подію/configure; додати лише перевірку, що ловить підтверджену прогалину. Не розширювати тести на всі шляхи без причини.
 
-### Залишок роботи агента
+### Потрібні зовнішні перевірки
 
 Аудит `src/video/wayland/SDL_waylandevents.c` завершено: `keyboard_handle_key` послідовно тримає timestamp/keymap/IME/modifier/event/repeat state, а `data_device_handle_drop` — MIME/portal/fallback/cleanup state. Вузької фази з незалежними параметрами немає; виділення helper-ів додало б зв’язність і ризик зміни порядку. Drop-помилки залишаються окремою bug card 000046.
 
 Початковий аудит `src/video/windows/SDL_windowsevents.c` підтвердив, що `WIN_WindowProc` є центральним dispatch із modal hook, SDL window lookup, keyboard/mouse/touch/pointer/IME, sizing, activation та fallback `CallWindowProc`. Без native Windows runtime і без вузької групи з незалежним state extraction helper-ів не додавав; `WM_INPUT` не повертав.
 
-1. Wayland show/hide та input/drop: прогнати characterization тести у реальному compositor і посилити assertions лише за підтвердженою прогалиною.
-2. `src/video/windows/SDL_windowsevents.c`: оглянути `WIN_WindowProc`; виділяти handler лише для групи повідомлень з чіткою відповідальністю, зберігши `CallWindowProc`, returns, IME, modal hooks і reentrancy. `WM_INPUT` dead path уже видалено; не повертати його. Потрібні native Windows/MSVC перевірки.
-3. `src/video/cocoa/SDL_cocoawindow.m`: оглянути `Cocoa_CreateWindow` та `windowDidExitFullScreen`; виділяти локальну фазу лише якщо вона зменшує зв’язність/складність без нового власника стану. Потрібна native macOS/Xcode перевірка.
-4. `src/gpu/d3d12/SDL_gpu_d3d12.c`: оглянути `D3D12_CreateDevice`; дозволене лише виділення завершеної стадії з вузькими параметрами й однозначним cleanup. Потрібні native D3D12 build/runtime перевірки.
+Аудит `src/video/cocoa/SDL_cocoawindow.m` і `src/gpu/d3d12/SDL_gpu_d3d12.c` за `Dox/ProjTree.md` та `deus fileStruct`: Cocoa файл має window listener/view/backend lifecycle в одному приватному state контурі, а D3D12 файл об’єднує renderer/device/command-buffer/swapchain/debug/OpenXR state. Вузького extraction boundary без нового власника стану не доведено; змін не внесено. Native macOS та D3D12 runtime недоступні.
+
+Кодові аудити завершені; нижче залишені лише environment-dependent перевірки, які не є додатковими source refactors:
+
+1. Wayland show/hide та input/drop: прогнати characterization тести у реальному compositor; посилювати assertions лише за підтвердженої прогалини.
+2. Native Windows/MSVC: перевірити `WIN_WindowProc` і наявні зміни.
+3. Native macOS/Xcode: перевірити Cocoa lifecycle.
+4. Native D3D12: перевірити build/runtime D3D12 paths.
 
 ### Перевірки й відкладене
 
