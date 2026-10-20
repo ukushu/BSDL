@@ -13580,6 +13580,50 @@ static void VULKAN_INTERNAL_InitializeDeferredResourceStorage(VulkanRenderer *re
         renderer->framebuffersToDestroyCapacity);
 }
 
+static void VULKAN_INTERNAL_InitializeRuntimeState(VulkanRenderer *renderer)
+{
+    renderer->claimedWindowCapacity = 1;
+    renderer->claimedWindowCount = 0;
+    renderer->claimedWindows = SDL_malloc(
+        renderer->claimedWindowCapacity * sizeof(WindowData *));
+
+    renderer->allocatorLock = SDL_CreateMutex();
+    renderer->disposeLock = SDL_CreateMutex();
+    renderer->submitLock = SDL_CreateMutex();
+    renderer->acquireCommandBufferLock = SDL_CreateMutex();
+    renderer->acquireUniformBufferLock = SDL_CreateMutex();
+    renderer->renderPassFetchLock = SDL_CreateMutex();
+    renderer->framebufferFetchLock = SDL_CreateMutex();
+    renderer->graphicsPipelineLayoutFetchLock = SDL_CreateMutex();
+    renderer->computePipelineLayoutFetchLock = SDL_CreateMutex();
+    renderer->descriptorSetLayoutFetchLock = SDL_CreateMutex();
+    renderer->windowLock = SDL_CreateMutex();
+
+    renderer->submittedCommandBufferCapacity = 16;
+    renderer->submittedCommandBufferCount = 0;
+    renderer->submittedCommandBuffers = SDL_malloc(sizeof(VulkanCommandBuffer *) * renderer->submittedCommandBufferCapacity);
+
+    VULKAN_INTERNAL_InitializeMemoryPools(renderer);
+
+    renderer->minUBOAlignment = (Uint32)renderer->physicalDeviceProperties.properties.limits.minUniformBufferOffsetAlignment;
+
+    VULKAN_INTERNAL_InitializeDeviceCaches(renderer);
+
+    renderer->fencePool.lock = SDL_CreateMutex();
+    renderer->fencePool.availableFenceCapacity = 4;
+    renderer->fencePool.availableFenceCount = 0;
+    renderer->fencePool.availableFences = SDL_malloc(
+        renderer->fencePool.availableFenceCapacity * sizeof(VulkanFenceHandle *));
+
+    VULKAN_INTERNAL_InitializeDeferredResourceStorage(renderer);
+
+    renderer->defragInProgress = 0;
+    renderer->allocationsToDefragCount = 0;
+    renderer->allocationsToDefragCapacity = 4;
+    renderer->allocationsToDefrag = SDL_malloc(
+        renderer->allocationsToDefragCapacity * sizeof(VulkanMemoryAllocation *));
+}
+
 static SDL_GPUDevice *VULKAN_CreateDevice(bool debugMode, bool preferLowPower, SDL_PropertiesID props)
 {
     VulkanRenderer *renderer;
@@ -13704,64 +13748,7 @@ static SDL_GPUDevice *VULKAN_CreateDevice(bool debugMode, bool preferLowPower, S
     result->driverData = (SDL_GPURenderer *)renderer;
     result->shader_formats = SDL_GPU_SHADERFORMAT_SPIRV;
 
-    /*
-     * Create initial swapchain array
-     */
-
-    renderer->claimedWindowCapacity = 1;
-    renderer->claimedWindowCount = 0;
-    renderer->claimedWindows = SDL_malloc(
-        renderer->claimedWindowCapacity * sizeof(WindowData *));
-
-    // Threading
-
-    renderer->allocatorLock = SDL_CreateMutex();
-    renderer->disposeLock = SDL_CreateMutex();
-    renderer->submitLock = SDL_CreateMutex();
-    renderer->acquireCommandBufferLock = SDL_CreateMutex();
-    renderer->acquireUniformBufferLock = SDL_CreateMutex();
-    renderer->renderPassFetchLock = SDL_CreateMutex();
-    renderer->framebufferFetchLock = SDL_CreateMutex();
-    renderer->graphicsPipelineLayoutFetchLock = SDL_CreateMutex();
-    renderer->computePipelineLayoutFetchLock = SDL_CreateMutex();
-    renderer->descriptorSetLayoutFetchLock = SDL_CreateMutex();
-    renderer->windowLock = SDL_CreateMutex();
-
-    /*
-     * Create submitted command buffer list
-     */
-
-    renderer->submittedCommandBufferCapacity = 16;
-    renderer->submittedCommandBufferCount = 0;
-    renderer->submittedCommandBuffers = SDL_malloc(sizeof(VulkanCommandBuffer *) * renderer->submittedCommandBufferCapacity);
-
-    VULKAN_INTERNAL_InitializeMemoryPools(renderer);
-
-    // Device limits
-
-    renderer->minUBOAlignment = (Uint32)renderer->physicalDeviceProperties.properties.limits.minUniformBufferOffsetAlignment;
-
-    VULKAN_INTERNAL_InitializeDeviceCaches(renderer);
-
-    // Initialize fence pool
-
-    renderer->fencePool.lock = SDL_CreateMutex();
-
-    renderer->fencePool.availableFenceCapacity = 4;
-    renderer->fencePool.availableFenceCount = 0;
-    renderer->fencePool.availableFences = SDL_malloc(
-        renderer->fencePool.availableFenceCapacity * sizeof(VulkanFenceHandle *));
-
-    VULKAN_INTERNAL_InitializeDeferredResourceStorage(renderer);
-
-    // Defrag state
-
-    renderer->defragInProgress = 0;
-
-    renderer->allocationsToDefragCount = 0;
-    renderer->allocationsToDefragCapacity = 4;
-    renderer->allocationsToDefrag = SDL_malloc(
-        renderer->allocationsToDefragCapacity * sizeof(VulkanMemoryAllocation *));
+    VULKAN_INTERNAL_InitializeRuntimeState(renderer);
 
     return result;
 }

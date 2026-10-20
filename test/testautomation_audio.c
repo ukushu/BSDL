@@ -48,22 +48,6 @@ static void SDLCALL audioTearDown(void *arg)
     SDLTest_AssertPass("Cleanup of test files completed");
 }
 
-#if 0  /* !!! FIXME: maybe update this? */
-/* Global counter for callback invocation */
-static int g_audio_testCallbackCounter;
-
-/* Global accumulator for total callback length */
-static int g_audio_testCallbackLength;
-
-/* Test callback function */
-static void SDLCALL audio_testCallback(void *userdata, Uint8 *stream, int len)
-{
-    /* track that callback was called */
-    g_audio_testCallbackCounter++;
-    g_audio_testCallbackLength += len;
-}
-#endif
-
 static SDL_AudioDeviceID g_audio_id = 0;
 
 /* Test case functions */
@@ -240,15 +224,15 @@ static int SDLCALL audio_initOpenCloseQuitAudio(void *arg)
 }
 
 /**
- * Pause and unpause audio
+ * Open and close playback with different drivers and audio specs
  *
- * \sa SDL_PauseAudioDevice
- * \sa SDL_PlayAudioDevice
+ * \sa SDL_OpenAudioDevice
+ * \sa SDL_CloseAudioDevice
  */
 static int SDLCALL audio_pauseUnpauseAudio(void *arg)
 {
     int iMax;
-    int i, j /*, k, l*/;
+    int i, j;
     int result;
     const char *audioDriver;
     SDL_AudioSpec desired;
@@ -305,49 +289,6 @@ static int SDLCALL audio_pauseUnpauseAudio(void *arg)
             SDLTest_AssertPass("Call to SDL_OpenAudioDevice(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, desired_spec_%d)", j);
             SDLTest_AssertCheck(result > 0, "Verify return value; expected > 0 got: %d", result);
 
-#if 0  /* !!! FIXME: maybe update this? */
-            /* Start and stop audio multiple times */
-            for (l = 0; l < 3; l++) {
-                SDLTest_Log("Pause/Unpause iteration: %d", l + 1);
-
-                /* Reset callback counters */
-                g_audio_testCallbackCounter = 0;
-                g_audio_testCallbackLength = 0;
-
-                /* Un-pause audio to start playing (maybe multiple times) */
-                for (k = 0; k <= j; k++) {
-                    SDL_PlayAudioDevice(g_audio_id);
-                    SDLTest_AssertPass("Call to SDL_PlayAudioDevice(g_audio_id), call %d", k + 1);
-                }
-
-                /* Wait for callback */
-                int totalDelay = 0;
-                do {
-                    SDL_Delay(10);
-                    totalDelay += 10;
-                } while (g_audio_testCallbackCounter == 0 && totalDelay < 1000);
-                SDLTest_AssertCheck(g_audio_testCallbackCounter > 0, "Verify callback counter; expected: >0 got: %d", g_audio_testCallbackCounter);
-                SDLTest_AssertCheck(g_audio_testCallbackLength > 0, "Verify callback length; expected: >0 got: %d", g_audio_testCallbackLength);
-
-                /* Pause audio to stop playing (maybe multiple times) */
-                for (k = 0; k <= j; k++) {
-                    const int pause_on = (k == 0) ? 1 : SDLTest_RandomIntegerInRange(99, 9999);
-                    if (pause_on) {
-                        SDL_PauseAudioDevice(g_audio_id);
-                        SDLTest_AssertPass("Call to SDL_PauseAudioDevice(g_audio_id), call %d", k + 1);
-                    } else {
-                        SDL_PlayAudioDevice(g_audio_id);
-                        SDLTest_AssertPass("Call to SDL_PlayAudioDevice(g_audio_id), call %d", k + 1);
-                    }
-                }
-
-                /* Ensure callback is not called again */
-                const int originalCounter = g_audio_testCallbackCounter;
-                SDL_Delay(totalDelay + 10);
-                SDLTest_AssertCheck(originalCounter == g_audio_testCallbackCounter, "Verify callback counter; expected: %d, got: %d", originalCounter, g_audio_testCallbackCounter);
-            }
-#endif
-
             /* Call Close */
             SDL_CloseAudioDevice(g_audio_id);
             SDLTest_AssertPass("Call to SDL_CloseAudioDevice()");
@@ -402,17 +343,6 @@ static int SDLCALL audio_enumerateAndNameAudioDevices(void *arg)
     }
 
     return TEST_COMPLETED;
-}
-
-/**
- * Negative tests around enumeration and naming of audio devices.
- *
- * \sa SDL_GetNumAudioDevices
- * \sa SDL_GetAudioDeviceName
- */
-static int SDLCALL audio_enumerateAndNameAudioDevicesNegativeTests(void *arg)
-{
-    return TEST_COMPLETED;  /* nothing in here atm since these interfaces changed in SDL3. */
 }
 
 /**
@@ -721,37 +651,6 @@ static int SDLCALL audio_buildAudioStreamNegative(void *arg)
 }
 
 /**
- * Checks current audio status.
- *
- * \sa SDL_GetAudioDeviceStatus
- */
-static int SDLCALL audio_getAudioStatus(void *arg)
-{
-    return TEST_COMPLETED;  /* no longer a thing in SDL3. */
-}
-
-/**
- * Opens, checks current audio status, and closes a device.
- *
- * \sa SDL_GetAudioStatus
- */
-static int SDLCALL audio_openCloseAndGetAudioStatus(void *arg)
-{
-    return TEST_COMPLETED;  /* not a thing in SDL3. */
-}
-
-/**
- * Locks and unlocks open audio device.
- *
- * \sa SDL_LockAudioDevice
- * \sa SDL_UnlockAudioDevice
- */
-static int SDLCALL audio_lockUnlockOpenAudioDevice(void *arg)
-{
-    return TEST_COMPLETED;  /* not a thing in SDL3 */
-}
-
-/**
  * Convert audio using various conversion structures
  *
  * \sa SDL_CreateAudioStream
@@ -898,16 +797,6 @@ static int SDLCALL audio_convertAudio(void *arg)
     }
 
     return TEST_COMPLETED;
-}
-
-/**
- * Opens, checks current connected status, and closes a device.
- *
- * \sa SDL_AudioDeviceConnected
- */
-static int SDLCALL audio_openCloseAudioDeviceConnected(void *arg)
-{
-    return TEST_COMPLETED;  /* not a thing in SDL3. */
 }
 
 static double sine_wave_sample(const Sint64 idx, const Sint64 rate, const Sint64 freq, const double phase)
@@ -1874,10 +1763,6 @@ static const SDLTest_TestCaseReference audioTest1 = {
     audio_enumerateAndNameAudioDevices, "audio_enumerateAndNameAudioDevices", "Enumerate and name available audio devices (playback and recording)", TEST_ENABLED
 };
 
-static const SDLTest_TestCaseReference audioTest2 = {
-    audio_enumerateAndNameAudioDevicesNegativeTests, "audio_enumerateAndNameAudioDevicesNegativeTests", "Negative tests around enumeration and naming of audio devices.", TEST_ENABLED
-};
-
 static const SDLTest_TestCaseReference audioTest3 = {
     audio_printAudioDrivers, "audio_printAudioDrivers", "Checks available audio driver names.", TEST_ENABLED
 };
@@ -1894,26 +1779,8 @@ static const SDLTest_TestCaseReference audioTest6 = {
     audio_buildAudioStreamNegative, "audio_buildAudioStreamNegative", "Checks calls with invalid input to SDL_CreateAudioStream", TEST_ENABLED
 };
 
-static const SDLTest_TestCaseReference audioTest7 = {
-    audio_getAudioStatus, "audio_getAudioStatus", "Checks current audio status.", TEST_ENABLED
-};
-
-static const SDLTest_TestCaseReference audioTest8 = {
-    audio_openCloseAndGetAudioStatus, "audio_openCloseAndGetAudioStatus", "Opens and closes audio device and get audio status.", TEST_ENABLED
-};
-
-static const SDLTest_TestCaseReference audioTest9 = {
-    audio_lockUnlockOpenAudioDevice, "audio_lockUnlockOpenAudioDevice", "Locks and unlocks an open audio device.", TEST_ENABLED
-};
-
 static const SDLTest_TestCaseReference audioTest10 = {
     audio_convertAudio, "audio_convertAudio", "Convert audio using available formats.", TEST_ENABLED
-};
-
-/* TODO: enable test when SDL_AudioDeviceConnected has been implemented.           */
-
-static const SDLTest_TestCaseReference audioTest11 = {
-    audio_openCloseAudioDeviceConnected, "audio_openCloseAudioDeviceConnected", "Opens and closes audio device and get connected status.", TEST_DISABLED
 };
 
 static const SDLTest_TestCaseReference audioTest12 = {
@@ -1929,7 +1796,7 @@ static const SDLTest_TestCaseReference audioTest14 = {
 };
 
 static const SDLTest_TestCaseReference audioTest15 = {
-    audio_pauseUnpauseAudio, "audio_pauseUnpauseAudio", "Pause and Unpause audio for various audio specs while testing callback.", TEST_ENABLED
+    audio_pauseUnpauseAudio, "audio_pauseUnpauseAudio", "Open and close playback with different drivers and audio specs.", TEST_ENABLED
 };
 
 static const SDLTest_TestCaseReference audioTest16 = {
@@ -1967,8 +1834,8 @@ static const SDLTest_TestCaseReference *audioTests[] = {
     &audioTestLoadWAVCodecs,
     &audioTestGetAudioFormatName,
     &audioTestGetSilenceValueForFormat,
-    &audioTest1, &audioTest2, &audioTest3, &audioTest4, &audioTest5, &audioTest6,
-    &audioTest7, &audioTest8, &audioTest9, &audioTest10, &audioTest11,
+    &audioTest1, &audioTest3, &audioTest4, &audioTest5, &audioTest6,
+    &audioTest10,
     &audioTest12, &audioTest13, &audioTest14, &audioTest15, &audioTest16,
     &audioTest17, &audioTest18, &audioTestBindStreams, &audioTestReopenHigherSpec,
     &audioTestPlaybackPostmix, &audioTestRecordingPostmix, NULL

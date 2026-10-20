@@ -43,9 +43,6 @@
 #include <tpcshrd.h>
 #endif // HAVE_TPCSHRD_H
 
-#if 0
-#define WMMSG_DEBUG
-#endif
 #ifdef WMMSG_DEBUG
 #include <stdio.h>
 #include "wmmsg.h"
@@ -1514,27 +1511,6 @@ LRESULT CALLBACK WIN_WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             }
         }
     } break;
-
-#if 0   // We handle raw input all at once instead of using a syscall for each mouse event
-    case WM_INPUT:
-    {
-        HRAWINPUT hRawInput = (HRAWINPUT)lParam;
-        RAWINPUT inp;
-        UINT size = sizeof(inp);
-
-        // Relative mouse motion is delivered to the window with keyboard focus
-        if (data->window != SDL_GetKeyboardFocus()) {
-            break;
-        }
-
-        GetRawInputData(hRawInput, RID_INPUT, &inp, &size, sizeof(RAWINPUTHEADER));
-        if (inp.header.dwType == RIM_TYPEMOUSE) {
-            WIN_HandleRawMouseInput(WIN_GetEventTimestamp(), data, inp.header.hDevice, &inp.data.mouse);
-        } else if (inp.header.dwType == RIM_TYPEKEYBOARD) {
-            WIN_HandleRawKeyboardInput(WIN_GetEventTimestamp(), data, inp.header.hDevice, &inp.data.keyboard);
-        }
-    } break;
-#endif
 
     case WM_MOUSEWHEEL:
     case WM_MOUSEHWHEEL:

@@ -3090,6 +3090,20 @@ static int SDLCALL video_gpuDeviceLifecycle(void *arg)
     }
 
     SDL_DestroyGPUDevice(device);
+
+    device = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_SPIRV, false, "vulkan");
+    if (!SDLTest_AssertCheck(device != NULL, "Recreate Vulkan GPU device: %s", SDL_GetError())) {
+        return TEST_ABORTED;
+    }
+    SDL_GPUCommandBuffer *command_buffer = SDL_AcquireGPUCommandBuffer(device);
+    if (SDLTest_AssertCheck(command_buffer != NULL, "Acquire command buffer after device recreation: %s", SDL_GetError())) {
+        SDL_GPUFence *fence = SDL_SubmitGPUCommandBufferAndAcquireFence(command_buffer);
+        if (SDLTest_AssertCheck(fence != NULL, "Submit after device recreation: %s", SDL_GetError())) {
+            SDLTest_AssertCheck(SDL_WaitForGPUFences(device, true, &fence, 1), "Wait after device recreation: %s", SDL_GetError());
+            SDL_ReleaseGPUFence(device, fence);
+        }
+    }
+    SDL_DestroyGPUDevice(device);
     return TEST_COMPLETED;
 }
 
