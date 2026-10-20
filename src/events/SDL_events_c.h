@@ -79,6 +79,7 @@ extern void *SDL_ClaimTemporaryMemory(const void *mem);
 extern void SDL_FreeTemporaryMemory(void);
 extern void SDL_AttachTemporaryMemory(SDL_TemporaryMemory **event_memory, const void *mem);
 extern void SDL_TransferTemporaryMemoryToEvent(SDL_TemporaryMemory **event_memory, SDL_Event *event);
+extern bool SDL_CanTransferTemporaryMemoryFromEvent(SDL_TemporaryMemory *event_memory);
 extern void SDL_TransferTemporaryMemoryFromEvent(SDL_TemporaryMemory **event_memory);
 
 extern void SDL_PumpEventMaintenance(void);

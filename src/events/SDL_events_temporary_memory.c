@@ -194,6 +194,8 @@ static void SDL_TransferSysWMMemoryToEvent(SDL_TemporaryMemory **event_memory, S
         SDL_copyp(mem, *wmmsg);
         *wmmsg = mem;
         SDL_AttachTemporaryMemory(event_memory, mem);
+    } else {
+        *wmmsg = NULL;
     }
 }
 
@@ -220,6 +222,9 @@ void SDL_TransferTemporaryMemoryToEvent(SDL_TemporaryMemory **event_memory, SDL_
     case SDL_EVENT_CLIPBOARD_UPDATE:
         SDL_AttachTemporaryMemory(event_memory, event->clipboard.mime_types);
         break;
+    case SDL_EVENT_NOTIFICATION_ACTION_INVOKED:
+        SDL_AttachTemporaryMemory(event_memory, event->notification.action_id);
+        break;
     case SDL2_SYSWMEVENT:
         // We need to copy the stack pointer into temporary memory
         SDL_TransferSysWMMemoryToEvent(event_memory, event);
@@ -227,6 +232,11 @@ void SDL_TransferTemporaryMemoryToEvent(SDL_TemporaryMemory **event_memory, SDL_
     default:
         break;
     }
+}
+
+bool SDL_CanTransferTemporaryMemoryFromEvent(SDL_TemporaryMemory *event_memory)
+{
+    return !event_memory || SDL_GetTemporaryMemoryState(true) != NULL;
 }
 
 void SDL_TransferTemporaryMemoryFromEvent(SDL_TemporaryMemory **event_memory)
@@ -259,9 +269,6 @@ static void *SDL_FreeLater(void *memory)
     if (memory == NULL) {
         return NULL;
     }
-
-    // Make sure we're not adding this to the list twice
-    //SDL_assert(!SDL_ClaimTemporaryMemory(memory));
 
     state = SDL_GetTemporaryMemoryState(true);
     if (!state) {

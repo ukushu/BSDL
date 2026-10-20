@@ -373,8 +373,9 @@ bool SDL_WaitEventTimeoutNS(SDL_Event *event, Sint64 timeoutNS)
     for (;;) {
         SDL_PumpEventsInternal(true);
 
-        if (SDL_PeepEvents(event, 1, SDL_GETEVENT, SDL_EVENT_FIRST, SDL_EVENT_LAST) > 0) {
-            return true;
+        result = SDL_PeepEvents(event, 1, SDL_GETEVENT, SDL_EVENT_FIRST, SDL_EVENT_LAST);
+        if (result != 0) {
+            return result > 0;
         }
 
         Uint64 delay = -1;
@@ -410,8 +411,9 @@ bool SDL_WaitEventTimeoutNS(SDL_Event *event, Sint64 timeoutNS)
     for (;;) {
         SDL_PumpEventsInternal(true);
 
-        if (SDL_PeepEvents(event, 1, SDL_GETEVENT, SDL_EVENT_FIRST, SDL_EVENT_LAST) > 0) {
-            return true;
+        result = SDL_PeepEvents(event, 1, SDL_GETEVENT, SDL_EVENT_FIRST, SDL_EVENT_LAST);
+        if (result != 0) {
+            return result > 0;
         }
 
         Uint64 delay = EVENT_POLL_INTERVAL_NS;
@@ -427,4 +429,3 @@ bool SDL_WaitEventTimeoutNS(SDL_Event *event, Sint64 timeoutNS)
     }
 #endif // SDL_PLATFORM_ANDROID
 }
-

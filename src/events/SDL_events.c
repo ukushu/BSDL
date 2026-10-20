@@ -279,6 +279,10 @@ static int SDL_PeepQueuedEvents(SDL_Event *events, int numevents, SDL_EventActio
         const Uint32 type = entry->event.type;
         if (minType <= type && type <= maxType) {
             if (events) {
+                if (action == SDL_GETEVENT && !SDL_CanTransferTemporaryMemoryFromEvent(entry->memory)) {
+                    SDL_OutOfMemory();
+                    return used ? used : -1;
+                }
                 SDL_copyp(&events[used], &entry->event);
 
                 if (action == SDL_GETEVENT) {
