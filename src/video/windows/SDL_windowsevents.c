@@ -76,9 +76,6 @@
 #ifndef GET_XBUTTON_WPARAM
 #define GET_XBUTTON_WPARAM(w) (HIWORD(w))
 #endif
-#ifndef WM_INPUT
-#define WM_INPUT 0x00ff
-#endif
 #ifndef WM_TOUCH
 #define WM_TOUCH 0x0240
 #endif

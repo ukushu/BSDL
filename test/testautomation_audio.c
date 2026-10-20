@@ -229,7 +229,7 @@ static int SDLCALL audio_initOpenCloseQuitAudio(void *arg)
  * \sa SDL_OpenAudioDevice
  * \sa SDL_CloseAudioDevice
  */
-static int SDLCALL audio_pauseUnpauseAudio(void *arg)
+static int SDLCALL audio_openCloseAcrossDriversAndSpecs(void *arg)
 {
     int iMax;
     int i, j;
@@ -1796,7 +1796,7 @@ static const SDLTest_TestCaseReference audioTest14 = {
 };
 
 static const SDLTest_TestCaseReference audioTest15 = {
-    audio_pauseUnpauseAudio, "audio_pauseUnpauseAudio", "Open and close playback with different drivers and audio specs.", TEST_ENABLED
+    audio_openCloseAcrossDriversAndSpecs, "audio_openCloseAcrossDriversAndSpecs", "Open and close playback with different drivers and audio specs.", TEST_ENABLED
 };
 
 static const SDLTest_TestCaseReference audioTest16 = {

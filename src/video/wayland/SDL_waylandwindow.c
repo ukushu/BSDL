@@ -2293,11 +2293,147 @@ static struct zxdg_exported_v2_listener exported_v2_listener = {
     exported_handle_handler
 };
 
-void Wayland_ShowWindow(SDL_VideoDevice *_this, SDL_Window *window)
+static void Wayland_CreatePopupShellSurface(SDL_VideoDevice *_this, SDL_Window *window)
 {
     SDL_VideoData *c = _this->internal;
     SDL_WindowData *data = window->internal;
     SDL_PropertiesID props = SDL_GetWindowProperties(window);
+
+    SDL_Window *parent = window->parent;
+    SDL_WindowData *parent_data = parent->internal;
+    struct xdg_surface *parent_xdg_surface = NULL;
+    int position_x = 0, position_y = 0;
+
+    // Configure the popup parameters
+#ifdef HAVE_LIBDECOR_H
+    if (parent_data->shell_surface_type == WAYLAND_SHELL_SURFACE_TYPE_LIBDECOR) {
+        parent_xdg_surface = libdecor_frame_get_xdg_surface(parent_data->shell_surface.libdecor.frame);
+    } else
+#endif
+    if (parent_data->shell_surface_type == WAYLAND_SHELL_SURFACE_TYPE_XDG_TOPLEVEL ||
+            parent_data->shell_surface_type == WAYLAND_SHELL_SURFACE_TYPE_XDG_POPUP) {
+        parent_xdg_surface = parent_data->shell_surface.xdg.surface;
+    }
+
+    // Set up the positioner for the popup and configure the constraints
+    data->shell_surface.xdg.popup.xdg_positioner = xdg_wm_base_create_positioner(c->shell.xdg);
+    xdg_positioner_set_anchor(data->shell_surface.xdg.popup.xdg_positioner, XDG_POSITIONER_ANCHOR_TOP_LEFT);
+    SDL_Rect parent_geometry;
+    GetWindowGeometry(parent->internal, &parent_geometry);
+    xdg_positioner_set_anchor_rect(data->shell_surface.xdg.popup.xdg_positioner, 0, 0, parent_geometry.w, parent_geometry.h);
+
+    const Uint32 constraint = window->constrain_popup ? (XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_X | XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_Y) : XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_NONE;
+    xdg_positioner_set_constraint_adjustment(data->shell_surface.xdg.popup.xdg_positioner, constraint);
+    xdg_positioner_set_gravity(data->shell_surface.xdg.popup.xdg_positioner, XDG_POSITIONER_GRAVITY_BOTTOM_RIGHT);
+    xdg_positioner_set_size(data->shell_surface.xdg.popup.xdg_positioner, data->current.logical_width, data->current.logical_height);
+
+    // Set the popup initial position
+    position_x = window->last_position_pending ? window->pending.x : window->x;
+    position_y = window->last_position_pending ? window->pending.y : window->y;
+    EnsurePopupPositionIsValid(window, &position_x, &position_y);
+    if (data->scale_to_display) {
+        position_x = PixelToPoint(window->parent, position_x);
+        position_y = PixelToPoint(window->parent, position_y);
+    }
+    AdjustPopupOffset(window, &position_x, &position_y);
+    xdg_positioner_set_offset(data->shell_surface.xdg.popup.xdg_positioner, position_x, position_y);
+
+    // Assign the popup role
+    data->shell_surface.xdg.popup.xdg_popup = xdg_surface_get_popup(data->shell_surface.xdg.surface,
+                                                                        parent_xdg_surface,
+                                                                        data->shell_surface.xdg.popup.xdg_positioner);
+    xdg_popup_add_listener(data->shell_surface.xdg.popup.xdg_popup, &_xdg_popup_listener, data);
+
+    if (window->flags & SDL_WINDOW_TOOLTIP) {
+        struct wl_region *region;
+
+        // Tooltips can't be interacted with, so turn off the input region to avoid blocking anything behind them
+        region = wl_compositor_create_region(c->compositor);
+        wl_region_add(region, 0, 0, 0, 0);
+        wl_surface_set_input_region(data->surface, region);
+        wl_region_destroy(region);
+    } else if ((window->flags & SDL_WINDOW_POPUP_MENU) && !(window->flags & SDL_WINDOW_NOT_FOCUSABLE)) {
+        Wayland_SetKeyboardFocus(window, true);
+    }
+
+    SDL_SetPointerProperty(props, SDL_PROP_WINDOW_WAYLAND_XDG_POPUP_POINTER, data->shell_surface.xdg.popup.xdg_popup);
+    SDL_SetPointerProperty(props, SDL_PROP_WINDOW_WAYLAND_XDG_POSITIONER_POINTER, data->shell_surface.xdg.popup.xdg_positioner);
+}
+
+static void Wayland_CreateToplevelShellSurface(SDL_VideoDevice *_this, SDL_Window *window)
+{
+    SDL_VideoData *c = _this->internal;
+    SDL_WindowData *data = window->internal;
+    SDL_PropertiesID props = SDL_GetWindowProperties(window);
+
+    data->shell_surface.xdg.toplevel.xdg_toplevel = xdg_surface_get_toplevel(data->shell_surface.xdg.surface);
+    xdg_toplevel_set_app_id(data->shell_surface.xdg.toplevel.xdg_toplevel, data->app_id);
+    xdg_toplevel_add_listener(data->shell_surface.xdg.toplevel.xdg_toplevel, &toplevel_listener_xdg, data);
+
+    // Create the window decorations
+    if (c->decoration_manager) {
+        data->server_decoration = zxdg_decoration_manager_v1_get_toplevel_decoration(c->decoration_manager, data->shell_surface.xdg.toplevel.xdg_toplevel);
+        zxdg_toplevel_decoration_v1_add_listener(data->server_decoration, &xdg_toplevel_decoration_listener, window);
+        const enum zxdg_toplevel_decoration_v1_mode mode = !(window->flags & SDL_WINDOW_BORDERLESS) ? ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE : ZXDG_TOPLEVEL_DECORATION_V1_MODE_CLIENT_SIDE;
+        zxdg_toplevel_decoration_v1_set_mode(data->server_decoration, mode);
+    }
+
+    if (c->zxdg_exporter_v2) {
+        data->exported = zxdg_exporter_v2_export_toplevel(c->zxdg_exporter_v2, data->surface);
+        zxdg_exported_v2_add_listener(data->exported, &exported_v2_listener, data);
+    }
+
+    if (c->xdg_toplevel_icon_manager_v1 && data->xdg_toplevel_icon_v1) {
+        xdg_toplevel_icon_manager_v1_set_icon(_this->internal->xdg_toplevel_icon_manager_v1,
+                                              data->shell_surface.xdg.toplevel.xdg_toplevel,
+                                              data->xdg_toplevel_icon_v1);
+    }
+
+    SDL_SetPointerProperty(props, SDL_PROP_WINDOW_WAYLAND_XDG_TOPLEVEL_POINTER, data->shell_surface.xdg.toplevel.xdg_toplevel);
+}
+
+#ifdef HAVE_LIBDECOR_H
+static void Wayland_CreateLibdecorShellSurface(SDL_VideoDevice *_this, SDL_Window *window)
+{
+    SDL_VideoData *c = _this->internal;
+    SDL_WindowData *data = window->internal;
+    SDL_PropertiesID props = SDL_GetWindowProperties(window);
+
+    data->shell_surface.libdecor.frame = libdecor_decorate(c->shell.libdecor,
+                                                           data->surface,
+                                                           &libdecor_frame_interface,
+                                                           data);
+    if (!data->shell_surface.libdecor.frame) {
+        SDL_LogError(SDL_LOG_CATEGORY_VIDEO, "Failed to create libdecor frame!");
+    } else {
+        libdecor_frame_set_app_id(data->shell_surface.libdecor.frame, data->app_id);
+        libdecor_frame_map(data->shell_surface.libdecor.frame);
+        if (window->flags & SDL_WINDOW_BORDERLESS) {
+            // Note: Calling this with 'true' immediately after mapping will cause the libdecor Cairo plugin to crash.
+            libdecor_frame_set_visibility(data->shell_surface.libdecor.frame, false);
+        }
+
+        if (c->zxdg_exporter_v2) {
+            data->exported = zxdg_exporter_v2_export_toplevel(c->zxdg_exporter_v2, data->surface);
+            zxdg_exported_v2_add_listener(data->exported, &exported_v2_listener, data);
+        }
+
+        if (c->xdg_toplevel_icon_manager_v1 && data->xdg_toplevel_icon_v1) {
+            xdg_toplevel_icon_manager_v1_set_icon(_this->internal->xdg_toplevel_icon_manager_v1,
+                                                  libdecor_frame_get_xdg_toplevel(data->shell_surface.libdecor.frame),
+                                                  data->xdg_toplevel_icon_v1);
+        }
+
+        SDL_SetPointerProperty(props, SDL_PROP_WINDOW_WAYLAND_XDG_SURFACE_POINTER, libdecor_frame_get_xdg_surface(data->shell_surface.libdecor.frame));
+        SDL_SetPointerProperty(props, SDL_PROP_WINDOW_WAYLAND_XDG_TOPLEVEL_POINTER, libdecor_frame_get_xdg_toplevel(data->shell_surface.libdecor.frame));
+    }
+}
+#endif
+
+void Wayland_ShowWindow(SDL_VideoDevice *_this, SDL_Window *window)
+{
+    SDL_VideoData *c = _this->internal;
+    SDL_WindowData *data = window->internal;
 
     // Custom surfaces don't get toplevels and are always considered 'shown'; nothing to do here.
     if (data->shell_surface_type == WAYLAND_SHELL_SURFACE_TYPE_CUSTOM) {
@@ -2346,34 +2482,7 @@ void Wayland_ShowWindow(SDL_VideoDevice *_this, SDL_Window *window)
     // Create the shell surface and map the toplevel/popup
 #ifdef HAVE_LIBDECOR_H
     if (data->shell_surface_type == WAYLAND_SHELL_SURFACE_TYPE_LIBDECOR) {
-        data->shell_surface.libdecor.frame = libdecor_decorate(c->shell.libdecor,
-                                                               data->surface,
-                                                               &libdecor_frame_interface,
-                                                               data);
-        if (!data->shell_surface.libdecor.frame) {
-            SDL_LogError(SDL_LOG_CATEGORY_VIDEO, "Failed to create libdecor frame!");
-        } else {
-            libdecor_frame_set_app_id(data->shell_surface.libdecor.frame, data->app_id);
-            libdecor_frame_map(data->shell_surface.libdecor.frame);
-            if (window->flags & SDL_WINDOW_BORDERLESS) {
-                // Note: Calling this with 'true' immediately after mapping will cause the libdecor Cairo plugin to crash.
-                libdecor_frame_set_visibility(data->shell_surface.libdecor.frame, false);
-            }
-
-            if (c->zxdg_exporter_v2) {
-                data->exported = zxdg_exporter_v2_export_toplevel(c->zxdg_exporter_v2, data->surface);
-                zxdg_exported_v2_add_listener(data->exported, &exported_v2_listener, data);
-            }
-
-            if (c->xdg_toplevel_icon_manager_v1 && data->xdg_toplevel_icon_v1) {
-                xdg_toplevel_icon_manager_v1_set_icon(_this->internal->xdg_toplevel_icon_manager_v1,
-                                                      libdecor_frame_get_xdg_toplevel(data->shell_surface.libdecor.frame),
-                                                      data->xdg_toplevel_icon_v1);
-            }
-
-            SDL_SetPointerProperty(props, SDL_PROP_WINDOW_WAYLAND_XDG_SURFACE_POINTER, libdecor_frame_get_xdg_surface(data->shell_surface.libdecor.frame));
-            SDL_SetPointerProperty(props, SDL_PROP_WINDOW_WAYLAND_XDG_TOPLEVEL_POINTER, libdecor_frame_get_xdg_toplevel(data->shell_surface.libdecor.frame));
-        }
+        Wayland_CreateLibdecorShellSurface(_this, window);
     } else
 #endif
     if (data->shell_surface_type == WAYLAND_SHELL_SURFACE_TYPE_XDG_TOPLEVEL || data->shell_surface_type == WAYLAND_SHELL_SURFACE_TYPE_XDG_POPUP) {
@@ -2383,90 +2492,9 @@ void Wayland_ShowWindow(SDL_VideoDevice *_this, SDL_Window *window)
         SDL_SetPointerProperty(SDL_GetWindowProperties(window), SDL_PROP_WINDOW_WAYLAND_XDG_SURFACE_POINTER, data->shell_surface.xdg.surface);
 
         if (data->shell_surface_type == WAYLAND_SHELL_SURFACE_TYPE_XDG_POPUP) {
-            SDL_Window *parent = window->parent;
-            SDL_WindowData *parent_data = parent->internal;
-            struct xdg_surface *parent_xdg_surface = NULL;
-            int position_x = 0, position_y = 0;
-
-            // Configure the popup parameters
-#ifdef HAVE_LIBDECOR_H
-            if (parent_data->shell_surface_type == WAYLAND_SHELL_SURFACE_TYPE_LIBDECOR) {
-                parent_xdg_surface = libdecor_frame_get_xdg_surface(parent_data->shell_surface.libdecor.frame);
-            } else
-#endif
-            if (parent_data->shell_surface_type == WAYLAND_SHELL_SURFACE_TYPE_XDG_TOPLEVEL ||
-                    parent_data->shell_surface_type == WAYLAND_SHELL_SURFACE_TYPE_XDG_POPUP) {
-                parent_xdg_surface = parent_data->shell_surface.xdg.surface;
-            }
-
-            // Set up the positioner for the popup and configure the constraints
-            data->shell_surface.xdg.popup.xdg_positioner = xdg_wm_base_create_positioner(c->shell.xdg);
-            xdg_positioner_set_anchor(data->shell_surface.xdg.popup.xdg_positioner, XDG_POSITIONER_ANCHOR_TOP_LEFT);
-            SDL_Rect parent_geometry;
-            GetWindowGeometry(parent->internal, &parent_geometry);
-            xdg_positioner_set_anchor_rect(data->shell_surface.xdg.popup.xdg_positioner, 0, 0, parent_geometry.w, parent_geometry.h);
-
-            const Uint32 constraint = window->constrain_popup ? (XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_X | XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_Y) : XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_NONE;
-            xdg_positioner_set_constraint_adjustment(data->shell_surface.xdg.popup.xdg_positioner, constraint);
-            xdg_positioner_set_gravity(data->shell_surface.xdg.popup.xdg_positioner, XDG_POSITIONER_GRAVITY_BOTTOM_RIGHT);
-            xdg_positioner_set_size(data->shell_surface.xdg.popup.xdg_positioner, data->current.logical_width, data->current.logical_height);
-
-            // Set the popup initial position
-            position_x = window->last_position_pending ? window->pending.x : window->x;
-            position_y = window->last_position_pending ? window->pending.y : window->y;
-            EnsurePopupPositionIsValid(window, &position_x, &position_y);
-            if (data->scale_to_display) {
-                position_x = PixelToPoint(window->parent, position_x);
-                position_y = PixelToPoint(window->parent, position_y);
-            }
-            AdjustPopupOffset(window, &position_x, &position_y);
-            xdg_positioner_set_offset(data->shell_surface.xdg.popup.xdg_positioner, position_x, position_y);
-
-            // Assign the popup role
-            data->shell_surface.xdg.popup.xdg_popup = xdg_surface_get_popup(data->shell_surface.xdg.surface,
-                                                                                parent_xdg_surface,
-                                                                                data->shell_surface.xdg.popup.xdg_positioner);
-            xdg_popup_add_listener(data->shell_surface.xdg.popup.xdg_popup, &_xdg_popup_listener, data);
-
-            if (window->flags & SDL_WINDOW_TOOLTIP) {
-                struct wl_region *region;
-
-                // Tooltips can't be interacted with, so turn off the input region to avoid blocking anything behind them
-                region = wl_compositor_create_region(c->compositor);
-                wl_region_add(region, 0, 0, 0, 0);
-                wl_surface_set_input_region(data->surface, region);
-                wl_region_destroy(region);
-            } else if ((window->flags & SDL_WINDOW_POPUP_MENU) && !(window->flags & SDL_WINDOW_NOT_FOCUSABLE)) {
-                Wayland_SetKeyboardFocus(window, true);
-            }
-
-            SDL_SetPointerProperty(props, SDL_PROP_WINDOW_WAYLAND_XDG_POPUP_POINTER, data->shell_surface.xdg.popup.xdg_popup);
-            SDL_SetPointerProperty(props, SDL_PROP_WINDOW_WAYLAND_XDG_POSITIONER_POINTER, data->shell_surface.xdg.popup.xdg_positioner);
+            Wayland_CreatePopupShellSurface(_this, window);
         } else {
-            data->shell_surface.xdg.toplevel.xdg_toplevel = xdg_surface_get_toplevel(data->shell_surface.xdg.surface);
-            xdg_toplevel_set_app_id(data->shell_surface.xdg.toplevel.xdg_toplevel, data->app_id);
-            xdg_toplevel_add_listener(data->shell_surface.xdg.toplevel.xdg_toplevel, &toplevel_listener_xdg, data);
-
-            // Create the window decorations
-            if (c->decoration_manager) {
-                data->server_decoration = zxdg_decoration_manager_v1_get_toplevel_decoration(c->decoration_manager, data->shell_surface.xdg.toplevel.xdg_toplevel);
-                zxdg_toplevel_decoration_v1_add_listener(data->server_decoration, &xdg_toplevel_decoration_listener, window);
-                const enum zxdg_toplevel_decoration_v1_mode mode = !(window->flags & SDL_WINDOW_BORDERLESS) ? ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE : ZXDG_TOPLEVEL_DECORATION_V1_MODE_CLIENT_SIDE;
-                zxdg_toplevel_decoration_v1_set_mode(data->server_decoration, mode);
-            }
-
-            if (c->zxdg_exporter_v2) {
-                data->exported = zxdg_exporter_v2_export_toplevel(c->zxdg_exporter_v2, data->surface);
-                zxdg_exported_v2_add_listener(data->exported, &exported_v2_listener, data);
-            }
-
-            if (c->xdg_toplevel_icon_manager_v1 && data->xdg_toplevel_icon_v1) {
-                xdg_toplevel_icon_manager_v1_set_icon(_this->internal->xdg_toplevel_icon_manager_v1,
-                                                      data->shell_surface.xdg.toplevel.xdg_toplevel,
-                                                      data->xdg_toplevel_icon_v1);
-            }
-
-            SDL_SetPointerProperty(props, SDL_PROP_WINDOW_WAYLAND_XDG_TOPLEVEL_POINTER, data->shell_surface.xdg.toplevel.xdg_toplevel);
+            Wayland_CreateToplevelShellSurface(_this, window);
         }
     }
 

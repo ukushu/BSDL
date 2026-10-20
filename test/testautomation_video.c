@@ -2263,6 +2263,84 @@ static int SDLCALL video_setWindowCenteredOnDisplay(void *arg)
  *       desktops, particularly tiling desktops, may not support the expected behavior,
  *       so don't be surprised if this fails.
  */
+static int SDLCALL video_waylandShowHideLifecycle(void *arg)
+{
+    if (SDL_strcmp(SDL_GetCurrentVideoDriver(), "wayland") != 0) {
+        return TEST_SKIPPED;
+    }
+
+    SDL_Window *window = SDL_CreateWindow("Wayland show/hide lifecycle", 320, 240, SDL_WINDOW_HIDDEN);
+    if (!SDLTest_AssertCheck(window != NULL, "Create hidden Wayland window: %s", SDL_GetError())) {
+        return TEST_ABORTED;
+    }
+
+    const SDL_PropertiesID props = SDL_GetWindowProperties(window);
+    for (int i = 0; i < 2; ++i) {
+        if (!SDLTest_AssertCheck(SDL_ShowWindow(window), "Show Wayland window %d: %s", i, SDL_GetError())) {
+            break;
+        }
+        SDLTest_AssertCheck(SDL_GetPointerProperty(props, SDL_PROP_WINDOW_WAYLAND_XDG_SURFACE_POINTER, NULL) != NULL,
+                            "Show %d creates an xdg surface", i);
+        if (!SDLTest_AssertCheck(SDL_HideWindow(window), "Hide Wayland window %d: %s", i, SDL_GetError())) {
+            break;
+        }
+        SDLTest_AssertCheck(SDL_GetPointerProperty(props, SDL_PROP_WINDOW_WAYLAND_XDG_SURFACE_POINTER, NULL) == NULL,
+                            "Hide %d clears the xdg surface", i);
+    }
+
+    SDL_DestroyWindow(window);
+    return TEST_COMPLETED;
+}
+
+static const SDLTest_TestCaseReference videoTestWaylandShowHideLifecycle = {
+    video_waylandShowHideLifecycle, "video_waylandShowHideLifecycle", "Create and destroy Wayland shell surfaces across repeated show/hide", TEST_ENABLED
+};
+
+static int SDLCALL video_waylandPopupShowHideLifecycle(void *arg)
+{
+    if (SDL_strcmp(SDL_GetCurrentVideoDriver(), "wayland") != 0) {
+        return TEST_SKIPPED;
+    }
+
+    SDL_Window *parent = createVideoSuiteTestWindow("Wayland popup parent");
+    if (!parent) {
+        return TEST_ABORTED;
+    }
+    SDL_PumpEvents();
+    SDL_Window *popup = SDL_CreatePopupWindow(parent, 8, 8, 64, 64, SDL_WINDOW_TOOLTIP | SDL_WINDOW_HIDDEN);
+    if (!SDLTest_AssertCheck(popup != NULL, "Create hidden Wayland popup: %s", SDL_GetError())) {
+        destroyVideoSuiteTestWindow(parent);
+        return TEST_ABORTED;
+    }
+
+    const SDL_PropertiesID props = SDL_GetWindowProperties(popup);
+    for (int i = 0; i < 2; ++i) {
+        if (!SDLTest_AssertCheck(SDL_ShowWindow(popup), "Show Wayland popup %d: %s", i, SDL_GetError())) {
+            break;
+        }
+        const Uint64 deadline = SDL_GetTicks() + 1000;
+        while (SDL_GetPointerProperty(props, SDL_PROP_WINDOW_WAYLAND_XDG_POPUP_POINTER, NULL) == NULL && SDL_GetTicks() < deadline) {
+            SDL_PumpEvents();
+            SDL_Delay(10);
+        }
+        SDLTest_AssertCheck(SDL_GetPointerProperty(props, SDL_PROP_WINDOW_WAYLAND_XDG_POPUP_POINTER, NULL) != NULL,
+                            "Show %d creates an xdg popup", i);
+        if (!SDLTest_AssertCheck(SDL_HideWindow(popup), "Hide Wayland popup %d: %s", i, SDL_GetError())) {
+            break;
+        }
+        SDLTest_AssertCheck(SDL_GetPointerProperty(props, SDL_PROP_WINDOW_WAYLAND_XDG_POPUP_POINTER, NULL) == NULL,
+                            "Hide %d clears the xdg popup", i);
+    }
+
+    SDL_DestroyWindow(popup);
+    destroyVideoSuiteTestWindow(parent);
+    return TEST_COMPLETED;
+}
+
+static const SDLTest_TestCaseReference videoTestWaylandPopupShowHideLifecycle = {
+    video_waylandPopupShowHideLifecycle, "video_waylandPopupShowHideLifecycle", "Create and destroy Wayland popup roles across repeated show/hide", TEST_ENABLED
+};
+
 static int SDLCALL video_getSetWindowState(void *arg)
 {
     const char *title = "video_getSetWindowState Test Window";
@@ -3393,6 +3471,8 @@ static const SDLTest_TestCaseReference *videoTests[] = {
     &videoTestGetSetWindowData,
     &videoTestSetWindowCenteredOnDisplay,
     &videoTestGetSetWindowState,
+    &videoTestWaylandShowHideLifecycle,
+    &videoTestWaylandPopupShowHideLifecycle,
     &videoTestCreateMinimized,
     &videoTestCreateMaximized,
     &videoTestGetWindowSurface,
