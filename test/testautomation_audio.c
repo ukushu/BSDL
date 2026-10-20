@@ -1533,6 +1533,52 @@ static int SDLCALL audio_recordingPostmixCallback(void *arg)
     return TEST_COMPLETED;
 }
 
+static int SDLCALL audio_recordingF32ChannelMap(void *arg)
+{
+    const SDL_AudioSpec desired = { SDL_AUDIO_F32, 2, 48000 };
+    const int reversed_stereo_map[] = { 1, 0 };
+    SDL_AudioDeviceID device = 0;
+    SDL_AudioStream *stream = NULL;
+    SDL_AudioSpec actual;
+
+    (void)arg;
+    if (!SDL_GetCurrentAudioDriver() || SDL_strcmp(SDL_GetCurrentAudioDriver(), "dummy") != 0) {
+        return TEST_SKIPPED;
+    }
+
+    device = SDL_OpenAudioDevice(SDL_AUDIO_DEVICE_DEFAULT_RECORDING, &desired);
+    if (!SDLTest_AssertCheck(device != 0, "Open F32 dummy recording device: %s", SDL_GetError())) {
+        return TEST_ABORTED;
+    }
+    if (!SDLTest_AssertCheck(SDL_GetAudioDeviceFormat(device, &actual, NULL), "Get recording device format: %s", SDL_GetError()) ||
+        !SDLTest_AssertCheck(actual.format == SDL_AUDIO_F32, "Recording device uses F32 format")) {
+        goto cleanup;
+    }
+
+    SDL_PauseAudioDevice(device);
+    stream = SDL_CreateAudioStream(NULL, NULL);
+    if (!SDLTest_AssertCheck(stream != NULL, "Create recording stream: %s", SDL_GetError()) ||
+        !SDLTest_AssertCheck(SDL_BindAudioStream(device, stream), "Bind recording stream: %s", SDL_GetError()) ||
+        !SDLTest_AssertCheck(SDL_SetAudioStreamInputChannelMap(stream, reversed_stereo_map, SDL_arraysize(reversed_stereo_map)),
+                             "Set reversed recording channel map: %s", SDL_GetError())) {
+        goto cleanup;
+    }
+    SDL_ResumeAudioDevice(device);
+
+    for (int i = 0; i < 100 && SDL_GetAudioStreamAvailable(stream) == 0; ++i) {
+        SDL_Delay(10);
+    }
+    SDLTest_AssertCheck(SDL_GetAudioStreamAvailable(stream) > 0, "Mapped F32 recording delivers captured samples");
+
+cleanup:
+    if (stream) {
+        SDL_UnbindAudioStream(stream);
+        SDL_DestroyAudioStream(stream);
+    }
+    SDL_CloseAudioDevice(device);
+    return TEST_COMPLETED;
+}
+
 static int SDLCALL audio_recordingLogicalDeviceByteCount(void *arg)
 {
     const SDL_AudioSpec desired = { SDL_AUDIO_S16, 2, 48000 };
@@ -1945,6 +1991,10 @@ static const SDLTest_TestCaseReference audioTestRecordingPostmix = {
     audio_recordingPostmixCallback, "audio_recordingPostmixCallback", "Checks the recording conversion and postmix path.", TEST_ENABLED
 };
 
+static const SDLTest_TestCaseReference audioTestRecordingF32ChannelMap = {
+    audio_recordingF32ChannelMap, "audio_recordingF32ChannelMap", "Checks channel mapping on F32 recording devices.", TEST_ENABLED
+};
+
 static const SDLTest_TestCaseReference audioTestRecordingLogicalDeviceByteCount = {
     audio_recordingLogicalDeviceByteCount, "audio_recordingLogicalDeviceByteCount", "Checks recording byte counts are independent between logical devices.", TEST_ENABLED
 };
@@ -1960,7 +2010,7 @@ static const SDLTest_TestCaseReference *audioTests[] = {
     &audioTest10,
     &audioTest12, &audioTest13, &audioTest14, &audioTest15, &audioTest16,
     &audioTest17, &audioTest18, &audioTestBindStreams, &audioTestReopenHigherSpec,
-    &audioTestPlaybackPostmix, &audioTestRecordingPostmix, &audioTestRecordingLogicalDeviceByteCount, NULL
+    &audioTestPlaybackPostmix, &audioTestRecordingPostmix, &audioTestRecordingF32ChannelMap, &audioTestRecordingLogicalDeviceByteCount, NULL
 };
 
 /* Audio test suite (global) */

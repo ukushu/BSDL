@@ -2683,6 +2683,7 @@
 │   ├── testspritesurface.c
 │   ├── testsurround.c
 │   ├── testsymbols.c
+│   ├── testtemporarymemory.c
 │   ├── testthread.c
 │   ├── testtime.c
 │   ├── testtimer.c

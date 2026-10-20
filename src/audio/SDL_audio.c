@@ -1951,7 +1951,7 @@ static bool OpenPhysicalAudioDevice(SDL_AudioDevice *device, const SDL_AudioSpec
         return false;
     }
 
-    if (device->spec.format != SDL_AUDIO_F32) {
+    if (device->recording || device->spec.format != SDL_AUDIO_F32) {
         device->mix_buffer = (Uint8 *)SDL_aligned_alloc(SDL_GetSIMDAlignment(), device->work_buffer_size);
         if (!device->mix_buffer) {
             SDL_LogDebug(SDL_LOG_CATEGORY_AUDIO, "AUDIO: open of %s device '%s' failed: %s", devtypestr, device->name, SDL_GetError());
@@ -2624,7 +2624,7 @@ bool SDL_AudioDeviceFormatChangedAlreadyLocked(SDL_AudioDevice *device, const SD
         }
     }
 
-    bool needs_mix_buffer = (device->spec.format != SDL_AUDIO_F32);
+    bool needs_mix_buffer = (device->recording || device->spec.format != SDL_AUDIO_F32);
     if (!needs_mix_buffer) {
         SDL_aligned_free(device->mix_buffer);
         device->mix_buffer = NULL;
