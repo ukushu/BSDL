@@ -117,30 +117,52 @@ static bool SDL_CreateFallbackNativeTexture(SDL_Texture *texture)
     SDL_PixelFormat closest_format = texture_is_fourcc_and_target ? renderer->texture_formats[0] : GetClosestSupportedFormat(renderer, format, false);
     SDL_PropertiesID native_props = SDL_CreateProperties();
 
+    if (!native_props) {
+        return false;
+    }
+
     if (format == SDL_PIXELFORMAT_MJPG && closest_format == SDL_PIXELFORMAT_NV12) {
-        SDL_SetNumberProperty(native_props, SDL_PROP_TEXTURE_CREATE_COLORSPACE_NUMBER, SDL_COLORSPACE_JPEG);
+        if (!SDL_SetNumberProperty(native_props, SDL_PROP_TEXTURE_CREATE_COLORSPACE_NUMBER, SDL_COLORSPACE_JPEG)) {
+            goto failure;
+        }
     } else {
         const SDL_Colorspace default_colorspace = SDL_GetDefaultColorspaceForFormat(closest_format);
         if (SDL_COLORSPACETYPE(texture->colorspace) == SDL_COLORSPACETYPE(default_colorspace) &&
             SDL_COLORSPACETRANSFER(texture->colorspace) == SDL_COLORSPACETRANSFER(default_colorspace)) {
-            SDL_SetNumberProperty(native_props, SDL_PROP_TEXTURE_CREATE_COLORSPACE_NUMBER, texture->colorspace);
+            if (!SDL_SetNumberProperty(native_props, SDL_PROP_TEXTURE_CREATE_COLORSPACE_NUMBER, texture->colorspace)) {
+                goto failure;
+            }
         } else {
-            SDL_SetNumberProperty(native_props, SDL_PROP_TEXTURE_CREATE_COLORSPACE_NUMBER, default_colorspace);
+            if (!SDL_SetNumberProperty(native_props, SDL_PROP_TEXTURE_CREATE_COLORSPACE_NUMBER, default_colorspace)) {
+                goto failure;
+            }
         }
     }
-    SDL_SetNumberProperty(native_props, SDL_PROP_TEXTURE_CREATE_FORMAT_NUMBER, closest_format);
+    if (!SDL_SetNumberProperty(native_props, SDL_PROP_TEXTURE_CREATE_FORMAT_NUMBER, closest_format)) {
+        goto failure;
+    }
     if (SDL_ISPIXELFORMAT_INDEXED(format)) {
         // We're going to be uploading pixels frequently as the palette changes
-        SDL_SetNumberProperty(native_props, SDL_PROP_TEXTURE_CREATE_ACCESS_NUMBER, SDL_TEXTUREACCESS_STREAMING);
+        if (!SDL_SetNumberProperty(native_props, SDL_PROP_TEXTURE_CREATE_ACCESS_NUMBER, SDL_TEXTUREACCESS_STREAMING)) {
+            goto failure;
+        }
     } else {
-        SDL_SetNumberProperty(native_props, SDL_PROP_TEXTURE_CREATE_ACCESS_NUMBER, access);
+        if (!SDL_SetNumberProperty(native_props, SDL_PROP_TEXTURE_CREATE_ACCESS_NUMBER, access)) {
+            goto failure;
+        }
     }
-    SDL_SetNumberProperty(native_props, SDL_PROP_TEXTURE_CREATE_WIDTH_NUMBER, texture->w);
-    SDL_SetNumberProperty(native_props, SDL_PROP_TEXTURE_CREATE_HEIGHT_NUMBER, texture->h);
+    if (!SDL_SetNumberProperty(native_props, SDL_PROP_TEXTURE_CREATE_WIDTH_NUMBER, texture->w) ||
+        !SDL_SetNumberProperty(native_props, SDL_PROP_TEXTURE_CREATE_HEIGHT_NUMBER, texture->h)) {
+        goto failure;
+    }
 
     texture->native = SDL_CreateTextureWithProperties(renderer, native_props);
     SDL_DestroyProperties(native_props);
     return texture->native != NULL;
+
+failure:
+    SDL_DestroyProperties(native_props);
+    return false;
 }
 
 static bool SDL_AllocateFallbackTextureStorage(SDL_Texture *texture)
