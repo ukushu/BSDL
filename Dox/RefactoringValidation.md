@@ -284,6 +284,8 @@ Linux/X11 прогін `deus check . --no-parallel` з `SDLTEST_VIDEO_DRIVER=x11
 
 Аудит `src/video/wayland/SDL_waylandevents.c` завершено: `keyboard_handle_key` послідовно тримає timestamp/keymap/IME/modifier/event/repeat state, а `data_device_handle_drop` — MIME/portal/fallback/cleanup state. Вузької фази з незалежними параметрами немає; виділення helper-ів додало б зв’язність і ризик зміни порядку. Drop-помилки залишаються окремою bug card 000046.
 
+Початковий аудит `src/video/windows/SDL_windowsevents.c` підтвердив, що `WIN_WindowProc` є центральним dispatch із modal hook, SDL window lookup, keyboard/mouse/touch/pointer/IME, sizing, activation та fallback `CallWindowProc`. Без native Windows runtime і без вузької групи з незалежним state extraction helper-ів не додавав; `WM_INPUT` не повертав.
+
 1. Wayland show/hide та input/drop: прогнати characterization тести у реальному compositor і посилити assertions лише за підтвердженою прогалиною.
 2. `src/video/windows/SDL_windowsevents.c`: оглянути `WIN_WindowProc`; виділяти handler лише для групи повідомлень з чіткою відповідальністю, зберігши `CallWindowProc`, returns, IME, modal hooks і reentrancy. `WM_INPUT` dead path уже видалено; не повертати його. Потрібні native Windows/MSVC перевірки.
 3. `src/video/cocoa/SDL_cocoawindow.m`: оглянути `Cocoa_CreateWindow` та `windowDidExitFullScreen`; виділяти локальну фазу лише якщо вона зменшує зв’язність/складність без нового власника стану. Потрібна native macOS/Xcode перевірка.
