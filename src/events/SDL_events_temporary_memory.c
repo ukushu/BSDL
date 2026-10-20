@@ -138,6 +138,16 @@ static void SDL_LinkTemporaryMemoryEntry(SDL_TemporaryMemoryState *state, SDL_Te
     state->tail = entry;
 }
 
+static void SDL_FreeTemporaryMemoryList(SDL_TemporaryMemory *entry)
+{
+    while (entry) {
+        SDL_TemporaryMemory *next = entry->next;
+        SDL_free(entry->memory);
+        SDL_free(entry);
+        entry = next;
+    }
+}
+
 static void SDL_UnlinkTemporaryMemoryEntry(SDL_TemporaryMemoryState *state, SDL_TemporaryMemory *entry)
 {
     if (state->head == entry) {
@@ -230,7 +240,9 @@ void SDL_TransferTemporaryMemoryFromEvent(SDL_TemporaryMemory **event_memory)
 
     state = SDL_GetTemporaryMemoryState(true);
     if (!state) {
-        return;  // this is now a leak, but you probably have bigger problems if malloc failed.
+        SDL_FreeTemporaryMemoryList(*event_memory);
+        *event_memory = NULL;
+        return;
     }
 
     for (entry = *event_memory; entry; entry = next) {
@@ -253,12 +265,14 @@ static void *SDL_FreeLater(void *memory)
 
     state = SDL_GetTemporaryMemoryState(true);
     if (!state) {
-        return memory;  // this is now a leak, but you probably have bigger problems if malloc failed.
+        SDL_free(memory);
+        return NULL;
     }
 
     SDL_TemporaryMemory *entry = (SDL_TemporaryMemory *)SDL_malloc(sizeof(*entry));
     if (!entry) {
-        return memory;  // this is now a leak, but you probably have bigger problems if malloc failed. We could probably pool up and reuse entries, though.
+        SDL_free(memory);
+        return NULL;
     }
 
     entry->memory = memory;
