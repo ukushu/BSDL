@@ -2646,6 +2646,15 @@ static int SDLCALL render_testSoftwareGeometryQuads(void *arg)
         { { 8.0f, 7.0f }, green, { 0.0f, 1.0f } },
         { { 14.0f, 7.0f }, green, { 1.0f, 1.0f } }
     };
+    const float raw_xy[][2] = {
+        { 10.0f, 1.0f }, { 14.0f, 1.0f }, { 10.0f, 5.0f }, { 14.0f, 5.0f }
+    };
+    const SDL_FColor raw_color[][2] = { { white }, { white }, { white }, { white } };
+    const float raw_uv[][4] = {
+        { 0.0f, 0.0f, 0.0f, 0.0f }, { 1.0f, 0.0f, 0.0f, 0.0f },
+        { 0.0f, 1.0f, 0.0f, 0.0f }, { 1.0f, 1.0f, 0.0f, 0.0f }
+    };
+    const int raw_indices[] = { 0, 1, 3, 0, 3, 2 };
     SDL_Surface *surface = SDL_CreateSurface(16, 8, SDL_PIXELFORMAT_RGBA32);
     SDL_Surface *source = SDL_CreateSurface(1, 1, SDL_PIXELFORMAT_RGBA32);
     SDL_Renderer *software = NULL;
@@ -2673,6 +2682,13 @@ static int SDLCALL render_testSoftwareGeometryQuads(void *arg)
     SDLTest_AssertCheck(SDL_RenderGeometry(software, texture, unindexed, SDL_arraysize(unindexed), NULL, 0), "Render unindexed textured quad: %s", SDL_GetError());
     SDLTest_AssertCheck(SDL_RenderGeometry(software, NULL, varied_color, SDL_arraysize(varied_color), indices, SDL_arraysize(indices)),
                         "Render quad with varied vertex colors as triangles: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_RenderGeometryRaw(software, texture,
+                                              &raw_xy[0][0], sizeof(raw_xy[0]),
+                                              &raw_color[0][0], sizeof(raw_color[0]),
+                                              &raw_uv[0][0], sizeof(raw_uv[0]),
+                                              SDL_arraysize(raw_xy), raw_indices,
+                                              SDL_arraysize(raw_indices), sizeof(raw_indices[0])),
+                        "Render raw quad with separate strides: %s", SDL_GetError());
     SDLTest_AssertCheck(SDL_GetRenderDrawColor(software, &r, &g, &b, &a) && r == 0 && g == 0 && b == 255 && a == 255,
                         "Software geometry restores draw color");
     SDLTest_AssertCheck(SDL_GetRenderDrawBlendMode(software, &blend) && blend == SDL_BLENDMODE_NONE,
@@ -2692,6 +2708,9 @@ static int SDLCALL render_testSoftwareGeometryQuads(void *arg)
     }
     if (SDLTest_AssertCheck(SDL_ReadSurfacePixel(surface, 0, 0, &r, &g, &b, &a), "Read untouched pixel: %s", SDL_GetError())) {
         SDLTest_AssertCheck(r == 0 && g == 0 && b == 0 && a == 255, "Outside both quads stays black");
+    }
+    if (SDLTest_AssertCheck(SDL_ReadSurfacePixel(surface, 12, 3, &r, &g, &b, &a), "Read raw stride quad pixel: %s", SDL_GetError())) {
+        SDLTest_AssertCheck(r == 0 && g == 255 && b == 0 && a == 255, "Raw stride quad renders green");
     }
 
 done:

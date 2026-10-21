@@ -332,10 +332,10 @@ bool SDLCALL SDL_SW_RenderGeometryRaw(SDL_Renderer *renderer,
 
         // Check if UVs within range
         if (is_quad && uv) {
-            const float *uv0_ = (const float *)((const char *)uv + quad.A * color_stride);
-            const float *uv1_ = (const float *)((const char *)uv + quad.B * color_stride);
-            const float *uv2_ = (const float *)((const char *)uv + quad.C * color_stride);
-            const float *uv3_ = (const float *)((const char *)uv + quad.C2 * color_stride);
+            const float *uv0_ = (const float *)((const char *)uv + quad.A * uv_stride);
+            const float *uv1_ = (const float *)((const char *)uv + quad.B * uv_stride);
+            const float *uv2_ = (const float *)((const char *)uv + quad.C * uv_stride);
+            const float *uv3_ = (const float *)((const char *)uv + quad.C2 * uv_stride);
             if (uv0_[0] >= 0.0f && uv0_[0] <= 1.0f &&
                 uv1_[0] >= 0.0f && uv1_[0] <= 1.0f &&
                 uv2_[0] >= 0.0f && uv2_[0] <= 1.0f &&
