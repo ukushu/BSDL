@@ -43,6 +43,10 @@ static bool joystick_realloc_failed;
 static size_t joystick_fail_realloc_size;
 static size_t joystick_realloc_failed_size;
 
+static SDL_malloc_func joystick_original_malloc;
+static bool joystick_fail_malloc;
+static bool joystick_malloc_failed;
+
 static void *SDLCALL joystick_test_realloc(void *ptr, size_t size)
 {
     if (joystick_fail_realloc && size == joystick_fail_realloc_size) {
@@ -52,6 +56,16 @@ static void *SDLCALL joystick_test_realloc(void *ptr, size_t size)
         return NULL;
     }
     return joystick_original_realloc(ptr, size);
+}
+
+static void *SDLCALL joystick_test_malloc(size_t size)
+{
+    if (joystick_fail_malloc && size == joystick_fail_realloc_size) {
+        joystick_fail_malloc = false;
+        joystick_malloc_failed = true;
+        return NULL;
+    }
+    return joystick_original_malloc(size);
 }
 
 static SDL_free_func joystick_original_free;
@@ -778,6 +792,30 @@ static int SDLCALL joystick_mappingLabelHintsOOM(void *arg)
     return TEST_COMPLETED;
 }
 
+static int SDLCALL joystick_mappingStringOOM(void *arg)
+{
+    const char *mapping = "03003412341200007856000001000002,Mapping OOM,a:b0,b:b1,";
+    SDL_calloc_func original_calloc;
+    SDL_realloc_func original_realloc;
+    SDL_free_func original_free;
+
+    SDL_GetOriginalMemoryFunctions(&joystick_original_malloc, &original_calloc, &original_realloc, &original_free);
+    if (!SDL_SetMemoryFunctions(joystick_test_malloc, original_calloc, original_realloc, original_free)) {
+        return TEST_ABORTED;
+    }
+
+    joystick_fail_malloc = true;
+    joystick_malloc_failed = false;
+    joystick_fail_realloc_size = SDL_strlen(SDL_strchr(SDL_strchr(mapping, ',') + 1, ',') + 1) + 1;
+    SDL_ClearError();
+    SDLTest_AssertCheck(SDL_AddGamepadMapping(mapping) < 0, "Mapping fails when its mapping string allocation runs out of memory");
+    SDLTest_AssertCheck(joystick_malloc_failed, "Mapping string allocation failure is injected");
+    SDLTest_AssertCheck(SDL_GetError()[0] != '\0', "Mapping string OOM preserves an error");
+
+    SDL_SetMemoryFunctions(joystick_original_malloc, original_calloc, original_realloc, original_free);
+    return TEST_COMPLETED;
+}
+
 static int SDLCALL joystick_vidpidListRepeatedHints(void *arg)
 {
     SDL_malloc_func original_malloc;
@@ -1078,6 +1116,9 @@ static const SDLTest_TestCaseReference joystickTestMappingLabelHints = {
 static const SDLTest_TestCaseReference joystickTestMappingLabelHintsOOM = {
     joystick_mappingLabelHintsOOM, "joystick_mappingLabelHintsOOM", "GameCube mapping reports label hint allocation failure", TEST_ENABLED
 };
+static const SDLTest_TestCaseReference joystickTestMappingStringOOM = {
+    joystick_mappingStringOOM, "joystick_mappingStringOOM", "Gamepad mapping reports mapping string allocation failure", TEST_ENABLED
+};
 
 static const SDLTest_TestCaseReference joystickTestVIDPIDListRepeatedHints = {
     joystick_vidpidListRepeatedHints, "joystick_vidpidListRepeatedHints", "Reloading VID/PID hints releases the previous included list", TEST_ENABLED
@@ -1112,6 +1153,7 @@ static const SDLTest_TestCaseReference *joystickTests[] = {
     &joystickTestGamepadNameConversions,
     &joystickTestMappingLabelHints,
     &joystickTestMappingLabelHintsOOM,
+    &joystickTestMappingStringOOM,
     &joystickTestVIDPIDListRepeatedHints,
     &joystickTestMappingCRCOOM,
     &joystickTestGamepadButtonLabelsForType,

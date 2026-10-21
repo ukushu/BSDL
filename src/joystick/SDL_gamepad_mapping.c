@@ -196,6 +196,9 @@ char *SDL_PrivateGetGamepadMappingFromMappingString(const char *pMapping)
     }
 
     result = SDL_strdup(pSecondComma + 1); // mapping is everything after the 3rd comma
+    if (!result) {
+        return NULL;
+    }
 
     // Trim whitespace
     length = SDL_strlen(result);
