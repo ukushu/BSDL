@@ -93,12 +93,19 @@ SDL_GPUGraphicsPipeline *SDL_GPU_FetchBlitPipeline(
     }
 
     // Cache the new pipeline
-    EXPAND_ARRAY_IF_NEEDED(
-        (*blit_pipelines),
-        BlitPipelineCacheEntry,
-        *blit_pipeline_count + 1,
-        *blit_pipeline_capacity,
-        *blit_pipeline_capacity * 2);
+    if (*blit_pipeline_count >= *blit_pipeline_capacity) {
+        const Uint32 new_capacity = *blit_pipeline_capacity ? *blit_pipeline_capacity * 2 : 2;
+        BlitPipelineCacheEntry *new_blit_pipelines = SDL_realloc(
+            *blit_pipelines,
+            sizeof(**blit_pipelines) * new_capacity);
+        if (new_blit_pipelines == NULL) {
+            SDL_ReleaseGPUGraphicsPipeline(device, pipeline);
+            SDL_SetError("Out of memory");
+            return NULL;
+        }
+        *blit_pipelines = new_blit_pipelines;
+        *blit_pipeline_capacity = new_capacity;
+    }
 
     (*blit_pipelines)[*blit_pipeline_count].pipeline = pipeline;
     (*blit_pipelines)[*blit_pipeline_count].type = source_texture_type;
@@ -148,7 +155,9 @@ void SDL_GPU_BlitCommon(
         blit_pipeline_count,
         blit_pipeline_capacity);
 
-    SDL_assert(blit_pipeline != NULL);
+    if (blit_pipeline == NULL) {
+        return;
+    }
 
     color_target_info.load_op = info->load_op;
     color_target_info.clear_color = info->clear_color;
@@ -218,4 +227,3 @@ void SDL_GPU_BlitCommon(
     SDL_DrawGPUPrimitives(render_pass, 3, 1, 0, 0);
     SDL_EndGPURenderPass(render_pass);
 }
-

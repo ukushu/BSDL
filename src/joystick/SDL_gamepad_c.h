@@ -44,7 +44,7 @@ extern SDL_GamepadButtonLabel SDL_GetGamepadButtonLabelForFaceStyle(SDL_GamepadF
 extern char *SDL_PrivateGetGamepadGUIDFromMappingString(const char *mapping);
 extern char *SDL_PrivateGetGamepadNameFromMappingString(const char *mapping);
 extern char *SDL_PrivateGetGamepadMappingFromMappingString(const char *mapping);
-extern Uint16 SDL_NormalizeGamepadMappingCRC(SDL_GUID *guid, char **mapping);
+extern bool SDL_NormalizeGamepadMappingCRC(SDL_GUID *guid, char **mapping, Uint16 *crc);
 extern char *SDL_CreateGamepadMappingString(const char *name, const char *mapping, SDL_GUID guid);
 
 // Useful functions and variables from SDL_gamepad.c

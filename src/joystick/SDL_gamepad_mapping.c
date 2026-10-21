@@ -207,14 +207,14 @@ char *SDL_PrivateGetGamepadMappingFromMappingString(const char *pMapping)
     return result;
 }
 
-Uint16 SDL_NormalizeGamepadMappingCRC(SDL_GUID *guid, char **mapping)
+bool SDL_NormalizeGamepadMappingCRC(SDL_GUID *guid, char **mapping, Uint16 *crc)
 {
     char *pchMapping = *mapping;
-    Uint16 crc;
+    Uint16 mapping_crc;
 
     // Fix up the GUID and the mapping with the CRC, if needed
-    SDL_GetJoystickGUIDInfo(*guid, NULL, NULL, NULL, &crc);
-    if (crc) {
+    SDL_GetJoystickGUIDInfo(*guid, NULL, NULL, NULL, &mapping_crc);
+    if (mapping_crc) {
         // Make sure the mapping has the CRC
         char *new_mapping;
         const char *optional_comma;
@@ -241,28 +241,31 @@ Uint16 SDL_NormalizeGamepadMappingCRC(SDL_GUID *guid, char **mapping)
             optional_comma = ",";
         }
 
-        if (SDL_asprintf(&new_mapping, "%s%s%s%.4x,%s", pchMapping, optional_comma, SDL_GAMEPAD_CRC_FIELD, crc, crc_end) >= 0) {
+        if (SDL_asprintf(&new_mapping, "%s%s%s%.4x,%s", pchMapping, optional_comma, SDL_GAMEPAD_CRC_FIELD, mapping_crc, crc_end) < 0) {
             if (crc_string) {
                 *crc_string = saved_crc_char;
             }
-            SDL_free(pchMapping);
-            pchMapping = new_mapping;
-        } else if (crc_string) {
+            return false;
+        }
+        if (crc_string) {
             *crc_string = saved_crc_char;
         }
+        SDL_free(pchMapping);
+        pchMapping = new_mapping;
     } else {
         // Make sure the GUID has the CRC, for matching purposes
         char *crc_string = SDL_strstr(pchMapping, SDL_GAMEPAD_CRC_FIELD);
         if (crc_string) {
-            crc = (Uint16)SDL_strtol(crc_string + SDL_GAMEPAD_CRC_FIELD_SIZE, NULL, 16);
-            if (crc) {
-                SDL_SetJoystickGUIDCRC(guid, crc);
+            mapping_crc = (Uint16)SDL_strtol(crc_string + SDL_GAMEPAD_CRC_FIELD_SIZE, NULL, 16);
+            if (mapping_crc) {
+                SDL_SetJoystickGUIDCRC(guid, mapping_crc);
             }
         }
     }
 
     *mapping = pchMapping;
-    return crc;
+    *crc = mapping_crc;
+    return true;
 }
 
 /*

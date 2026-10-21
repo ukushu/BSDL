@@ -30,12 +30,14 @@ static SDL_realloc_func joystick_original_realloc;
 static bool joystick_fail_realloc;
 static bool joystick_realloc_failed;
 static size_t joystick_fail_realloc_size;
+static size_t joystick_realloc_failed_size;
 
 static void *SDLCALL joystick_test_realloc(void *ptr, size_t size)
 {
-    if (joystick_fail_realloc && size >= joystick_fail_realloc_size) {
+    if (joystick_fail_realloc && size == joystick_fail_realloc_size) {
         joystick_fail_realloc = false;
         joystick_realloc_failed = true;
+        joystick_realloc_failed_size = size;
         return NULL;
     }
     return joystick_original_realloc(ptr, size);
@@ -758,7 +760,9 @@ static int SDLCALL joystick_mappingLabelHintsOOM(void *arg)
 
 static int SDLCALL joystick_mappingCRCOOM(void *arg)
 {
-    const char *mapping = "030034127e0500003703000000000001,Gamepad CRC OOM,crc:1234,a:b0,b:b1,x:b2,y:b3,leftx:a0,lefty:a1,rightx:a2,righty:a3,lefttrigger:a4,righttrigger:a5,back:b4,guide:b5,start:b6,leftshoulder:b7,rightshoulder:b8,";
+    const char *existing_mapping = "03003412341200007856000001000001,CRC existing,crc:1234,a:b0,b:b1,x:b2,y:b3,leftx:a0,lefty:a1,rightx:a2,righty:a3,lefttrigger:a4,righttrigger:a5,back:b4,guide:b5,start:b6,leftshoulder:b7,rightshoulder:b8,";
+    const char *replacement_mapping = "03003412341200007856000001000001,CRC replacement,crc:1234,a:b9,b:b8,x:b7,y:b6,leftx:a5,lefty:a4,rightx:a3,righty:a2,lefttrigger:a1,righttrigger:a0,back:b10,guide:b11,start:b12,leftshoulder:b13,rightshoulder:b14,";
+    const char *missing_crc_mapping = "03007856341200007856000001000002,CRC missing,a:b0,b:b1,x:b2,y:b3,leftx:a0,lefty:a1,rightx:a2,righty:a3,lefttrigger:a4,righttrigger:a5,back:b4,guide:b5,start:b6,leftshoulder:b7,rightshoulder:b8,";
     SDL_malloc_func original_malloc;
     SDL_calloc_func original_calloc;
     SDL_realloc_func original_realloc;
@@ -771,23 +775,49 @@ static int SDLCALL joystick_mappingCRCOOM(void *arg)
         return TEST_ABORTED;
     }
 
-    joystick_fail_realloc = true;
+    joystick_fail_realloc = false;
     joystick_realloc_failed = false;
-    joystick_fail_realloc_size = 101;
+    joystick_fail_realloc_size = SDL_strlen(SDL_strchr(SDL_strchr(replacement_mapping, ',') + 1, ',') + 1) + 1;
+    SDLTest_AssertCheck(SDL_AddGamepadMapping(existing_mapping) >= 0, "Add existing CRC mapping before testing failed replacement");
+    joystick_fail_realloc = true;
     SDL_ClearError();
-    SDLTest_AssertCheck(SDL_AddGamepadMapping(mapping) < 0, "CRC mapping fails when normalization runs out of memory");
-    SDLTest_AssertCheck(joystick_realloc_failed, "CRC normalization reaches and fails SDL_asprintf realloc");
+    SDLTest_AssertCheck(SDL_AddGamepadMapping(replacement_mapping) < 0, "CRC mapping replacement fails when normalization runs out of memory");
+    SDLTest_AssertCheck(joystick_realloc_failed && joystick_realloc_failed_size == joystick_fail_realloc_size, "CRC normalization realloc fails at its expected formatted size");
     SDLTest_AssertCheck(SDL_GetError()[0] != '\0', "CRC normalization OOM preserves an error");
-    stored_mapping = SDL_GetGamepadMappingForGUID(SDL_StringToGUID("030034127e0500003703000000000001"));
-    SDLTest_AssertCheck(stored_mapping == NULL, "CRC mapping is not added after normalization OOM");
+    stored_mapping = SDL_GetGamepadMappingForGUID(SDL_StringToGUID("03003412341200007856000001000001"));
+    SDLTest_AssertCheck(stored_mapping && SDL_strstr(stored_mapping, "CRC existing,") && SDL_strstr(stored_mapping, "a:b0,") && !SDL_strstr(stored_mapping, "a:b9,"),
+                        "OOM leaves the existing mapping and bindings untouched: %s", stored_mapping ? stored_mapping : SDL_GetError());
     SDL_free(stored_mapping);
 
     SDL_SetMemoryFunctions(original_malloc, original_calloc, original_realloc, original_free);
     SDL_ClearError();
-    SDLTest_AssertCheck(SDL_AddGamepadMapping(mapping) >= 0, "CRC mapping succeeds after OOM");
-    stored_mapping = SDL_GetGamepadMappingForGUID(SDL_StringToGUID("030034127e0500003703000000000001"));
-    SDLTest_AssertCheck(stored_mapping && SDL_strstr(stored_mapping, "crc:1234,") != NULL,
-                        "Successful CRC mapping retains its normalized CRC: %s", stored_mapping ? stored_mapping : SDL_GetError());
+    SDLTest_AssertCheck(SDL_AddGamepadMapping(replacement_mapping) >= 0, "CRC mapping replacement succeeds after OOM");
+    stored_mapping = SDL_GetGamepadMappingForGUID(SDL_StringToGUID("03003412341200007856000001000001"));
+    SDLTest_AssertCheck(stored_mapping && SDL_strstr(stored_mapping, "CRC replacement,") && SDL_strstr(stored_mapping, "crc:1234,") && SDL_strstr(stored_mapping, "a:b9,"),
+                        "Successful replacement preserves its CRC and bindings: %s", stored_mapping ? stored_mapping : SDL_GetError());
+    SDL_free(stored_mapping);
+
+    SDL_SetMemoryFunctions(original_malloc, original_calloc, original_realloc, original_free);
+    joystick_fail_realloc_size = SDL_strlen(SDL_strchr(SDL_strchr(missing_crc_mapping, ',') + 1, ',') + 1) + SDL_strlen("crc:5678,") + 1;
+    if (!SDL_SetMemoryFunctions(original_malloc, original_calloc, joystick_test_realloc, original_free)) {
+        return TEST_ABORTED;
+    }
+    joystick_fail_realloc = true;
+    joystick_realloc_failed = false;
+    SDL_ClearError();
+    SDLTest_AssertCheck(SDL_AddGamepadMapping(missing_crc_mapping) < 0, "Mapping without crc fails when CRC normalization runs out of memory");
+    SDLTest_AssertCheck(joystick_realloc_failed && joystick_realloc_failed_size == joystick_fail_realloc_size, "Missing CRC normalization fails at its expected formatted size");
+    SDLTest_AssertCheck(SDL_GetError()[0] != '\0', "Missing CRC OOM preserves an error");
+    stored_mapping = SDL_GetGamepadMappingForGUID(SDL_StringToGUID("03007856341200007856000001000002"));
+    SDLTest_AssertCheck(stored_mapping == NULL, "Mapping without crc is not added after normalization OOM");
+    SDL_free(stored_mapping);
+
+    SDL_SetMemoryFunctions(original_malloc, original_calloc, original_realloc, original_free);
+    SDL_ClearError();
+    SDLTest_AssertCheck(SDL_AddGamepadMapping(missing_crc_mapping) >= 0, "Mapping without crc succeeds after OOM");
+    stored_mapping = SDL_GetGamepadMappingForGUID(SDL_StringToGUID("03007856341200007856000001000002"));
+    SDLTest_AssertCheck(stored_mapping && SDL_strstr(stored_mapping, "crc:5678,") && SDL_strstr(stored_mapping, "a:b0,") && SDL_strstr(stored_mapping, "rightshoulder:b8,"),
+                        "Successful normalization adds the missing CRC and preserves bindings: %s", stored_mapping ? stored_mapping : SDL_GetError());
     SDL_free(stored_mapping);
     return TEST_COMPLETED;
 }

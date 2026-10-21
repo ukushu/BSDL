@@ -360,7 +360,7 @@ add_sdl_test_executable(testaudioinfo SOURCES testaudioinfo.c NAME83 audioinf)
 add_sdl_test_executable(testaudiostreamdynamicresample NEEDS_RESOURCES TESTUTILS SOURCES testaudiostreamdynamicresample.c NAME83 audynres)
 
 file(GLOB TESTAUTOMATION_SOURCE_FILES testautomation*.c)
-add_sdl_test_executable(testautomation NONINTERACTIVE NONINTERACTIVE_TIMEOUT 120 NEEDS_RESOURCES BUILD_DEPENDENT SOURCES ${TESTAUTOMATION_SOURCE_FILES} NAME83 automat)
+add_sdl_test_executable(testautomation NONINTERACTIVE NONINTERACTIVE_TIMEOUT 120 NEEDS_RESOURCES BUILD_DEPENDENT SOURCES ${TESTAUTOMATION_SOURCE_FILES} ${SDL3_SOURCE_DIR}/src/gpu/SDL_gpu_blit.c NAME83 automat)
 if(EMSCRIPTEN)
     target_link_options(testautomation PRIVATE -sALLOW_MEMORY_GROWTH=1 -sMAXIMUM_MEMORY=1gb)
 endif()

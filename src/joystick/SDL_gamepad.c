@@ -1398,7 +1398,11 @@ static GamepadMapping_t *SDL_PrivateAddMappingForGUID(SDL_GUID jGUID, const char
         return NULL;
     }
 
-    crc = SDL_NormalizeGamepadMappingCRC(&jGUID, &pchMapping);
+    if (!SDL_NormalizeGamepadMappingCRC(&jGUID, &pchMapping, &crc)) {
+        SDL_free(pchName);
+        SDL_free(pchMapping);
+        return NULL;
+    }
 
     PushMappingChangeTracking();
 
