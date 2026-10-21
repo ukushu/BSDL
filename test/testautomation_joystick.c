@@ -810,7 +810,7 @@ static int SDLCALL joystick_mappingStringOOM(void *arg)
     SDL_ClearError();
     SDLTest_AssertCheck(SDL_AddGamepadMapping(mapping) < 0, "Mapping fails when its mapping string allocation runs out of memory");
     SDLTest_AssertCheck(joystick_malloc_failed, "Mapping string allocation failure is injected");
-    SDLTest_AssertCheck(SDL_GetError()[0] != '\0', "Mapping string OOM preserves an error");
+    SDLTest_AssertCheck(SDL_strcmp(SDL_GetError(), "Out of memory") == 0, "Mapping string OOM error is preserved: %s", SDL_GetError());
 
     SDL_SetMemoryFunctions(joystick_original_malloc, original_calloc, original_realloc, original_free);
     return TEST_COMPLETED;

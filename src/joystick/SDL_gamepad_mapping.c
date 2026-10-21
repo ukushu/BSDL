@@ -182,11 +182,13 @@ char *SDL_PrivateGetGamepadMappingFromMappingString(const char *pMapping)
 
     pFirstComma = SDL_strchr(pMapping, ',');
     if (!pFirstComma) {
+        SDL_SetError("Couldn't parse %s", pMapping);
         return NULL;
     }
 
     pSecondComma = SDL_strchr(pFirstComma + 1, ',');
     if (!pSecondComma) {
+        SDL_SetError("Couldn't parse %s", pMapping);
         return NULL;
     }
 

@@ -1394,7 +1394,6 @@ static GamepadMapping_t *SDL_PrivateAddMappingForGUID(SDL_GUID jGUID, const char
     pchMapping = SDL_PrivateGetGamepadMappingFromMappingString(mappingString);
     if (!pchMapping) {
         SDL_free(pchName);
-        SDL_SetError("Couldn't parse %s", mappingString);
         return NULL;
     }
 
