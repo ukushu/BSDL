@@ -1622,6 +1622,7 @@ static int SDLCALL audio_recordingLogicalDeviceByteCount(void *arg)
     }
     if (!SDLTest_AssertCheck(SDL_BindAudioStream(with_postmix, with_postmix_stream), "Bind postmix recording stream: %s", SDL_GetError()) ||
         !SDLTest_AssertCheck(SDL_BindAudioStream(without_postmix, without_postmix_stream), "Bind plain recording stream: %s", SDL_GetError()) ||
+        !SDLTest_AssertCheck(SDL_SetAudioDeviceGain(without_postmix, 0.5f), "Set gain on recording device without postmix: %s", SDL_GetError()) ||
         !SDLTest_AssertCheck(SDL_SetAudioPostmixCallback(with_postmix, audio_recordingPatternPostmixCallback, &state), "Set recording postmix callback: %s", SDL_GetError()) ||
         !SDLTest_AssertCheck(SDL_SetAudioStreamInputChannelMap(with_postmix_stream, reversed_stereo_map, SDL_arraysize(reversed_stereo_map)), "Set postmix stream channel map: %s", SDL_GetError())) {
         goto cleanup;

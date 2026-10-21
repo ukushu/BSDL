@@ -278,6 +278,15 @@ static void UpdateAudioStreamFormatsPhysical(SDL_AudioDevice *device)
     }
 }
 
+// should hold device->lock before calling.
+static bool EnsureAudioPostmixBuffer(SDL_AudioDevice *device)
+{
+    if (!device->postmix_buffer) {
+        device->postmix_buffer = (float *)SDL_aligned_alloc(SDL_GetSIMDAlignment(), device->work_buffer_size);
+    }
+    return device->postmix_buffer != NULL;
+}
+
 // Zombie device implementation...
 
 // These get used when a device is disconnected or fails, so audiostreams don't overflow with data that isn't being
@@ -2097,6 +2106,10 @@ bool SDL_SetAudioDeviceGain(SDL_AudioDeviceID devid, float gain)
     SDL_LogicalAudioDevice *logdev = ObtainLogicalAudioDevice(devid, &device);
     bool result = false;
     if (logdev) {
+        if (gain != 1.0f && !EnsureAudioPostmixBuffer(device)) {
+            ReleaseAudioDevice(device);
+            return false;
+        }
         logdev->gain = gain;
         UpdateAudioStreamFormatsPhysical(device);
         result = true;
@@ -2112,11 +2125,8 @@ bool SDL_SetAudioPostmixCallback(SDL_AudioDeviceID devid, SDL_AudioPostmixCallba
     bool result = false;
     if (logdev) {
         result = true;
-        if (callback && !device->postmix_buffer) {
-            device->postmix_buffer = (float *)SDL_aligned_alloc(SDL_GetSIMDAlignment(), device->work_buffer_size);
-            if (!device->postmix_buffer) {
-                result = false;
-            }
+        if (callback && !EnsureAudioPostmixBuffer(device)) {
+            result = false;
         }
 
         if (result) {
