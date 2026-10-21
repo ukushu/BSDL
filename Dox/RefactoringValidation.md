@@ -300,3 +300,9 @@ Linux/X11 прогін `deus check . --no-parallel` з `SDLTEST_VIDEO_DRIVER=x11
 Останній підтверджений Linux dummy прогін після змін: CTest 25/25; automation 436 total, 0 failed (14 skipped звичайний, 22 no-SIMD). X11: CTest 23/25; звичайний прогін має два відомі падіння 000007/000045, no-SIMD — 000007. Wayland тести в обох конфігураціях пропущені; Wayland runtime не пройшов. Windows, macOS і D3D12 native перевірки не виконані.
 
 Структурні пропозиції щодо нових модулів Vulkan/D3D12/Metal вилучено: наразі немає доведеної межі з вузьким приватним API; великий файл сам по собі не аргумент. Performance оптимізації немає без виміряного bottleneck. Існуючі баги не включати в цей рефакторинг.
+
+## Fullscreen restore: незакриті ручні перевірки (2026-10-21)
+
+Для картки 000009 автоматизований Linux прогін `deus check . --no-parallel` завершився успішно: CTest 28/28, включно з `testfullscreenfailure`. Цей тест перевіряє ін’єктовану помилку на offscreen backend, але не підтверджує поведінку відновлення display mode на фізичних дисплеях.
+
+Залишаються ручні перевірки: на фізичному Linux/X11 та macOS/Cocoa увійти в exclusive fullscreen, вийти з нього й перевірити відновлення початкового desktop display mode. Поточне Linux-середовище не перевіряє Cocoa/CoreGraphics backend; до виконання обох перевірок картка лишається заблокованою.
