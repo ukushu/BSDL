@@ -2,6 +2,17 @@
  * Joystick test suite
  */
 
+#include "../src/dynapi/SDL_dynapi.h"
+#ifdef SDL_DYNAMIC_API
+#undef SDL_DYNAMIC_API
+#endif
+#define SDL_DYNAMIC_API 0
+#include "../src/SDL_internal.h"
+#define SDL_LoadVIDPIDListFromHints joystick_test_LoadVIDPIDListFromHints
+#define SDL_FreeVIDPIDList joystick_test_FreeVIDPIDList
+#include "../src/joystick/SDL_vidpid.c"
+#undef SDL_LoadVIDPIDListFromHints
+#undef SDL_FreeVIDPIDList
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_test.h>
 #include "../src/joystick/usb_ids.h"
@@ -41,6 +52,15 @@ static void *SDLCALL joystick_test_realloc(void *ptr, size_t size)
         return NULL;
     }
     return joystick_original_realloc(ptr, size);
+}
+
+static SDL_free_func joystick_original_free;
+static int joystick_vidpid_free_count;
+
+static void SDLCALL joystick_test_free(void *ptr)
+{
+    ++joystick_vidpid_free_count;
+    joystick_original_free(ptr);
 }
 
 
@@ -758,6 +778,34 @@ static int SDLCALL joystick_mappingLabelHintsOOM(void *arg)
     return TEST_COMPLETED;
 }
 
+static int SDLCALL joystick_vidpidListRepeatedHints(void *arg)
+{
+    SDL_malloc_func original_malloc;
+    SDL_calloc_func original_calloc;
+    SDL_realloc_func original_realloc;
+    SDL_free_func original_free;
+    Uint32 initial_entries[] = { 0x12340056 };
+    SDL_vidpid_list list = { 0 };
+
+    SDL_GetOriginalMemoryFunctions(&original_malloc, &original_calloc, &original_realloc, &original_free);
+    joystick_original_free = original_free;
+    joystick_vidpid_free_count = 0;
+    SDLTest_AssertCheck(SDL_SetMemoryFunctions(original_malloc, original_calloc, original_realloc, joystick_test_free),
+                        "Install VID/PID free tracking");
+
+    list.initial_entries = initial_entries;
+    list.num_initial_entries = SDL_arraysize(initial_entries);
+    joystick_test_LoadVIDPIDListFromHints(&list, "0x1234:0x5678", NULL);
+    SDLTest_AssertCheck(list.num_included_entries == 2, "Initial and hinted VID/PID entries are loaded");
+    joystick_test_LoadVIDPIDListFromHints(&list, "0x1234:0x9abc", NULL);
+    SDLTest_AssertCheck(list.num_included_entries == 2, "Repeated hint reload preserves the expected entry count");
+    SDLTest_AssertCheck(joystick_vidpid_free_count == 1, "Repeated hint reload frees the previous included list");
+
+    joystick_test_FreeVIDPIDList(&list);
+    SDL_SetMemoryFunctions(original_malloc, original_calloc, original_realloc, original_free);
+    return TEST_COMPLETED;
+}
+
 static int SDLCALL joystick_mappingCRCOOM(void *arg)
 {
     const char *existing_mapping = "03003412341200007856000001000001,CRC existing,crc:1234,a:b0,b:b1,x:b2,y:b3,leftx:a0,lefty:a1,rightx:a2,righty:a3,lefttrigger:a4,righttrigger:a5,back:b4,guide:b5,start:b6,leftshoulder:b7,rightshoulder:b8,";
@@ -1030,6 +1078,10 @@ static const SDLTest_TestCaseReference joystickTestMappingLabelHints = {
 static const SDLTest_TestCaseReference joystickTestMappingLabelHintsOOM = {
     joystick_mappingLabelHintsOOM, "joystick_mappingLabelHintsOOM", "GameCube mapping reports label hint allocation failure", TEST_ENABLED
 };
+
+static const SDLTest_TestCaseReference joystickTestVIDPIDListRepeatedHints = {
+    joystick_vidpidListRepeatedHints, "joystick_vidpidListRepeatedHints", "Reloading VID/PID hints releases the previous included list", TEST_ENABLED
+};
 static const SDLTest_TestCaseReference joystickTestMappingCRCOOM = {
     joystick_mappingCRCOOM, "joystick_mappingCRCOOM", "Gamepad mapping preserves CRC after normalization OOM", TEST_ENABLED
 };
@@ -1060,6 +1112,7 @@ static const SDLTest_TestCaseReference *joystickTests[] = {
     &joystickTestGamepadNameConversions,
     &joystickTestMappingLabelHints,
     &joystickTestMappingLabelHintsOOM,
+    &joystickTestVIDPIDListRepeatedHints,
     &joystickTestMappingCRCOOM,
     &joystickTestGamepadButtonLabelsForType,
     &joystickTestGetGamepadsFiltersDevices,

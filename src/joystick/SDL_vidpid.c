@@ -66,6 +66,12 @@ static void SDL_LoadVIDPIDListFromHint(const char *hint, int *num_entries, int *
 
 void SDL_LoadVIDPIDListFromHints(SDL_vidpid_list *list, const char *included_list, const char *excluded_list)
 {
+    if (list->included_entries) {
+        SDL_free(list->included_entries);
+        list->included_entries = NULL;
+        list->max_included_entries = 0;
+    }
+
     // Empty the list
     list->num_included_entries = 0;
     list->num_excluded_entries = 0;

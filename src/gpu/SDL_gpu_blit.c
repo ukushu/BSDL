@@ -100,7 +100,6 @@ SDL_GPUGraphicsPipeline *SDL_GPU_FetchBlitPipeline(
             sizeof(**blit_pipelines) * new_capacity);
         if (new_blit_pipelines == NULL) {
             SDL_ReleaseGPUGraphicsPipeline(device, pipeline);
-            SDL_SetError("Out of memory");
             return NULL;
         }
         *blit_pipelines = new_blit_pipelines;

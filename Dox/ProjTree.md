@@ -2617,6 +2617,7 @@
 │   ├── testgl.c
 │   ├── testgles.c
 │   ├── testgles2.c
+│   ├── testgpu_blit_oom.c
 │   ├── testgpu_simple_clear.c
 │   ├── testgpu_spinning_cube_xr.c
 │   ├── testgpu_spinning_cube.c
@@ -2666,6 +2667,7 @@
 │   ├── testprocess.c
 │   ├── testqsort.c
 │   ├── testrelative.c
+│   ├── testrender_gpu_state_oom.c
 │   ├── testrendercopyex.c
 │   ├── testrenderfallbackoom.c
 │   ├── testrendertarget.c

@@ -360,7 +360,7 @@ add_sdl_test_executable(testaudioinfo SOURCES testaudioinfo.c NAME83 audioinf)
 add_sdl_test_executable(testaudiostreamdynamicresample NEEDS_RESOURCES TESTUTILS SOURCES testaudiostreamdynamicresample.c NAME83 audynres)
 
 file(GLOB TESTAUTOMATION_SOURCE_FILES testautomation*.c)
-add_sdl_test_executable(testautomation NONINTERACTIVE NONINTERACTIVE_TIMEOUT 120 NEEDS_RESOURCES BUILD_DEPENDENT SOURCES ${TESTAUTOMATION_SOURCE_FILES} ${SDL3_SOURCE_DIR}/src/gpu/SDL_gpu_blit.c NAME83 automat)
+add_sdl_test_executable(testautomation NONINTERACTIVE NONINTERACTIVE_TIMEOUT 120 NEEDS_RESOURCES BUILD_DEPENDENT SOURCES ${TESTAUTOMATION_SOURCE_FILES} testgpu_blit_oom.c NAME83 automat)
 if(EMSCRIPTEN)
     target_link_options(testautomation PRIVATE -sALLOW_MEMORY_GROWTH=1 -sMAXIMUM_MEMORY=1gb)
 endif()
@@ -383,6 +383,7 @@ add_sdl_test_executable(testevdev BUILD_DEPENDENT NONINTERACTIVE SOURCES testevd
 add_sdl_test_executable(testtemporarymemory BUILD_DEPENDENT NONINTERACTIVE NOTRACKMEM SOURCES testtemporarymemory.c)
 add_sdl_test_executable(testfullscreenfailure NONINTERACTIVE SOURCES testfullscreenfailure.c NAME83 fullfail)
 add_sdl_test_executable(testrenderfallbackoom BUILD_DEPENDENT NONINTERACTIVE NOTRACKMEM SOURCES testrenderfallbackoom.c)
+add_sdl_test_executable(testrender_gpu_state_oom BUILD_DEPENDENT NONINTERACTIVE NOTRACKMEM SOURCES testrender_gpu_state_oom.c)
 
 add_sdl_test_executable(testdescriptor BUILD_DEPENDENT SOURCES testdescriptor.c NAME83 descriptr)
 target_compile_definitions(testdescriptor PRIVATE DEBUG_DESCRIPTOR)

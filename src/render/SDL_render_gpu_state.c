@@ -162,19 +162,22 @@ bool SDL_SetGPURenderStateFragmentUniforms(SDL_GPURenderState *state, Uint32 slo
         }
     }
 
+    void *data_copy = SDL_malloc(length);
+    if (!data_copy) {
+        return false;
+    }
+
     SDL_GPURenderStateUniformBuffer *buffers = (SDL_GPURenderStateUniformBuffer *)SDL_realloc(state->uniform_buffers, (state->num_uniform_buffers + 1) * sizeof(*state->uniform_buffers));
     if (!buffers) {
+        SDL_free(data_copy);
         return false;
     }
     state->uniform_buffers = buffers;
 
     SDL_GPURenderStateUniformBuffer *buffer = &buffers[state->num_uniform_buffers];
+    buffer->data = data_copy;
     buffer->slot_index = slot_index;
     buffer->length = length;
-    buffer->data = SDL_malloc(length);
-    if (!buffer->data) {
-        return false;
-    }
     SDL_memcpy(buffer->data, data, length);
 
     ++state->num_uniform_buffers;
