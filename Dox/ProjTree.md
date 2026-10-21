@@ -2581,6 +2581,8 @@
 │   ├── testautomation_platform.c
 │   ├── testautomation_properties.c
 │   ├── testautomation_rect.c
+│   ├── testautomation_render_texture_failure.c
+│   ├── testautomation_render_texture_palette_failure.c
 │   ├── testautomation_render.c
 │   ├── testautomation_sdltest.c
 │   ├── testautomation_stdlib.c

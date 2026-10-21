@@ -331,7 +331,10 @@ SDL_Texture *SDL_CreateTextureWithProperties(SDL_Renderer *renderer, SDL_Propert
     }
 
     if (SDL_ISPIXELFORMAT_INDEXED(texture->format) && palette) {
-        SDL_SetTexturePalette(texture, palette);
+        if (!SDL_SetTexturePalette(texture, palette)) {
+            SDL_DestroyTexture(texture);
+            return NULL;
+        }
     }
 
     // Now set the properties for the new texture

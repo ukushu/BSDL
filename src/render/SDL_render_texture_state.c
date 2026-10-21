@@ -364,12 +364,15 @@ static bool AttachTexturePalette(SDL_Texture *texture, SDL_Palette *palette)
             } else {
                 SDL_TexturePalette *texture_palette = (SDL_TexturePalette *)SDL_calloc(1, sizeof(*texture_palette));
                 if (!texture_palette) {
-                    SDL_SetTexturePalette(texture, NULL);
+                    SDL_DestroyPalette(texture->public_palette);
+                    texture->public_palette = NULL;
                     return false;
                 }
                 if (!renderer->CreatePalette(renderer, texture_palette)) {
                     renderer->DestroyPalette(renderer, texture_palette);
-                    SDL_SetTexturePalette(texture, NULL);
+                    SDL_free(texture_palette);
+                    SDL_DestroyPalette(texture->public_palette);
+                    texture->public_palette = NULL;
                     return false;
                 }
                 texture->palette = texture_palette;
