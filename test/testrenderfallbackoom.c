@@ -147,6 +147,24 @@ int main(int argc, char **argv)
 
     CHECK(SDL_SetMemoryFunctions(test_malloc, test_calloc, test_realloc, test_free));
 
+    CHECK(SDL_SetRenderLogicalPresentation(renderer, 1, 1, SDL_LOGICAL_PRESENTATION_LETTERBOX));
+    {
+        const SDL_FPoint points[100] = { { 0.0f, 0.0f } };
+        const size_t xy_size = sizeof(float) * 4 * 2 * SDL_arraysize(points);
+        const size_t indices_size = sizeof(int) * ((4 * 3 * (SDL_arraysize(points) - 1)) + (2 * 3 * SDL_arraysize(points)));
+        const size_t failure_sizes[] = { xy_size, indices_size };
+
+        for (size_t i = 0; i < SDL_arraysize(failure_sizes); ++i) {
+            BeginAllocationTracking(0, failure_sizes[i], 1);
+            SDL_ClearError();
+            CHECK(!SDL_RenderLines(renderer, points, SDL_arraysize(points)));
+            tracking_allocations = false;
+            CHECK(allocation_failure_triggered);
+            CHECK(!allocation_tracking_overflowed && num_tracked_allocations == 0);
+            CHECK(SDL_strcmp(SDL_GetError(), "Out of memory") == 0);
+        }
+    }
+
     // The first calloc creates the texture; the second creates fallback properties.
     BeginAllocationTracking(2, 0, 0);
     SDL_ClearError();

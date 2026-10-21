@@ -491,6 +491,8 @@ static bool RenderLinesWithGeometry(SDL_Renderer *renderer, const SDL_FPoint *po
                                   xy, xy_stride, &renderer->color, 0 /* color_stride */, NULL, 0,
                                   num_vertices, indices, num_indices, size_indices,
                                   1.0f, 1.0f, SDL_TEXTURE_ADDRESS_CLAMP, SDL_TEXTURE_ADDRESS_CLAMP);
+    } else {
+        result = false;
     }
 
     SDL_small_free(xy, isstack1);
