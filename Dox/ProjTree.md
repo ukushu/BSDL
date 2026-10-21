@@ -2612,6 +2612,7 @@
 │   ├── testffmpeg.c
 │   ├── testfile.c
 │   ├── testfilesystem.c
+│   ├── testfullscreenfailure.c
 │   ├── testgeometry.c
 │   ├── testgl.c
 │   ├── testgles.c

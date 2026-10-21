@@ -126,13 +126,22 @@ VideoBootStrap OFFSCREEN_bootstrap = {
 static bool OFFSCREEN_VideoInit(SDL_VideoDevice *_this)
 {
     SDL_DisplayMode mode;
+    SDL_DisplayID display_id;
 
     // Use a fake 32-bpp desktop mode
     SDL_zero(mode);
     mode.format = SDL_PIXELFORMAT_XRGB8888;
     mode.w = 1024;
     mode.h = 768;
-    if (SDL_AddBasicVideoDisplay(&mode) == 0) {
+    display_id = SDL_AddBasicVideoDisplay(&mode);
+    if (display_id == 0) {
+        return false;
+    }
+
+    // Provide a distinct mode for fullscreen transition tests.
+    mode.w = 800;
+    mode.h = 600;
+    if (!SDL_AddFullscreenDisplayMode(SDL_GetVideoDisplay(display_id), &mode)) {
         return false;
     }
 
@@ -142,6 +151,9 @@ static bool OFFSCREEN_VideoInit(SDL_VideoDevice *_this)
 
 static bool OFFSCREEN_SetDisplayMode(SDL_VideoDevice *_this, SDL_VideoDisplay *display, SDL_DisplayMode *mode)
 {
+    if (mode == &display->desktop_mode && SDL_GetHintBoolean("SDL_VIDEO_OFFSCREEN_FAIL_DESKTOP_MODE_RESTORE", false)) {
+        return SDL_SetError("Injected offscreen desktop mode restore failure");
+    }
     return true;
 }
 

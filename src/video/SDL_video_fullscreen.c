@@ -193,8 +193,10 @@ static bool SDL_LeaveFullscreen(SDL_Window *window, SDL_VideoDisplay *display, b
 
     // Restore the desktop mode
     if (display) {
+        if (!SDL_SetDisplayModeForDisplay(display, NULL)) {
+            return false;
+        }
         display->fullscreen_active = false;
-        SDL_SetDisplayModeForDisplay(display, NULL);
     }
     if (commit) {
         SDL_FullscreenResult ret = SDL_FULLSCREEN_SUCCEEDED;
@@ -239,12 +241,14 @@ bool SDL_UpdateFullscreenMode(SDL_Window *window, SDL_FullscreenOp fullscreen, b
     SDL_VideoDevice *device = SDL_GetVideoDevice();
     SDL_VideoDisplay *display = NULL;
     SDL_DisplayMode *mode = NULL;
+    bool was_fullscreen_exclusive;
     int i;
 
     if (!SDL_CheckWindowMagicForVideo(window)) {
         return false;
     }
 
+    was_fullscreen_exclusive = window->fullscreen_exclusive;
     window->fullscreen_exclusive = false;
     window->update_fullscreen_on_display_changed = false;
 
@@ -294,7 +298,9 @@ bool SDL_UpdateFullscreenMode(SDL_Window *window, SDL_FullscreenOp fullscreen, b
                 for (i = 0; i < device->num_displays; ++i) {
                     SDL_VideoDisplay *last_display = device->displays[i];
                     if (last_display->fullscreen_window == window) {
-                        SDL_SetDisplayModeForDisplay(last_display, NULL);
+                        if (!SDL_SetDisplayModeForDisplay(last_display, NULL)) {
+                            goto error;
+                        }
                         if (device->SetWindowFullscreen) {
                             device->SetWindowFullscreen(device, window, last_display, false);
                         }
@@ -315,7 +321,9 @@ bool SDL_UpdateFullscreenMode(SDL_Window *window, SDL_FullscreenOp fullscreen, b
         for (i = 0; i < device->num_displays; ++i) {
             SDL_VideoDisplay *other = device->displays[i];
             if (other != display && other->fullscreen_window == window) {
-                SDL_SetDisplayModeForDisplay(other, NULL);
+                if (!SDL_SetDisplayModeForDisplay(other, NULL)) {
+                    goto error;
+                }
                 other->fullscreen_window = NULL;
             }
         }
@@ -337,6 +345,8 @@ error:
     if (fullscreen) {
         // Something went wrong and the window is no longer fullscreen.
         SDL_UpdateFullscreenMode(window, SDL_FULLSCREEN_OP_LEAVE, commit);
+    } else {
+        window->fullscreen_exclusive = was_fullscreen_exclusive;
     }
     return false;
 }
@@ -364,7 +374,7 @@ bool SDL_SetWindowFullscreen(SDL_Window *window, bool fullscreen)
 
     result = SDL_UpdateFullscreenMode(window, fullscreen ? SDL_FULLSCREEN_OP_ENTER : SDL_FULLSCREEN_OP_LEAVE, true);
 
-    if (!fullscreen || !result) {
+    if (result != fullscreen) {
         // Clear the current fullscreen mode.
         SDL_zero(window->current_fullscreen_mode);
     }

@@ -690,7 +690,7 @@ bool Cocoa_SetDisplayMode(SDL_VideoDevice *_this, SDL_VideoDisplay *display, SDL
 
     if (data == display->desktop_mode.internal) {
         // Restoring desktop mode
-        SetDisplayModeForDisplay(displaydata->display, data);
+        result = SetDisplayModeForDisplay(displaydata->display, data);
     } else {
         // Do the physical switch
         result = SetDisplayModeForDisplay(displaydata->display, data);
@@ -705,7 +705,7 @@ bool Cocoa_SetDisplayMode(SDL_VideoDevice *_this, SDL_VideoDisplay *display, SDL
     b_inModeTransition = false;
 
     if (result != kCGErrorSuccess) {
-        return CG_SetError("CGDisplaySwitchToMode()", result);
+        return CG_SetError("CGDisplaySetDisplayMode()", result);
     }
     return true;
 }
