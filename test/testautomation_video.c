@@ -2343,6 +2343,27 @@ static const SDLTest_TestCaseReference videoTestWaylandPopupShowHideLifecycle = 
     video_waylandPopupShowHideLifecycle, "video_waylandPopupShowHideLifecycle", "Create and destroy Wayland popup roles across repeated show/hide", TEST_ENABLED
 };
 
+static int SDLCALL video_rejectsPopupWithoutType(void *arg)
+{
+    const char *expected_error = "Popup windows must specify either the 'SDL_WINDOW_TOOLTIP' or the 'SDL_WINDOW_POPUP_MENU' flag";
+
+    for (int i = 0; i < 1000; ++i) {
+        SDL_Window *popup = SDL_CreatePopupWindow(NULL, 0, 0, 64, 64, SDL_WINDOW_HIDDEN);
+        if (popup != NULL) {
+            SDL_DestroyWindow(popup);
+            return TEST_ABORTED;
+        }
+    }
+
+    SDLTest_AssertCheck(SDL_strcmp(SDL_GetError(), expected_error) == 0,
+                        "Invalid popup flags preserve the error: %s", SDL_GetError());
+    return TEST_COMPLETED;
+}
+
+static const SDLTest_TestCaseReference videoTestRejectsPopupWithoutType = {
+    video_rejectsPopupWithoutType, "video_rejectsPopupWithoutType", "Reject popup creation without a popup type", TEST_ENABLED
+};
+
 static int SDLCALL video_getSetWindowState(void *arg)
 {
     const char *title = "video_getSetWindowState Test Window";
@@ -3479,6 +3500,7 @@ static const SDLTest_TestCaseReference *videoTests[] = {
     &videoTestGetSetWindowState,
     &videoTestWaylandShowHideLifecycle,
     &videoTestWaylandPopupShowHideLifecycle,
+    &videoTestRejectsPopupWithoutType,
     &videoTestCreateMinimized,
     &videoTestCreateMaximized,
     &videoTestGetWindowSurface,
