@@ -28,6 +28,7 @@ static int SDLCALL render_testTexturePaletteFailure(void *arg)
     SDL_PropertiesID props = 0;
     SDL_Texture *texture = NULL;
     bool (*create_palette)(SDL_Renderer *, SDL_TexturePalette *) = NULL;
+    int initial_palette_refcount;
     bool completed = false;
 
     surface = SDL_CreateSurface(16, 16, SDL_PIXELFORMAT_ARGB8888);
@@ -42,6 +43,7 @@ static int SDLCALL render_testTexturePaletteFailure(void *arg)
     if (!SDLTest_AssertCheck(palette != NULL, "Create texture palette: %s", SDL_GetError())) {
         goto done;
     }
+    initial_palette_refcount = palette->refcount;
     create_palette = renderer->CreatePalette;
     renderer->CreatePalette = render_failCreatePalette;
 
@@ -54,6 +56,7 @@ static int SDLCALL render_testTexturePaletteFailure(void *arg)
     SDLTest_AssertCheck(texture == NULL, "Reject palette creation failure");
     SDLTest_AssertCheck(SDL_strcmp(SDL_GetError(), "Controlled palette creation failure") == 0,
                         "Preserve palette creation error: %s", SDL_GetError());
+    SDLTest_AssertCheck(palette->refcount == initial_palette_refcount, "Release palette reference after backend failure");
     SDLTest_AssertCheck(renderer->textures == NULL, "Clean up texture after palette failure");
     completed = true;
 

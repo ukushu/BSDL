@@ -2644,6 +2644,7 @@
 │   ├── testime.c
 │   ├── testintersections.c
 │   ├── testkeys.c
+│   ├── testlist.c
 │   ├── testloadso.c
 │   ├── testlocale.c
 │   ├── testlock.c
@@ -2670,6 +2671,7 @@
 │   ├── testqsort.c
 │   ├── testrelative.c
 │   ├── testrender_gpu_state_oom.c
+│   ├── testrender_palette_oom.c
 │   ├── testrendercopyex.c
 │   ├── testrenderfallbackoom.c
 │   ├── testrendertarget.c
