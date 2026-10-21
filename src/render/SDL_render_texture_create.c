@@ -364,6 +364,7 @@ SDL_Texture *SDL_CreateTexture(SDL_Renderer *renderer, SDL_PixelFormat format, S
 static bool SDL_UpdateTextureFromSurface(SDL_Texture *texture, SDL_Rect *rect, SDL_Surface *surface)
 {
     bool direct_update;
+    bool result;
     if (surface->format == texture->format &&
         SDL_GetSurfaceColorspace(surface) == texture->colorspace) {
         if (SDL_ISPIXELFORMAT_INDEXED(surface->format)) {
@@ -385,18 +386,28 @@ static bool SDL_UpdateTextureFromSurface(SDL_Texture *texture, SDL_Rect *rect, S
     if (direct_update) {
         if (SDL_MUSTLOCK(surface)) {
             if (SDL_LockSurface(surface)) {
-                SDL_UpdateTexture(texture, rect, surface->pixels, surface->pitch);
+                result = SDL_UpdateTexture(texture, rect, surface->pixels, surface->pitch);
                 SDL_UnlockSurface(surface);
+                if (!result) {
+                    return false;
+                }
+            } else {
+                return false;
             }
         } else {
-            SDL_UpdateTexture(texture, rect, surface->pixels, surface->pitch);
+            if (!SDL_UpdateTexture(texture, rect, surface->pixels, surface->pitch)) {
+                return false;
+            }
         }
     } else {
         // Set up a destination surface for the texture update
         SDL_Surface *temp = SDL_ConvertSurfaceAndColorspace(surface, texture->format, texture->public_palette, texture->colorspace, SDL_GetSurfaceProperties(surface));
         if (temp) {
-            SDL_UpdateTexture(texture, NULL, temp->pixels, temp->pitch);
+            result = SDL_UpdateTexture(texture, NULL, temp->pixels, temp->pitch);
             SDL_DestroySurface(temp);
+            if (!result) {
+                return false;
+            }
         } else {
             return false;
         }

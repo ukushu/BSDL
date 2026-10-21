@@ -3151,6 +3151,29 @@ static const SDLTest_TestCaseReference renderTestSoftwareRendererFlushSequence =
     render_testSoftwareRendererFlushSequence, "render_testSoftwareRendererFlushSequence", "Tests consecutive software renderer queue flushes", TEST_ENABLED
 };
 
+static int SDLCALL render_testTextureFromSurfaceUploadFailure(void *arg)
+{
+    SDL_Surface *surface = SDL_CreateSurface(2, 2, SDL_PIXELFORMAT_ARGB8888);
+    void *pixels;
+    SDL_Texture *texture;
+
+    if (!SDLTest_AssertCheck(surface != NULL, "Create source surface: %s", SDL_GetError())) {
+        return TEST_ABORTED;
+    }
+    pixels = surface->pixels;
+    surface->pixels = NULL;
+    texture = SDL_CreateTextureFromSurface(renderer, surface);
+    SDLTest_AssertCheck(texture == NULL, "Reject failed texture upload: %s", SDL_GetError());
+    SDL_DestroyTexture(texture);
+    surface->pixels = pixels;
+    SDL_DestroySurface(surface);
+    return TEST_COMPLETED;
+}
+
+static const SDLTest_TestCaseReference renderTestTextureFromSurfaceUploadFailure = {
+    render_testTextureFromSurfaceUploadFailure, "render_testTextureFromSurfaceUploadFailure", "Propagate texture upload failures from surfaces", TEST_ENABLED
+};
+
 static const SDLTest_TestCaseReference renderTestTextureCreationProperties = {
     render_testTextureCreationProperties, "render_testTextureCreationProperties", "Tests texture creation validation and published properties", TEST_ENABLED
 };
@@ -3424,6 +3447,7 @@ static const SDLTest_TestCaseReference *renderTests[] = {
     &renderTestSoftwareTextureFallback,
     &renderTestSoftwareRendererFlushSequence,
     &renderTestTextureCreationProperties,
+    &renderTestTextureFromSurfaceUploadFailure,
     &renderTestSoftwareGeometryQuads,
     &renderTestGeometryRawIndexWidths,
     &renderTestFillRectsGeometryFallback,
