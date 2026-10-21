@@ -26,16 +26,19 @@ static void SDLCALL joystickTearDown(void *arg)
     SDL_QuitSubSystem(SDL_INIT_GAMEPAD);
 }
 
-static SDL_malloc_func joystick_original_malloc;
-static size_t joystick_malloc_calls;
-static size_t joystick_fail_malloc_call;
+static SDL_realloc_func joystick_original_realloc;
+static bool joystick_fail_realloc;
+static bool joystick_realloc_failed;
+static size_t joystick_fail_realloc_size;
 
-static void *SDLCALL joystick_test_malloc(size_t size)
+static void *SDLCALL joystick_test_realloc(void *ptr, size_t size)
 {
-    if (joystick_fail_malloc_call > 0 && ++joystick_malloc_calls == joystick_fail_malloc_call) {
+    if (joystick_fail_realloc && size >= joystick_fail_realloc_size) {
+        joystick_fail_realloc = false;
+        joystick_realloc_failed = true;
         return NULL;
     }
-    return joystick_original_malloc(size);
+    return joystick_original_realloc(ptr, size);
 }
 
 
@@ -727,24 +730,64 @@ static int SDLCALL joystick_mappingLabelHintsOOM(void *arg)
     char *stored_mapping;
 
     SDL_GetOriginalMemoryFunctions(&original_malloc, &original_calloc, &original_realloc, &original_free);
-    joystick_original_malloc = original_malloc;
-    if (!SDL_SetMemoryFunctions(joystick_test_malloc, original_calloc, original_realloc, original_free)) {
+    joystick_original_realloc = original_realloc;
+    if (!SDL_SetMemoryFunctions(original_malloc, original_calloc, joystick_test_realloc, original_free)) {
         return TEST_ABORTED;
     }
 
-    joystick_malloc_calls = 0;
-    joystick_fail_malloc_call = 2;
+    joystick_fail_realloc = true;
+    joystick_realloc_failed = false;
+    joystick_fail_realloc_size = SDL_strlen(mapping) + SDL_strlen("hint:SDL_GAMECONTROLLER_USE_GAMECUBE_LABELS:=1,") + 1;
     SDL_ClearError();
     SDLTest_AssertCheck(SDL_AddGamepadMapping(mapping) < 0, "GameCube mapping fails when adding its label hint runs out of memory");
+    SDLTest_AssertCheck(joystick_realloc_failed, "GameCube label hint allocation reaches and fails SDL_asprintf realloc");
     SDLTest_AssertCheck(SDL_GetError()[0] != '\0', "GameCube mapping OOM preserves an error");
+    stored_mapping = SDL_GetGamepadMappingForGUID(SDL_StringToGUID("030000007e0500003703000000000001"));
+    SDLTest_AssertCheck(stored_mapping == NULL, "GameCube mapping is not added after label hint OOM");
+    SDL_free(stored_mapping);
 
     SDL_SetMemoryFunctions(original_malloc, original_calloc, original_realloc, original_free);
-    joystick_fail_malloc_call = 0;
     SDL_ClearError();
     SDLTest_AssertCheck(SDL_AddGamepadMapping(mapping) >= 0, "GameCube mapping succeeds after OOM");
     stored_mapping = SDL_GetGamepadMappingForGUID(SDL_StringToGUID("030000007e0500003703000000000001"));
     SDLTest_AssertCheck(stored_mapping && SDL_strstr(stored_mapping, "hint:!SDL_GAMECONTROLLER_USE_GAMECUBE_LABELS:=1") != NULL,
                         "Successful GameCube mapping preserves the GameCube label conversion: %s", stored_mapping ? stored_mapping : SDL_GetError());
+    SDL_free(stored_mapping);
+    return TEST_COMPLETED;
+}
+
+static int SDLCALL joystick_mappingCRCOOM(void *arg)
+{
+    const char *mapping = "030034127e0500003703000000000001,Gamepad CRC OOM,crc:1234,a:b0,b:b1,x:b2,y:b3,leftx:a0,lefty:a1,rightx:a2,righty:a3,lefttrigger:a4,righttrigger:a5,back:b4,guide:b5,start:b6,leftshoulder:b7,rightshoulder:b8,";
+    SDL_malloc_func original_malloc;
+    SDL_calloc_func original_calloc;
+    SDL_realloc_func original_realloc;
+    SDL_free_func original_free;
+    char *stored_mapping;
+
+    SDL_GetOriginalMemoryFunctions(&original_malloc, &original_calloc, &original_realloc, &original_free);
+    joystick_original_realloc = original_realloc;
+    if (!SDL_SetMemoryFunctions(original_malloc, original_calloc, joystick_test_realloc, original_free)) {
+        return TEST_ABORTED;
+    }
+
+    joystick_fail_realloc = true;
+    joystick_realloc_failed = false;
+    joystick_fail_realloc_size = 101;
+    SDL_ClearError();
+    SDLTest_AssertCheck(SDL_AddGamepadMapping(mapping) < 0, "CRC mapping fails when normalization runs out of memory");
+    SDLTest_AssertCheck(joystick_realloc_failed, "CRC normalization reaches and fails SDL_asprintf realloc");
+    SDLTest_AssertCheck(SDL_GetError()[0] != '\0', "CRC normalization OOM preserves an error");
+    stored_mapping = SDL_GetGamepadMappingForGUID(SDL_StringToGUID("030034127e0500003703000000000001"));
+    SDLTest_AssertCheck(stored_mapping == NULL, "CRC mapping is not added after normalization OOM");
+    SDL_free(stored_mapping);
+
+    SDL_SetMemoryFunctions(original_malloc, original_calloc, original_realloc, original_free);
+    SDL_ClearError();
+    SDLTest_AssertCheck(SDL_AddGamepadMapping(mapping) >= 0, "CRC mapping succeeds after OOM");
+    stored_mapping = SDL_GetGamepadMappingForGUID(SDL_StringToGUID("030034127e0500003703000000000001"));
+    SDLTest_AssertCheck(stored_mapping && SDL_strstr(stored_mapping, "crc:1234,") != NULL,
+                        "Successful CRC mapping retains its normalized CRC: %s", stored_mapping ? stored_mapping : SDL_GetError());
     SDL_free(stored_mapping);
     return TEST_COMPLETED;
 }
@@ -957,6 +1000,9 @@ static const SDLTest_TestCaseReference joystickTestMappingLabelHints = {
 static const SDLTest_TestCaseReference joystickTestMappingLabelHintsOOM = {
     joystick_mappingLabelHintsOOM, "joystick_mappingLabelHintsOOM", "GameCube mapping reports label hint allocation failure", TEST_ENABLED
 };
+static const SDLTest_TestCaseReference joystickTestMappingCRCOOM = {
+    joystick_mappingCRCOOM, "joystick_mappingCRCOOM", "Gamepad mapping preserves CRC after normalization OOM", TEST_ENABLED
+};
 static const SDLTest_TestCaseReference joystickTestGamepadButtonLabelsForType = {
     joystick_gamepadButtonLabelsForType, "joystick_gamepadButtonLabelsForType", "Button labels follow the gamepad face style", TEST_ENABLED
 };
@@ -984,6 +1030,7 @@ static const SDLTest_TestCaseReference *joystickTests[] = {
     &joystickTestGamepadNameConversions,
     &joystickTestMappingLabelHints,
     &joystickTestMappingLabelHintsOOM,
+    &joystickTestMappingCRCOOM,
     &joystickTestGamepadButtonLabelsForType,
     &joystickTestGetGamepadsFiltersDevices,
     &joystickTest3,

@@ -221,6 +221,7 @@ Uint16 SDL_NormalizeGamepadMappingCRC(SDL_GUID *guid, char **mapping)
         size_t mapping_length;
         char *crc_end = "";
         char *crc_string = SDL_strstr(pchMapping, SDL_GAMEPAD_CRC_FIELD);
+        char saved_crc_char = '\0';
         if (crc_string) {
             crc_end = SDL_strchr(crc_string, ',');
             if (crc_end) {
@@ -228,6 +229,7 @@ Uint16 SDL_NormalizeGamepadMappingCRC(SDL_GUID *guid, char **mapping)
             } else {
                 crc_end = "";
             }
+            saved_crc_char = *crc_string;
             *crc_string = '\0';
         }
 
@@ -240,8 +242,13 @@ Uint16 SDL_NormalizeGamepadMappingCRC(SDL_GUID *guid, char **mapping)
         }
 
         if (SDL_asprintf(&new_mapping, "%s%s%s%.4x,%s", pchMapping, optional_comma, SDL_GAMEPAD_CRC_FIELD, crc, crc_end) >= 0) {
+            if (crc_string) {
+                *crc_string = saved_crc_char;
+            }
             SDL_free(pchMapping);
             pchMapping = new_mapping;
+        } else if (crc_string) {
+            *crc_string = saved_crc_char;
         }
     } else {
         // Make sure the GUID has the CRC, for matching purposes
