@@ -64,6 +64,24 @@ static bool SDLCALL render_failGeometryCopy(SDL_Renderer *test_renderer, SDL_Ren
     return SDL_SetError("Controlled geometry draw failure");
 }
 
+static bool SDLCALL render_failGeometryCopyEx(SDL_Renderer *test_renderer, SDL_RenderCommand *cmd, SDL_Texture *texture,
+                                              const SDL_FRect *srcrect, const SDL_FRect *dstrect,
+                                              const double angle, const SDL_FPoint *center, const SDL_FlipMode flip,
+                                              float scale_x, float scale_y)
+{
+    (void)test_renderer;
+    (void)cmd;
+    (void)texture;
+    (void)srcrect;
+    (void)dstrect;
+    (void)angle;
+    (void)center;
+    (void)flip;
+    (void)scale_x;
+    (void)scale_y;
+    return SDL_SetError("Controlled geometry draw failure");
+}
+
 static bool SDLCALL render_failGeometryFill(SDL_Renderer *test_renderer, SDL_RenderCommand *cmd, const SDL_FRect *rects, int count)
 {
     (void)test_renderer;
@@ -2681,6 +2699,7 @@ static int SDLCALL render_testSoftwareGeometryQuads(void *arg)
         { 0.0f, 0.0f, 0.0f, 0.0f }, { 1.0f, 0.0f, 0.0f, 0.0f },
         { 0.0f, 1.0f, 0.0f, 0.0f }, { 1.0f, 1.0f, 0.0f, 0.0f }
     };
+    const float raw_uv_flipped[][2] = { { 1.0f, 0.0f }, { 0.0f, 0.0f }, { 1.0f, 1.0f }, { 0.0f, 1.0f } };
     const int raw_indices[] = { 0, 1, 3, 0, 3, 2 };
     SDL_Surface *surface = SDL_CreateSurface(16, 8, SDL_PIXELFORMAT_RGBA32);
     SDL_Surface *source = SDL_CreateSurface(1, 1, SDL_PIXELFORMAT_RGBA32);
@@ -2689,6 +2708,8 @@ static int SDLCALL render_testSoftwareGeometryQuads(void *arg)
     Uint8 r, g, b, a;
     SDL_BlendMode blend;
     bool (*queue_copy)(SDL_Renderer *, SDL_RenderCommand *, SDL_Texture *, const SDL_FRect *, const SDL_FRect *) = NULL;
+    bool (*queue_copy_ex)(SDL_Renderer *, SDL_RenderCommand *, SDL_Texture *, const SDL_FRect *, const SDL_FRect *,
+                          double, const SDL_FPoint *, SDL_FlipMode, float, float) = NULL;
     bool (*queue_fill_rects)(SDL_Renderer *, SDL_RenderCommand *, const SDL_FRect *, int) = NULL;
 
     if (!SDLTest_AssertCheck(surface && source, "Create software geometry surfaces: %s", SDL_GetError())) {
@@ -2755,6 +2776,20 @@ static int SDLCALL render_testSoftwareGeometryQuads(void *arg)
                         "Restore blend mode after textured quad failure");
     software->QueueCopy = queue_copy;
 
+    queue_copy_ex = software->QueueCopyEx;
+    software->QueueCopyEx = render_failGeometryCopyEx;
+    SDL_ClearError();
+    SDLTest_AssertCheck(!SDL_RenderGeometryRaw(software, texture,
+                                              &raw_xy[0][0], sizeof(raw_xy[0]),
+                                              &raw_color[0][0], sizeof(raw_color[0]),
+                                              &raw_uv_flipped[0][0], sizeof(raw_uv_flipped[0]),
+                                              SDL_arraysize(raw_xy), raw_indices,
+                                              SDL_arraysize(raw_indices), sizeof(raw_indices[0])),
+                        "Propagate flipped textured quad draw failure");
+    SDLTest_AssertCheck(SDL_strcmp(SDL_GetError(), "Controlled geometry draw failure") == 0,
+                        "Preserve flipped textured quad draw error: %s", SDL_GetError());
+    software->QueueCopyEx = queue_copy_ex;
+
     queue_fill_rects = software->QueueFillRects;
     software->QueueFillRects = render_failGeometryFill;
     SDL_ClearError();
@@ -2772,6 +2807,9 @@ done:
     if (software) {
         if (queue_copy) {
             software->QueueCopy = queue_copy;
+        }
+        if (queue_copy_ex) {
+            software->QueueCopyEx = queue_copy_ex;
         }
         if (queue_fill_rects) {
             software->QueueFillRects = queue_fill_rects;
