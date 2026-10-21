@@ -26,6 +26,18 @@ static void SDLCALL joystickTearDown(void *arg)
     SDL_QuitSubSystem(SDL_INIT_GAMEPAD);
 }
 
+static SDL_malloc_func joystick_original_malloc;
+static size_t joystick_malloc_calls;
+static size_t joystick_fail_malloc_call;
+
+static void *SDLCALL joystick_test_malloc(size_t size)
+{
+    if (joystick_fail_malloc_call > 0 && ++joystick_malloc_calls == joystick_fail_malloc_call) {
+        return NULL;
+    }
+    return joystick_original_malloc(size);
+}
+
 
 /* Test case functions */
 
@@ -705,6 +717,38 @@ static int SDLCALL joystick_mappingLabelHints(void *arg)
     return TEST_COMPLETED;
 }
 
+static int SDLCALL joystick_mappingLabelHintsOOM(void *arg)
+{
+    const char *mapping = "030000007e0500003703000000000001,GameCube OOM,a:b0,b:b1,x:b0,y:b1,";
+    SDL_malloc_func original_malloc;
+    SDL_calloc_func original_calloc;
+    SDL_realloc_func original_realloc;
+    SDL_free_func original_free;
+    char *stored_mapping;
+
+    SDL_GetOriginalMemoryFunctions(&original_malloc, &original_calloc, &original_realloc, &original_free);
+    joystick_original_malloc = original_malloc;
+    if (!SDL_SetMemoryFunctions(joystick_test_malloc, original_calloc, original_realloc, original_free)) {
+        return TEST_ABORTED;
+    }
+
+    joystick_malloc_calls = 0;
+    joystick_fail_malloc_call = 2;
+    SDL_ClearError();
+    SDLTest_AssertCheck(SDL_AddGamepadMapping(mapping) < 0, "GameCube mapping fails when adding its label hint runs out of memory");
+    SDLTest_AssertCheck(SDL_GetError()[0] != '\0', "GameCube mapping OOM preserves an error");
+
+    SDL_SetMemoryFunctions(original_malloc, original_calloc, original_realloc, original_free);
+    joystick_fail_malloc_call = 0;
+    SDL_ClearError();
+    SDLTest_AssertCheck(SDL_AddGamepadMapping(mapping) >= 0, "GameCube mapping succeeds after OOM");
+    stored_mapping = SDL_GetGamepadMappingForGUID(SDL_StringToGUID("030000007e0500003703000000000001"));
+    SDLTest_AssertCheck(stored_mapping && SDL_strstr(stored_mapping, "hint:!SDL_GAMECONTROLLER_USE_GAMECUBE_LABELS:=1") != NULL,
+                        "Successful GameCube mapping preserves the GameCube label conversion: %s", stored_mapping ? stored_mapping : SDL_GetError());
+    SDL_free(stored_mapping);
+    return TEST_COMPLETED;
+}
+
 /**
  * Missing joystick axes must not become half-pressed gamepad triggers.
  */
@@ -910,6 +954,9 @@ static const SDLTest_TestCaseReference joystickTestSInputMapping = {
 static const SDLTest_TestCaseReference joystickTestMappingLabelHints = {
     joystick_mappingLabelHints, "joystick_mappingLabelHints", "Legacy label hints map buttons to positions", TEST_ENABLED
 };
+static const SDLTest_TestCaseReference joystickTestMappingLabelHintsOOM = {
+    joystick_mappingLabelHintsOOM, "joystick_mappingLabelHintsOOM", "GameCube mapping reports label hint allocation failure", TEST_ENABLED
+};
 static const SDLTest_TestCaseReference joystickTestGamepadButtonLabelsForType = {
     joystick_gamepadButtonLabelsForType, "joystick_gamepadButtonLabelsForType", "Button labels follow the gamepad face style", TEST_ENABLED
 };
@@ -936,6 +983,7 @@ static const SDLTest_TestCaseReference *joystickTests[] = {
     &joystickTestSInputMapping,
     &joystickTestGamepadNameConversions,
     &joystickTestMappingLabelHints,
+    &joystickTestMappingLabelHintsOOM,
     &joystickTestGamepadButtonLabelsForType,
     &joystickTestGetGamepadsFiltersDevices,
     &joystickTest3,

@@ -1815,10 +1815,10 @@ static int SDL_PrivateAddGamepadMapping(const char *mappingString, SDL_GamepadMa
     SDL_GetJoystickGUIDInfo(guid, &vendor, &product, NULL, NULL);
     if (SDL_IsJoystickGameCube(vendor, product) &&
         SDL_strstr(mappingString, "SDL_GAMECONTROLLER_USE_GAMECUBE_LABELS") == NULL) {
-        SDL_asprintf(&appended, "%shint:SDL_GAMECONTROLLER_USE_GAMECUBE_LABELS:=1,", mappingString);
-        if (appended) {
-            mappingString = appended;
+        if (SDL_asprintf(&appended, "%shint:SDL_GAMECONTROLLER_USE_GAMECUBE_LABELS:=1,", mappingString) < 0) {
+            goto done;
         }
+        mappingString = appended;
     }
 
     {
