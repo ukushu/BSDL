@@ -2,6 +2,13 @@
  * Original code: automated SDL platform test written by Edgar Simo "bobbens"
  * Extended and extensively updated by aschiffler at ferzkopp dot net
  */
+#include "../src/dynapi/SDL_dynapi.h"
+#ifdef SDL_DYNAMIC_API
+#undef SDL_DYNAMIC_API
+#endif
+#define SDL_DYNAMIC_API 0
+#include "../src/SDL_internal.h"
+#include "../src/render/SDL_sysrender.h"
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_test.h>
 #include "testautomation_images.h"
@@ -45,6 +52,26 @@ static void compare2x(SDL_Surface *reference, int allowable_error);
 static SDL_Texture *loadTestFace(void);
 static bool isSupported(int code);
 static bool hasDrawColor(void);
+
+static bool SDLCALL render_failGeometryCopy(SDL_Renderer *test_renderer, SDL_RenderCommand *cmd, SDL_Texture *texture,
+                                            const SDL_FRect *srcrect, const SDL_FRect *dstrect)
+{
+    (void)test_renderer;
+    (void)cmd;
+    (void)texture;
+    (void)srcrect;
+    (void)dstrect;
+    return SDL_SetError("Controlled geometry draw failure");
+}
+
+static bool SDLCALL render_failGeometryFill(SDL_Renderer *test_renderer, SDL_RenderCommand *cmd, const SDL_FRect *rects, int count)
+{
+    (void)test_renderer;
+    (void)cmd;
+    (void)rects;
+    (void)count;
+    return SDL_SetError("Controlled geometry draw failure");
+}
 
 /**
  * Create software renderer for tests
@@ -2661,6 +2688,8 @@ static int SDLCALL render_testSoftwareGeometryQuads(void *arg)
     SDL_Texture *texture = NULL;
     Uint8 r, g, b, a;
     SDL_BlendMode blend;
+    bool (*queue_copy)(SDL_Renderer *, SDL_RenderCommand *, SDL_Texture *, const SDL_FRect *, const SDL_FRect *) = NULL;
+    bool (*queue_fill_rects)(SDL_Renderer *, SDL_RenderCommand *, const SDL_FRect *, int) = NULL;
 
     if (!SDLTest_AssertCheck(surface && source, "Create software geometry surfaces: %s", SDL_GetError())) {
         goto done;
@@ -2713,7 +2742,41 @@ static int SDLCALL render_testSoftwareGeometryQuads(void *arg)
         SDLTest_AssertCheck(r == 0 && g == 255 && b == 0 && a == 255, "Raw stride quad renders green");
     }
 
+    queue_copy = software->QueueCopy;
+    software->QueueCopy = render_failGeometryCopy;
+    SDL_ClearError();
+    SDLTest_AssertCheck(!SDL_RenderGeometry(software, texture, indexed, SDL_arraysize(indexed), indices, SDL_arraysize(indices)),
+                        "Propagate textured quad draw failure");
+    SDLTest_AssertCheck(SDL_strcmp(SDL_GetError(), "Controlled geometry draw failure") == 0,
+                        "Preserve textured quad draw error: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_GetRenderDrawColor(software, &r, &g, &b, &a) && r == 0 && g == 0 && b == 255 && a == 255,
+                        "Restore draw color after textured quad failure");
+    SDLTest_AssertCheck(SDL_GetRenderDrawBlendMode(software, &blend) && blend == SDL_BLENDMODE_NONE,
+                        "Restore blend mode after textured quad failure");
+    software->QueueCopy = queue_copy;
+
+    queue_fill_rects = software->QueueFillRects;
+    software->QueueFillRects = render_failGeometryFill;
+    SDL_ClearError();
+    SDLTest_AssertCheck(!SDL_RenderGeometry(software, NULL, indexed, SDL_arraysize(indexed), indices, SDL_arraysize(indices)),
+                        "Propagate untextured quad draw failure");
+    SDLTest_AssertCheck(SDL_strcmp(SDL_GetError(), "Controlled geometry draw failure") == 0,
+                        "Preserve untextured quad draw error: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_GetRenderDrawColor(software, &r, &g, &b, &a) && r == 0 && g == 0 && b == 255 && a == 255,
+                        "Restore draw color after untextured quad failure");
+    SDLTest_AssertCheck(SDL_GetRenderDrawBlendMode(software, &blend) && blend == SDL_BLENDMODE_NONE,
+                        "Restore blend mode after untextured quad failure");
+    software->QueueFillRects = queue_fill_rects;
+
 done:
+    if (software) {
+        if (queue_copy) {
+            software->QueueCopy = queue_copy;
+        }
+        if (queue_fill_rects) {
+            software->QueueFillRects = queue_fill_rects;
+        }
+    }
     SDL_DestroyTexture(texture);
     SDL_DestroyRenderer(software);
     SDL_DestroySurface(source);

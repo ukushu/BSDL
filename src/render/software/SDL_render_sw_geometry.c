@@ -64,13 +64,17 @@ static int remap_indices(
 }
 
 #define DEBUG_SW_RENDER_GEOMETRY 0
-static void RenderSoftwareGeometryQuad(SDL_Renderer *renderer, SDL_Texture *texture, SDL_FRect src, const SDL_FRect *dst, const SDL_FColor *color)
+static bool RenderSoftwareGeometryQuad(SDL_Renderer *renderer, SDL_Texture *texture, SDL_FRect src, const SDL_FRect *dst, const SDL_FColor *color)
 {
     if (texture && src.w != 0 && src.h != 0) {
-        SDL_SetTextureAlphaModFloat(texture, color->a);
-        SDL_SetTextureColorModFloat(texture, color->r, color->g, color->b);
+        if (!SDL_SetTextureAlphaModFloat(texture, color->a) ||
+            !SDL_SetTextureColorModFloat(texture, color->r, color->g, color->b)) {
+            return false;
+        }
         if (src.w > 0 && src.h > 0) {
-            SDL_RenderTexture(renderer, texture, &src, dst);
+            if (!SDL_RenderTexture(renderer, texture, &src, dst)) {
+                return false;
+            }
         } else {
             int flags = 0;
             if (src.w < 0) {
@@ -83,7 +87,9 @@ static void RenderSoftwareGeometryQuad(SDL_Renderer *renderer, SDL_Texture *text
                 src.h *= -1;
                 src.y -= src.h;
             }
-            SDL_RenderTextureRotated(renderer, texture, &src, dst, 0, NULL, (SDL_FlipMode)flags);
+            if (!SDL_RenderTextureRotated(renderer, texture, &src, dst, 0, NULL, (SDL_FlipMode)flags)) {
+                return false;
+            }
         }
 
 #if DEBUG_SW_RENDER_GEOMETRY
@@ -91,9 +97,11 @@ static void RenderSoftwareGeometryQuad(SDL_Renderer *renderer, SDL_Texture *text
                 (void *)texture, src.x, src.y, src.w, src.h, dst->x, dst->y, dst->w, dst->h);
 #endif
     } else if (dst->w != 0.0f && dst->h != 0.0f) { // Rect, no texture
-        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
-        SDL_SetRenderDrawColorFloat(renderer, color->r, color->g, color->b, color->a);
-        SDL_RenderFillRect(renderer, dst);
+        if (!SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND) ||
+            !SDL_SetRenderDrawColorFloat(renderer, color->r, color->g, color->b, color->a) ||
+            !SDL_RenderFillRect(renderer, dst)) {
+            return false;
+        }
 #if DEBUG_SW_RENDER_GEOMETRY
         SDL_Log("Rect-FILL: RGB %f %f %f - Alpha:%f - texture=%p: dst (%f, %f, %f x %f)", color->r, color->g, color->b, color->a,
                 (void *)texture, dst->x, dst->y, dst->w, dst->h);
@@ -102,6 +110,7 @@ static void RenderSoftwareGeometryQuad(SDL_Renderer *renderer, SDL_Texture *text
                 (void *)texture, src.x, src.y, src.w, src.h, dst->x, dst->y, dst->w, dst->h);
 #endif
     }
+    return true;
 }
 
 typedef struct SDL_SWGeometryQuad
@@ -372,7 +381,10 @@ bool SDLCALL SDL_SW_RenderGeometryRaw(SDL_Renderer *renderer,
             d.w = xy1_[0] - d.x;
             d.h = xy1_[1] - d.y;
 
-            RenderSoftwareGeometryQuad(renderer, texture, s, &d, col0_);
+            result = RenderSoftwareGeometryQuad(renderer, texture, s, &d, col0_);
+            if (!result) {
+                goto end;
+            }
 
             prev[0] = -1;
         } else {
