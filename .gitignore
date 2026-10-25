@@ -1,5 +1,7 @@
 build/
 build-*/
+.build/
+.swiftpm/
 !build-scripts/
 buildbot/
 /VERSION.txt
