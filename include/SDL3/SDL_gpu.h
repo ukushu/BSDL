@@ -4478,6 +4478,10 @@ extern SDL_DECLSPEC bool SDLCALL SDL_WindowSupportsGPUPresentMode(
  * parameters, you must call SDL_SetGPUSwapchainParameters after claiming the
  * window.
  *
+ * Transparent windows are supported by the Vulkan backend when the surface
+ * supports premultiplied composite alpha. The presented RGB values must be
+ * premultiplied by alpha. Other GPU backends reject transparent windows.
+ *
  * \param device a GPU context.
  * \param window an SDL_Window.
  * \returns true on success, or false on failure; call SDL_GetError() for more

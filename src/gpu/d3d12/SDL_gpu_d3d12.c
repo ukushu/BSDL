@@ -7108,6 +7108,10 @@ static bool D3D12_ClaimWindow(
     SDL_GPURenderer *driverData,
     SDL_Window *window)
 {
+    if (window->flags & SDL_WINDOW_TRANSPARENT) {
+        return SDL_SetError("Direct3D 12 does not support transparent GPU windows");
+    }
+
     D3D12Renderer *renderer = (D3D12Renderer *)driverData;
     D3D12WindowData *windowData = D3D12_INTERNAL_FetchWindowData(window);
 

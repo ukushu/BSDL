@@ -3757,6 +3757,10 @@ static bool METAL_ClaimWindow(
     SDL_GPURenderer *driverData,
     SDL_Window *window)
 {
+    if (window->flags & SDL_WINDOW_TRANSPARENT) {
+        return SDL_SetError("Metal does not support transparent GPU windows");
+    }
+
     @autoreleasepool {
         MetalRenderer *renderer = (MetalRenderer *)driverData;
         MetalWindowData *windowData = METAL_INTERNAL_FetchWindowData(window);
