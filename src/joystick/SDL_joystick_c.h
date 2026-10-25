@@ -24,7 +24,7 @@
 
 #include "SDL_internal.h"
 
-// Useful functions and variables from SDL_joystick.c
+// Internal joystick functions and variables
 
 // Set up for C function definitions, even when using C++
 #ifdef __cplusplus
@@ -37,6 +37,8 @@ struct SDL_SteamVirtualGamepadInfo;
 // Initialization and shutdown functions
 extern bool SDL_InitJoysticks(void);
 extern void SDL_QuitJoysticks(void);
+extern void SDL_InitJoystickClassificationLists(void);
+extern void SDL_QuitJoystickClassificationLists(void);
 
 // Return whether the joystick system is currently initialized
 extern bool SDL_JoysticksInitialized(void);
@@ -82,6 +84,7 @@ extern void SDL_SetJoystickGUIDCRC(SDL_GUID *guid, Uint16 crc);
 // Function to return the type of a controller
 extern SDL_GamepadType SDL_GetGamepadTypeFromVIDPID(Uint16 vendor, Uint16 product, const char *name, bool forUI);
 extern SDL_GamepadType SDL_GetGamepadTypeFromGUID(SDL_GUID guid, const char *name);
+extern SDL_JoystickType SDL_GetJoystickGUIDType(SDL_GUID guid);
 
 // Function to return whether a joystick GUID uses the version field
 extern bool SDL_JoystickGUIDUsesVersion(SDL_GUID guid);

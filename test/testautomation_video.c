@@ -3,7 +3,10 @@
  */
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_test.h>
+#include <SDL3/SDL_vulkan.h>
 #include "testautomation_suites.h"
+
+int SDLCALL video_gpuBlitPipelineCacheOOM(void *arg);
 
 /* Private helpers */
 
@@ -318,6 +321,152 @@ static int SDLCALL video_createWindowVariousFlags(void *arg)
     return TEST_COMPLETED;
 }
 
+static int SDLCALL video_rejectsModalWithoutParent(void *arg)
+{
+    SDL_PropertiesID props = SDL_CreateProperties();
+    SDL_Window *window;
+
+    if (!SDLTest_AssertCheck(props != 0, "Create window properties: %s", SDL_GetError())) {
+        return TEST_ABORTED;
+    }
+    if (!SDLTest_AssertCheck(SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_MODAL_BOOLEAN, true),
+                             "Set modal property: %s", SDL_GetError())) {
+        SDL_DestroyProperties(props);
+        return TEST_ABORTED;
+    }
+    window = SDL_CreateWindowWithProperties(props);
+    SDLTest_AssertCheck(window == NULL, "Modal window without a parent is rejected");
+    SDLTest_AssertCheck(SDL_strcmp(SDL_GetError(), "Modal windows must specify a parent window") == 0,
+                        "Modal window error is preserved: %s", SDL_GetError());
+
+    if (window) {
+        SDL_DestroyWindow(window);
+    }
+    SDL_DestroyProperties(props);
+    return TEST_COMPLETED;
+}
+
+static int SDLCALL video_windowHierarchy(void *arg)
+{
+    SDL_Window *parent = SDL_CreateWindow("hierarchy parent", 64, 64, SDL_WINDOW_HIDDEN);
+    SDL_Window *child = SDL_CreateWindow("hierarchy child", 64, 64, SDL_WINDOW_HIDDEN);
+    bool parent_set;
+
+    if (!SDLTest_AssertCheck(parent && child, "Create hierarchy windows: %s", SDL_GetError())) {
+        destroyVideoSuiteTestWindow(child);
+        destroyVideoSuiteTestWindow(parent);
+        return TEST_ABORTED;
+    }
+
+    SDLTest_AssertCheck(SDL_GetWindowParent(child) == NULL, "New window has no parent");
+    SDLTest_AssertCheck(!SDL_SetWindowParent(child, child), "A window cannot parent itself");
+    SDLTest_AssertCheck(SDL_strcmp(SDL_GetError(), "Cannot set the parent of a window to itself.") == 0,
+                        "Self-parenting error is preserved: %s", SDL_GetError());
+
+    parent_set = SDL_SetWindowParent(child, parent);
+    SDLTest_AssertCheck(SDL_GetWindowParent(child) == (parent_set ? parent : NULL),
+                        "Parent relationship matches backend result");
+
+    if (parent_set && SDL_SetWindowModal(child, true)) {
+        SDLTest_AssertCheck((SDL_GetWindowFlags(child) & SDL_WINDOW_MODAL) != 0, "Modal flag is set");
+        SDLTest_AssertCheck(!SDL_SetWindowParent(child, NULL), "Modal window cannot be reparented");
+        SDLTest_AssertCheck(SDL_strcmp(SDL_GetError(), "Modal windows cannot change parents; call SDL_SetWindowModal() to clear modal status first.") == 0,
+                            "Modal reparent error is preserved: %s", SDL_GetError());
+        SDLTest_AssertCheck(SDL_GetWindowParent(child) == parent, "Failed reparent keeps parent relationship");
+        SDL_ClearError();
+        SDLTest_AssertCheck(SDL_SetWindowModal(child, false), "Clear modal state: %s", SDL_GetError());
+        SDLTest_AssertCheck((SDL_GetWindowFlags(child) & SDL_WINDOW_MODAL) == 0, "Modal flag is cleared");
+    }
+
+    if (parent_set && SDL_GetWindowParent(child) == parent && SDL_SetWindowParent(child, NULL)) {
+        SDLTest_AssertCheck(SDL_GetWindowParent(child) == NULL, "Unparented window has no parent");
+    }
+
+    destroyVideoSuiteTestWindow(child);
+    destroyVideoSuiteTestWindow(parent);
+    return TEST_COMPLETED;
+}
+
+static int SDLCALL video_rejectsConflictingGraphicsFlags(void *arg)
+{
+    const SDL_WindowFlags flags = SDL_WINDOW_OPENGL | SDL_WINDOW_VULKAN;
+    SDL_Window *window = SDL_CreateWindow("video_rejectsConflictingGraphicsFlags", 64, 64, flags);
+    char expected_error[128];
+
+    SDL_snprintf(expected_error, sizeof(expected_error),
+                 "Conflicting window graphics flags specified: 0x%.8x", (unsigned int)flags);
+    SDLTest_AssertCheck(window == NULL, "Conflicting graphics flags are rejected");
+    SDLTest_AssertCheck(SDL_strcmp(SDL_GetError(), expected_error) == 0,
+                        "Conflicting graphics flags error is preserved: %s", SDL_GetError());
+    if (window) {
+        SDL_DestroyWindow(window);
+    }
+    return TEST_COMPLETED;
+}
+
+static int SDLCALL video_testFullscreenEnterLeave(void *arg)
+{
+    SDL_Window *window;
+    SDL_WindowFlags flags;
+    SDL_DisplayID display;
+    SDL_DisplayMode original_mode;
+    const SDL_DisplayMode *current_mode;
+
+    if (SDL_strcmp(SDL_GetCurrentVideoDriver(), "x11") != 0) {
+        return TEST_SKIPPED;
+    }
+
+    window = createVideoSuiteTestWindow("video_testFullscreenEnterLeave");
+    if (!window) {
+        return TEST_ABORTED;
+    }
+    display = SDL_GetDisplayForWindow(window);
+    current_mode = SDL_GetCurrentDisplayMode(display);
+    if (!SDLTest_AssertCheck(display != 0 && current_mode != NULL, "Get window display and mode: %s", SDL_GetError())) {
+        destroyVideoSuiteTestWindow(window);
+        return TEST_ABORTED;
+    }
+    original_mode = *current_mode;
+
+    if (!SDL_SetWindowFullscreen(window, true)) {
+        SDLTest_AssertCheck(false, "Enter fullscreen: %s", SDL_GetError());
+        destroyVideoSuiteTestWindow(window);
+        return TEST_ABORTED;
+    }
+    if (!SDLTest_AssertCheck(SDL_SyncWindow(window), "Sync fullscreen window: %s", SDL_GetError())) {
+        destroyVideoSuiteTestWindow(window);
+        return TEST_ABORTED;
+    }
+    flags = SDL_GetWindowFlags(window);
+    SDLTest_AssertCheck((flags & SDL_WINDOW_FULLSCREEN) != 0, "Fullscreen flag is set after entering");
+    SDLTest_AssertCheck(SDL_GetDisplayForWindow(window) == display, "Fullscreen window remains on selected display");
+
+    if (!SDL_SetWindowFullscreen(window, false)) {
+        SDLTest_AssertCheck(false, "Leave fullscreen: %s", SDL_GetError());
+        destroyVideoSuiteTestWindow(window);
+        return TEST_ABORTED;
+    }
+    if (!SDLTest_AssertCheck(SDL_SyncWindow(window), "Sync window after leaving fullscreen: %s", SDL_GetError())) {
+        destroyVideoSuiteTestWindow(window);
+        return TEST_ABORTED;
+    }
+    flags = SDL_GetWindowFlags(window);
+    SDLTest_AssertCheck((flags & SDL_WINDOW_FULLSCREEN) == 0, "Fullscreen flag is cleared after leaving");
+    SDLTest_AssertCheck(SDL_GetDisplayForWindow(window) == display, "Window remains on selected display after leaving fullscreen");
+    current_mode = SDL_GetCurrentDisplayMode(display);
+    SDLTest_AssertCheck(current_mode != NULL && current_mode->displayID == original_mode.displayID &&
+                        current_mode->w == original_mode.w && current_mode->h == original_mode.h &&
+                        current_mode->format == original_mode.format &&
+                        current_mode->pixel_density == original_mode.pixel_density &&
+                        current_mode->refresh_rate == original_mode.refresh_rate &&
+                        current_mode->refresh_rate_numerator == original_mode.refresh_rate_numerator &&
+                        current_mode->refresh_rate_denominator == original_mode.refresh_rate_denominator,
+                        "Display mode is restored after leaving fullscreen");
+
+    destroyVideoSuiteTestWindow(window);
+    return TEST_COMPLETED;
+}
+
 /**
  * Tests the functionality of the SDL_GetWindowFlags function
  */
@@ -373,6 +522,85 @@ static int SDLCALL video_getFullscreenDisplayModes(void *arg)
 
     return TEST_COMPLETED;
 }
+
+static int SDLCALL video_displayModeOrderingAndMatch(void *arg)
+{
+    int display_count = 0;
+    SDL_DisplayID *displays = SDL_GetDisplays(&display_count);
+
+    if (!SDLTest_AssertCheck(displays != NULL && display_count > 0, "Enumerate displays: %s", SDL_GetError())) {
+        SDL_free(displays);
+        return TEST_ABORTED;
+    }
+
+    for (int d = 0; d < display_count; ++d) {
+        int mode_count = 0;
+        SDL_DisplayMode **modes = SDL_GetFullscreenDisplayModes(displays[d], &mode_count);
+        if (!SDLTest_AssertCheck(modes != NULL, "Enumerate modes for display %" SDL_PRIu32 ": %s", displays[d], SDL_GetError())) {
+            SDL_free(displays);
+            return TEST_ABORTED;
+        }
+
+        for (int i = 0; i < mode_count; ++i) {
+            SDL_DisplayMode closest;
+            SDLTest_AssertCheck(modes[i]->displayID == displays[d] && modes[i]->pixel_density > 0.0f,
+                                "Mode %d belongs to its display and has positive density", i);
+            if (i > 0) {
+                SDLTest_AssertCheck(modes[i - 1]->w > modes[i]->w ||
+                                    (modes[i - 1]->w == modes[i]->w && modes[i - 1]->h >= modes[i]->h),
+                                    "Modes %d and %d are ordered by size", i - 1, i);
+            }
+            if (SDLTest_AssertCheck(SDL_GetClosestFullscreenDisplayMode(displays[d], modes[i]->w, modes[i]->h,
+                                                                        modes[i]->refresh_rate, true, &closest),
+                                    "Find a mode for listed size %dx%d", modes[i]->w, modes[i]->h)) {
+                SDLTest_AssertCheck(closest.displayID == displays[d] && closest.w == modes[i]->w && closest.h == modes[i]->h,
+                                    "Exact listed size maps to the same display and dimensions");
+            }
+        }
+        SDL_free(modes);
+    }
+    SDL_free(displays);
+    return TEST_COMPLETED;
+}
+
+static const SDLTest_TestCaseReference videoTestDisplayModeOrderingAndMatch = {
+    video_displayModeOrderingAndMatch, "video_displayModeOrderingAndMatch", "Check sorted display modes and exact size matching", TEST_ENABLED
+};
+
+static int SDLCALL video_displayRegistry(void *arg)
+{
+    int count = 0;
+    SDL_DisplayID *displays = SDL_GetDisplays(&count);
+
+    if (!SDLTest_AssertCheck(displays != NULL && count > 0, "Enumerate video displays: %s", SDL_GetError())) {
+        SDL_free(displays);
+        return TEST_ABORTED;
+    }
+
+    SDLTest_AssertCheck(SDL_GetPrimaryDisplay() == displays[0], "Primary display is first in the display list");
+    SDLTest_AssertCheck(displays[count] == 0, "Display list ends with a zero ID");
+
+    for (int i = 0; i < count; ++i) {
+        SDL_Rect bounds;
+        const char *name = SDL_GetDisplayName(displays[i]);
+        SDLTest_AssertCheck(name != NULL && *name != '\0', "Display %d has a name", i);
+        SDLTest_AssertCheck(SDL_GetDisplayProperties(displays[i]) != 0, "Display %d has properties", i);
+        if (SDLTest_AssertCheck(SDL_GetDisplayBounds(displays[i], &bounds), "Get display %d bounds: %s", i, SDL_GetError())) {
+            SDLTest_AssertCheck(bounds.w > 0 && bounds.h > 0, "Display %d has positive bounds", i);
+        }
+        SDLTest_AssertCheck(SDL_GetDisplayContentScale(displays[i]) > 0.0f, "Display %d has positive content scale", i);
+    }
+
+    SDL_ClearError();
+    SDLTest_AssertCheck(SDL_GetDisplayName(0) == NULL && *SDL_GetError() != '\0',
+                        "Invalid display lookup fails with an error");
+    SDL_free(displays);
+    return TEST_COMPLETED;
+}
+
+static const SDLTest_TestCaseReference videoTestDisplayRegistry = {
+    video_displayRegistry, "video_displayRegistry", "Check display registry queries and invalid display error", TEST_ENABLED
+};
 
 /**
  * Tests the functionality of the SDL_GetClosestFullscreenDisplayMode function against current resolution
@@ -2037,6 +2265,105 @@ static int SDLCALL video_setWindowCenteredOnDisplay(void *arg)
  *       desktops, particularly tiling desktops, may not support the expected behavior,
  *       so don't be surprised if this fails.
  */
+static int SDLCALL video_waylandShowHideLifecycle(void *arg)
+{
+    if (SDL_strcmp(SDL_GetCurrentVideoDriver(), "wayland") != 0) {
+        return TEST_SKIPPED;
+    }
+
+    SDL_Window *window = SDL_CreateWindow("Wayland show/hide lifecycle", 320, 240, SDL_WINDOW_HIDDEN);
+    if (!SDLTest_AssertCheck(window != NULL, "Create hidden Wayland window: %s", SDL_GetError())) {
+        return TEST_ABORTED;
+    }
+
+    const SDL_PropertiesID props = SDL_GetWindowProperties(window);
+    for (int i = 0; i < 2; ++i) {
+        if (!SDLTest_AssertCheck(SDL_ShowWindow(window), "Show Wayland window %d: %s", i, SDL_GetError())) {
+            break;
+        }
+        SDLTest_AssertCheck(SDL_GetPointerProperty(props, SDL_PROP_WINDOW_WAYLAND_XDG_SURFACE_POINTER, NULL) != NULL,
+                            "Show %d creates an xdg surface", i);
+        if (!SDLTest_AssertCheck(SDL_HideWindow(window), "Hide Wayland window %d: %s", i, SDL_GetError())) {
+            break;
+        }
+        SDLTest_AssertCheck(SDL_GetPointerProperty(props, SDL_PROP_WINDOW_WAYLAND_XDG_SURFACE_POINTER, NULL) == NULL,
+                            "Hide %d clears the xdg surface", i);
+    }
+
+    SDL_DestroyWindow(window);
+    return TEST_COMPLETED;
+}
+
+static const SDLTest_TestCaseReference videoTestWaylandShowHideLifecycle = {
+    video_waylandShowHideLifecycle, "video_waylandShowHideLifecycle", "Create and destroy Wayland shell surfaces across repeated show/hide", TEST_ENABLED
+};
+
+static int SDLCALL video_waylandPopupShowHideLifecycle(void *arg)
+{
+    if (SDL_strcmp(SDL_GetCurrentVideoDriver(), "wayland") != 0) {
+        return TEST_SKIPPED;
+    }
+
+    SDL_Window *parent = createVideoSuiteTestWindow("Wayland popup parent");
+    if (!parent) {
+        return TEST_ABORTED;
+    }
+    SDL_PumpEvents();
+    SDL_Window *popup = SDL_CreatePopupWindow(parent, 8, 8, 64, 64, SDL_WINDOW_TOOLTIP | SDL_WINDOW_HIDDEN);
+    if (!SDLTest_AssertCheck(popup != NULL, "Create hidden Wayland popup: %s", SDL_GetError())) {
+        destroyVideoSuiteTestWindow(parent);
+        return TEST_ABORTED;
+    }
+
+    const SDL_PropertiesID props = SDL_GetWindowProperties(popup);
+    for (int i = 0; i < 2; ++i) {
+        if (!SDLTest_AssertCheck(SDL_ShowWindow(popup), "Show Wayland popup %d: %s", i, SDL_GetError())) {
+            break;
+        }
+        const Uint64 deadline = SDL_GetTicks() + 1000;
+        while (SDL_GetPointerProperty(props, SDL_PROP_WINDOW_WAYLAND_XDG_POPUP_POINTER, NULL) == NULL && SDL_GetTicks() < deadline) {
+            SDL_PumpEvents();
+            SDL_Delay(10);
+        }
+        SDLTest_AssertCheck(SDL_GetPointerProperty(props, SDL_PROP_WINDOW_WAYLAND_XDG_POPUP_POINTER, NULL) != NULL,
+                            "Show %d creates an xdg popup", i);
+        if (!SDLTest_AssertCheck(SDL_HideWindow(popup), "Hide Wayland popup %d: %s", i, SDL_GetError())) {
+            break;
+        }
+        SDLTest_AssertCheck(SDL_GetPointerProperty(props, SDL_PROP_WINDOW_WAYLAND_XDG_POPUP_POINTER, NULL) == NULL,
+                            "Hide %d clears the xdg popup", i);
+    }
+
+    SDL_DestroyWindow(popup);
+    destroyVideoSuiteTestWindow(parent);
+    return TEST_COMPLETED;
+}
+
+static const SDLTest_TestCaseReference videoTestWaylandPopupShowHideLifecycle = {
+    video_waylandPopupShowHideLifecycle, "video_waylandPopupShowHideLifecycle", "Create and destroy Wayland popup roles across repeated show/hide", TEST_ENABLED
+};
+
+static int SDLCALL video_rejectsPopupWithoutType(void *arg)
+{
+    const char *expected_error = "Popup windows must specify either the 'SDL_WINDOW_TOOLTIP' or the 'SDL_WINDOW_POPUP_MENU' flag";
+
+    for (int i = 0; i < 1000; ++i) {
+        SDL_Window *popup = SDL_CreatePopupWindow(NULL, 0, 0, 64, 64, SDL_WINDOW_HIDDEN);
+        if (popup != NULL) {
+            SDL_DestroyWindow(popup);
+            return TEST_ABORTED;
+        }
+    }
+
+    SDLTest_AssertCheck(SDL_strcmp(SDL_GetError(), expected_error) == 0,
+                        "Invalid popup flags preserve the error: %s", SDL_GetError());
+    return TEST_COMPLETED;
+}
+
+static const SDLTest_TestCaseReference videoTestRejectsPopupWithoutType = {
+    video_rejectsPopupWithoutType, "video_rejectsPopupWithoutType", "Reject popup creation without a popup type", TEST_ENABLED
+};
+
 static int SDLCALL video_getSetWindowState(void *arg)
 {
     const char *title = "video_getSetWindowState Test Window";
@@ -2549,6 +2876,13 @@ static int SDLCALL video_getWindowSurface(void *arg)
     SDLTest_AssertPass("Call to SDL_UpdateWindowSurface(window)");
     SDLTest_AssertCheck(result == true, "Verify return value; expected: true, got: %d", result);
 
+    if (surface) {
+        SDL_Rect dirty = { 4, 5, 12, 10 };
+        SDLTest_AssertCheck(SDL_FillSurfaceRect(surface, &dirty, 0), "Fill a dirty surface rectangle: %s", SDL_GetError());
+        SDLTest_AssertCheck(SDL_UpdateWindowSurfaceRects(window, &dirty, 1), "Present a dirty surface rectangle: %s", SDL_GetError());
+        SDLTest_AssertCheck(SDL_GetWindowSurface(window) == surface, "Partial update preserves the surface");
+    }
+
     /* We shouldn't be able to create a renderer on a window with a surface */
     renderer = SDL_CreateRenderer(window, renderer_name);
     SDLTest_AssertPass("Call to SDL_CreateRenderer(window, %s)", renderer_name);
@@ -2558,6 +2892,7 @@ static int SDLCALL video_getWindowSurface(void *arg)
     SDLTest_AssertPass("Call to SDL_DestroyWindowSurface(window)");
     SDLTest_AssertCheck(result == true, "Verify return value; expected: true, got: %d", result);
     SDLTest_AssertCheck(!SDL_WindowHasSurface(window), "Validate that window does not have a surface");
+    SDLTest_AssertCheck(!SDL_UpdateWindowSurface(window), "Updating a destroyed window surface fails");
 
     /* We should be able to create a renderer on the window now */
     renderer = SDL_CreateRenderer(window, renderer_name);
@@ -2627,6 +2962,22 @@ static const SDLTest_TestCaseReference videoTestCreateWindowVariousSizes = {
 
 static const SDLTest_TestCaseReference videoTestCreateWindowVariousFlags = {
     video_createWindowVariousFlags, "video_createWindowVariousFlags", "Create windows using various flags", TEST_ENABLED
+};
+
+static const SDLTest_TestCaseReference videoTestRejectsModalWithoutParent = {
+    video_rejectsModalWithoutParent, "video_rejectsModalWithoutParent", "Reject modal windows without a parent", TEST_ENABLED
+};
+
+static const SDLTest_TestCaseReference videoTestWindowHierarchy = {
+    video_windowHierarchy, "video_windowHierarchy", "Keep parent and modal state consistent", TEST_ENABLED
+};
+
+static const SDLTest_TestCaseReference videoTestRejectsConflictingGraphicsFlags = {
+    video_rejectsConflictingGraphicsFlags, "video_rejectsConflictingGraphicsFlags", "Reject conflicting graphics flags", TEST_ENABLED
+};
+
+static const SDLTest_TestCaseReference videoTestFullscreenEnterLeave = {
+    video_testFullscreenEnterLeave, "video_testFullscreenEnterLeave", "Tests fullscreen display selection on X11", TEST_ENABLED
 };
 
 static const SDLTest_TestCaseReference videoTestGetWindowFlags = {
@@ -2708,13 +3059,431 @@ static const SDLTest_TestCaseReference videoTestRaiseWindow = {
     video_raiseWindow, "video_raiseWindow", "Checks window focus", TEST_ENABLED
 };
 
+static int SDLCALL video_glContextLifecycle(void *arg)
+{
+    SDL_Window *gl_window;
+    SDL_GLContext context;
+    int red_size = 0;
+
+    if (!SDL_GL_LoadLibrary(NULL)) {
+        SDLTest_Log("OpenGL loader unavailable: %s", SDL_GetError());
+        return TEST_SKIPPED;
+    }
+
+    SDLTest_AssertCheck(SDL_GL_GetProcAddress("glGetString") != NULL, "Loaded OpenGL library exposes glGetString");
+    gl_window = SDL_CreateWindow("GL context lifecycle", 32, 32, SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN);
+    if (!SDLTest_AssertCheck(gl_window != NULL, "Create OpenGL window: %s", SDL_GetError())) {
+        SDL_GL_UnloadLibrary();
+        return TEST_ABORTED;
+    }
+    context = SDL_GL_CreateContext(gl_window);
+    if (!SDLTest_AssertCheck(context != NULL, "Create OpenGL context: %s", SDL_GetError())) {
+        SDL_DestroyWindow(gl_window);
+        SDL_GL_UnloadLibrary();
+        return TEST_ABORTED;
+    }
+
+    SDLTest_AssertCheck(SDL_GL_GetCurrentWindow() == gl_window, "New context makes its window current");
+    SDLTest_AssertCheck(SDL_GL_GetCurrentContext() == context, "New context becomes current");
+    SDLTest_AssertCheck(SDL_GL_GetAttribute(SDL_GL_RED_SIZE, &red_size) && red_size > 0,
+                        "Current context reports a red channel: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_GL_MakeCurrent(NULL, NULL), "Clear current OpenGL context: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_GL_GetCurrentContext() == NULL, "Current context is cleared");
+    SDLTest_AssertCheck(SDL_GL_MakeCurrent(gl_window, context), "Restore current OpenGL context: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_GL_DestroyContext(context), "Destroy OpenGL context: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_GL_GetCurrentContext() == NULL, "Destroyed context is no longer current");
+
+    SDL_DestroyWindow(gl_window);
+    SDL_GL_UnloadLibrary();
+    return TEST_COMPLETED;
+}
+
+static const SDLTest_TestCaseReference videoTestGLContextLifecycle = {
+    video_glContextLifecycle, "video_glContextLifecycle", "Checks OpenGL context lifecycle", TEST_ENABLED
+};
+
+static int SDLCALL video_vulkanLoaderReferences(void *arg)
+{
+    SDL_FunctionPointer proc;
+
+    if (!SDL_Vulkan_LoadLibrary(NULL)) {
+        SDLTest_Log("Vulkan loader unavailable: %s", SDL_GetError());
+        return TEST_SKIPPED;
+    }
+
+    proc = SDL_Vulkan_GetVkGetInstanceProcAddr();
+    SDLTest_AssertCheck(proc != NULL, "Loaded Vulkan library exposes vkGetInstanceProcAddr");
+    SDLTest_AssertCheck(SDL_Vulkan_LoadLibrary(NULL), "Second Vulkan loader reference succeeds: %s", SDL_GetError());
+    SDL_ClearError();
+    SDLTest_AssertCheck(!SDL_Vulkan_LoadLibrary("/nonexistent/SDL-vulkan-loader"), "Different loader path is rejected while loaded");
+    SDLTest_AssertCheck(SDL_GetError()[0] != '\0', "Different loader path sets an error");
+    SDL_Vulkan_UnloadLibrary();
+    SDLTest_AssertCheck(SDL_Vulkan_GetVkGetInstanceProcAddr() == proc,
+                        "One unload leaves the second loader reference active");
+    SDL_Vulkan_UnloadLibrary();
+    return TEST_COMPLETED;
+}
+
+static const SDLTest_TestCaseReference videoTestVulkanLoaderReferences = {
+    video_vulkanLoaderReferences, "video_vulkanLoaderReferences", "Checks Vulkan loader references and path validation", TEST_ENABLED
+};
+
+static int SDLCALL video_gpuDriverEnumeration(void *arg)
+{
+    const int count = SDL_GetNumGPUDrivers();
+    SDLTest_AssertCheck(count >= 0, "GPU driver count is nonnegative: %d", count);
+    for (int i = 0; i < count; i++) {
+        const char *name = SDL_GetGPUDriver(i);
+        SDLTest_AssertCheck(name != NULL && name[0] != '\0', "GPU driver %d has a name", i);
+    }
+
+    SDL_ClearError();
+    SDLTest_AssertCheck(SDL_GetGPUDriver(-1) == NULL, "Negative GPU driver index is rejected");
+    SDLTest_AssertCheck(SDL_GetError()[0] != '\0', "Negative GPU driver index sets an error");
+    SDL_ClearError();
+    SDLTest_AssertCheck(SDL_GetGPUDriver(count) == NULL, "Out-of-range GPU driver index is rejected");
+    SDLTest_AssertCheck(SDL_GetError()[0] != '\0', "Out-of-range GPU driver index sets an error");
+    return TEST_COMPLETED;
+}
+
+static const SDLTest_TestCaseReference videoTestGPUDriverEnumeration = {
+    video_gpuDriverEnumeration, "video_gpuDriverEnumeration", "Enumerate GPU drivers and reject invalid indices", TEST_ENABLED
+};
+
+static int SDLCALL video_gpuDeviceLifecycle(void *arg)
+{
+    SDL_GPUDevice *device;
+    const char *name;
+
+    if (!SDL_GPUSupportsShaderFormats(SDL_GPU_SHADERFORMAT_SPIRV, "vulkan")) {
+        SDLTest_Log("Skipping Vulkan device lifecycle: %s", SDL_GetError());
+        SDLTest_AssertPass("Vulkan backend is unavailable with this video driver");
+        return TEST_COMPLETED;
+    }
+
+    device = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_SPIRV, false, "vulkan");
+    if (!SDLTest_AssertCheck(device != NULL, "Create Vulkan GPU device: %s", SDL_GetError())) {
+        return TEST_ABORTED;
+    }
+
+    SDLTest_AssertCheck(SDL_strcmp(SDL_GetGPUDeviceDriver(device), "vulkan") == 0,
+                        "Vulkan device reports its driver");
+    SDLTest_AssertCheck((SDL_GetGPUShaderFormats(device) & SDL_GPU_SHADERFORMAT_SPIRV) != 0,
+                        "Vulkan device supports SPIR-V");
+    name = SDL_GetStringProperty(SDL_GetGPUDeviceProperties(device), SDL_PROP_GPU_DEVICE_NAME_STRING, NULL);
+    SDLTest_AssertCheck(name != NULL && name[0] != '\0', "Vulkan device reports its name");
+    name = SDL_GetStringProperty(SDL_GetGPUDeviceProperties(device), SDL_PROP_GPU_DEVICE_DRIVER_VERSION_STRING, NULL);
+    SDLTest_AssertCheck(name != NULL && name[0] != '\0', "Vulkan device reports its driver version");
+
+    SDL_ClearError();
+    for (int i = 0; i < 2; ++i) {
+        SDL_GPUCommandBuffer *command_buffer = SDL_AcquireGPUCommandBuffer(device);
+        SDL_GPUFence *fence;
+        if (!SDLTest_AssertCheck(command_buffer != NULL, "Acquire Vulkan command buffer %d: %s", i, SDL_GetError())) {
+            break;
+        }
+        fence = SDL_SubmitGPUCommandBufferAndAcquireFence(command_buffer);
+        if (!SDLTest_AssertCheck(fence != NULL, "Submit Vulkan command buffer %d: %s", i, SDL_GetError())) {
+            break;
+        }
+        SDLTest_AssertCheck(SDL_WaitForGPUFences(device, true, &fence, 1), "Wait for Vulkan fence %d: %s", i, SDL_GetError());
+        SDL_ReleaseGPUFence(device, fence);
+    }
+
+    SDL_DestroyGPUDevice(device);
+
+    device = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_SPIRV, false, "vulkan");
+    if (!SDLTest_AssertCheck(device != NULL, "Recreate Vulkan GPU device: %s", SDL_GetError())) {
+        return TEST_ABORTED;
+    }
+    SDL_GPUCommandBuffer *command_buffer = SDL_AcquireGPUCommandBuffer(device);
+    if (SDLTest_AssertCheck(command_buffer != NULL, "Acquire command buffer after device recreation: %s", SDL_GetError())) {
+        SDL_GPUFence *fence = SDL_SubmitGPUCommandBufferAndAcquireFence(command_buffer);
+        if (SDLTest_AssertCheck(fence != NULL, "Submit after device recreation: %s", SDL_GetError())) {
+            SDLTest_AssertCheck(SDL_WaitForGPUFences(device, true, &fence, 1), "Wait after device recreation: %s", SDL_GetError());
+            SDL_ReleaseGPUFence(device, fence);
+        }
+    }
+    SDL_DestroyGPUDevice(device);
+    return TEST_COMPLETED;
+}
+
+static const SDLTest_TestCaseReference videoTestGPUDeviceLifecycle = {
+    video_gpuDeviceLifecycle, "video_gpuDeviceLifecycle", "Create, inspect, and destroy a Vulkan GPU device", TEST_ENABLED
+};
+
+static int SDLCALL video_gpuBufferCopyPass(void *arg)
+{
+    const Uint8 expected[] = { 0x12, 0x34, 0x56, 0x78 };
+    SDL_GPUDevice *device;
+    SDL_GPUBuffer *buffer = NULL;
+    SDL_GPUTransferBuffer *upload = NULL, *download = NULL;
+    SDL_GPUBufferCreateInfo buffer_info = { SDL_GPU_BUFFERUSAGE_VERTEX, sizeof(expected), 0 };
+    SDL_GPUTransferBufferCreateInfo transfer_info = { SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, sizeof(expected), 0 };
+    SDL_GPUBufferRegion region;
+    SDL_GPUTransferBufferLocation location;
+    void *mapped;
+
+    if (!SDL_GPUSupportsShaderFormats(SDL_GPU_SHADERFORMAT_SPIRV, "vulkan")) {
+        SDLTest_Log("Skipping Vulkan buffer copy: %s", SDL_GetError());
+        SDLTest_AssertPass("Vulkan backend is unavailable with this video driver");
+        return TEST_COMPLETED;
+    }
+
+    device = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_SPIRV, false, "vulkan");
+    if (!SDLTest_AssertCheck(device != NULL, "Create Vulkan device for buffer copy: %s", SDL_GetError())) {
+        return TEST_ABORTED;
+    }
+
+    buffer = SDL_CreateGPUBuffer(device, &buffer_info);
+    upload = SDL_CreateGPUTransferBuffer(device, &transfer_info);
+    transfer_info.usage = SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD;
+    download = SDL_CreateGPUTransferBuffer(device, &transfer_info);
+    if (!SDLTest_AssertCheck(buffer && upload && download, "Create GPU copy buffers: %s", SDL_GetError())) {
+        goto done;
+    }
+
+    mapped = SDL_MapGPUTransferBuffer(device, upload, false);
+    if (!SDLTest_AssertCheck(mapped != NULL, "Map upload buffer: %s", SDL_GetError())) {
+        goto done;
+    }
+    SDL_memcpy(mapped, expected, sizeof(expected));
+    SDL_UnmapGPUTransferBuffer(device, upload);
+
+    region.buffer = buffer;
+    region.offset = 0;
+    region.size = sizeof(expected);
+    location.offset = 0;
+
+    for (int i = 0; i < 2; ++i) {
+        SDL_GPUCommandBuffer *command_buffer = SDL_AcquireGPUCommandBuffer(device);
+        SDL_GPUCopyPass *copy_pass;
+        SDL_GPUFence *fence;
+        if (!SDLTest_AssertCheck(command_buffer != NULL, "Acquire copy command buffer %d: %s", i, SDL_GetError())) {
+            break;
+        }
+        copy_pass = SDL_BeginGPUCopyPass(command_buffer);
+        if (!SDLTest_AssertCheck(copy_pass != NULL, "Begin copy pass %d: %s", i, SDL_GetError())) {
+            SDL_CancelGPUCommandBuffer(command_buffer);
+            break;
+        }
+        location.transfer_buffer = i == 0 ? upload : download;
+        if (i == 0) {
+            SDL_UploadToGPUBuffer(copy_pass, &location, &region, false);
+        } else {
+            SDL_DownloadFromGPUBuffer(copy_pass, &region, &location);
+        }
+        SDL_EndGPUCopyPass(copy_pass);
+        fence = SDL_SubmitGPUCommandBufferAndAcquireFence(command_buffer);
+        if (!SDLTest_AssertCheck(fence != NULL, "Submit copy pass %d: %s", i, SDL_GetError())) {
+            break;
+        }
+        const bool waited = SDL_WaitForGPUFences(device, true, &fence, 1);
+        SDLTest_AssertCheck(waited, "Wait for copy pass %d: %s", i, SDL_GetError());
+        SDL_ReleaseGPUFence(device, fence);
+        if (!waited) {
+            break;
+        }
+        if (i == 1) {
+            mapped = SDL_MapGPUTransferBuffer(device, download, false);
+            if (SDLTest_AssertCheck(mapped != NULL, "Map download buffer: %s", SDL_GetError())) {
+                SDLTest_AssertCheck(SDL_memcmp(mapped, expected, sizeof(expected)) == 0, "GPU buffer copy preserves bytes");
+                SDL_UnmapGPUTransferBuffer(device, download);
+            }
+        }
+    }
+
+done:
+    if (download) SDL_ReleaseGPUTransferBuffer(device, download);
+    if (upload) SDL_ReleaseGPUTransferBuffer(device, upload);
+    if (buffer) SDL_ReleaseGPUBuffer(device, buffer);
+    SDL_DestroyGPUDevice(device);
+    return TEST_COMPLETED;
+}
+
+static const SDLTest_TestCaseReference videoTestGPUBufferCopyPass = {
+    video_gpuBufferCopyPass, "video_gpuBufferCopyPass", "Upload and download bytes through Vulkan copy passes", TEST_ENABLED
+};
+
+static int SDLCALL video_gpuBufferAllocationReuse(void *arg)
+{
+    SDL_GPUBuffer *buffers[24] = { NULL };
+    SDL_GPUBufferCreateInfo info = { SDL_GPU_BUFFERUSAGE_VERTEX, 64, 0 };
+    SDL_GPUDevice *device;
+    const int count = (int)SDL_arraysize(buffers);
+
+    if (!SDL_GPUSupportsShaderFormats(SDL_GPU_SHADERFORMAT_SPIRV, "vulkan")) {
+        SDLTest_Log("Skipping Vulkan buffer allocation reuse: %s", SDL_GetError());
+        return TEST_SKIPPED;
+    }
+
+    device = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_SPIRV, false, "vulkan");
+    if (!SDLTest_AssertCheck(device != NULL, "Create Vulkan device for buffer reuse: %s", SDL_GetError())) {
+        return TEST_ABORTED;
+    }
+
+    for (int i = 0; i < count; ++i) {
+        buffers[i] = SDL_CreateGPUBuffer(device, &info);
+        if (!SDLTest_AssertCheck(buffers[i] != NULL, "Create GPU buffer %d: %s", i, SDL_GetError())) {
+            goto done;
+        }
+    }
+    for (int i = 0; i < count; i += 2) {
+        SDL_ReleaseGPUBuffer(device, buffers[i]);
+        buffers[i] = NULL;
+    }
+    for (int i = 0; i < count; i += 2) {
+        buffers[i] = SDL_CreateGPUBuffer(device, &info);
+        if (!SDLTest_AssertCheck(buffers[i] != NULL, "Recreate GPU buffer %d: %s", i, SDL_GetError())) {
+            goto done;
+        }
+    }
+
+done:
+    for (int i = 0; i < count; ++i) {
+        if (buffers[i]) {
+            SDL_ReleaseGPUBuffer(device, buffers[i]);
+        }
+    }
+    SDL_DestroyGPUDevice(device);
+    return TEST_COMPLETED;
+}
+
+static const SDLTest_TestCaseReference videoTestGPUBufferAllocationReuse = {
+    video_gpuBufferAllocationReuse, "video_gpuBufferAllocationReuse", "Recreate small Vulkan buffers after release", TEST_ENABLED
+};
+
+static const SDLTest_TestCaseReference videoTestGPUBlitPipelineCacheOOM = {
+    video_gpuBlitPipelineCacheOOM, "video_gpuBlitPipelineCacheOOM", "Release a blit pipeline when cache expansion runs out of memory", TEST_ENABLED
+};
+
+static int SDLCALL video_recreateWindowSettings(void *arg)
+{
+    typedef int (*XFetchNameFn)(void *, unsigned long, char **);
+    typedef int (*XFreeFn)(void *);
+    const char *title = "Recreated window settings";
+    void *x11;
+    XFetchNameFn xfetchname;
+    XFreeFn xfree;
+    SDL_Window *window;
+    SDL_Renderer *renderer = NULL;
+    SDL_WindowID id;
+    unsigned long old_xid, new_xid;
+    char *native_title = NULL;
+    int min_w = 0, min_h = 0, max_w = 0, max_h = 0;
+    float min_aspect = 0.0f, max_aspect = 0.0f;
+
+    if (SDL_strcmp(SDL_GetCurrentVideoDriver(), "x11") != 0) {
+        return TEST_SKIPPED;
+    }
+
+    x11 = SDL_LoadObject("libX11.so.6");
+    if (!SDLTest_AssertCheck(x11 != NULL, "Load X11 to inspect native title: %s", SDL_GetError())) {
+        return TEST_ABORTED;
+    }
+    xfetchname = (XFetchNameFn)SDL_LoadFunction(x11, "XFetchName");
+    xfree = (XFreeFn)SDL_LoadFunction(x11, "XFree");
+    if (!SDLTest_AssertCheck(xfetchname && xfree, "Load X11 title functions: %s", SDL_GetError())) {
+        SDL_UnloadObject(x11);
+        return TEST_ABORTED;
+    }
+
+    window = SDL_CreateWindow(title, 180, 120, SDL_WINDOW_HIDDEN | SDL_WINDOW_RESIZABLE);
+    if (!SDLTest_AssertCheck(window != NULL, "Create window before OpenGL renderer: %s", SDL_GetError())) {
+        SDL_UnloadObject(x11);
+        return TEST_ABORTED;
+    }
+    id = SDL_GetWindowID(window);
+    old_xid = (unsigned long)SDL_GetNumberProperty(SDL_GetWindowProperties(window), SDL_PROP_WINDOW_X11_WINDOW_NUMBER, 0);
+    if (!SDLTest_AssertCheck(SDL_SetWindowMinimumSize(window, 80, 70) &&
+                             SDL_SetWindowMaximumSize(window, 400, 300) &&
+                             SDL_SetWindowAspectRatio(window, 1.0f, 2.0f),
+                             "Set window constraints before recreation: %s", SDL_GetError())) {
+        SDL_DestroyWindow(window);
+        SDL_UnloadObject(x11);
+        return TEST_ABORTED;
+    }
+
+    renderer = SDL_CreateRenderer(window, "opengl");
+    if (SDLTest_AssertCheck(renderer != NULL, "Create OpenGL renderer and recreate window: %s", SDL_GetError())) {
+        SDLTest_AssertCheck((SDL_GetWindowFlags(window) & SDL_WINDOW_OPENGL) != 0, "Recreated window has OpenGL flag");
+        SDLTest_AssertCheck(SDL_GetWindowID(window) == id, "Recreated window keeps its ID");
+        SDLTest_AssertCheck(SDL_strcmp(SDL_GetWindowTitle(window), title) == 0, "Recreated window keeps its title");
+        new_xid = (unsigned long)SDL_GetNumberProperty(SDL_GetWindowProperties(window), SDL_PROP_WINDOW_X11_WINDOW_NUMBER, 0);
+        SDLTest_AssertCheck(old_xid != 0 && new_xid != 0 && new_xid != old_xid, "OpenGL renderer recreated the native X11 window");
+        if (new_xid != 0) {
+            void *display = SDL_GetPointerProperty(SDL_GetWindowProperties(window), SDL_PROP_WINDOW_X11_DISPLAY_POINTER, NULL);
+            SDLTest_AssertCheck(display && xfetchname(display, new_xid, &native_title) && native_title &&
+                                SDL_strcmp(native_title, title) == 0, "Recreated X11 window has the native title");
+            if (native_title) {
+                xfree(native_title);
+            }
+        }
+        SDL_GetWindowMinimumSize(window, &min_w, &min_h);
+        SDL_GetWindowMaximumSize(window, &max_w, &max_h);
+        SDL_GetWindowAspectRatio(window, &min_aspect, &max_aspect);
+        SDLTest_AssertCheck(min_w == 80 && min_h == 70 && max_w == 400 && max_h == 300,
+                            "Recreated window keeps size constraints");
+        SDLTest_AssertCheck(min_aspect == 1.0f && max_aspect == 2.0f, "Recreated window keeps aspect limits");
+    }
+
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    SDL_UnloadObject(x11);
+    return TEST_COMPLETED;
+}
+
+static const SDLTest_TestCaseReference videoTestRecreateWindowSettings = {
+    video_recreateWindowSettings, "video_recreateWindowSettings", "Preserve window settings when OpenGL renderer recreates a window", TEST_ENABLED
+};
+
+static int SDLCALL video_destroyWindowUnlinksList(void *arg)
+{
+    SDL_Window *first = SDL_CreateWindow("first", 32, 32, SDL_WINDOW_HIDDEN);
+    SDL_Window *middle = SDL_CreateWindow("middle", 32, 32, SDL_WINDOW_HIDDEN);
+    SDL_Window *last = SDL_CreateWindow("last", 32, 32, SDL_WINDOW_HIDDEN);
+    SDL_WindowID first_id, middle_id, last_id;
+
+    if (!SDLTest_AssertCheck(first && middle && last, "Create three windows for list removal: %s", SDL_GetError())) {
+        if (last) SDL_DestroyWindow(last);
+        if (middle) SDL_DestroyWindow(middle);
+        if (first) SDL_DestroyWindow(first);
+        return TEST_ABORTED;
+    }
+
+    first_id = SDL_GetWindowID(first);
+    middle_id = SDL_GetWindowID(middle);
+    last_id = SDL_GetWindowID(last);
+    SDL_DestroyWindow(middle);
+    SDLTest_AssertCheck(SDL_GetWindowFromID(middle_id) == NULL, "Removed middle window is absent");
+    SDLTest_AssertCheck(SDL_GetWindowFromID(first_id) == first && SDL_GetWindowFromID(last_id) == last,
+                        "Windows on both sides remain reachable");
+
+    SDL_DestroyWindow(last);
+    SDLTest_AssertCheck(SDL_GetWindowFromID(last_id) == NULL && SDL_GetWindowFromID(first_id) == first,
+                        "Removing list head preserves remaining window");
+    SDL_DestroyWindow(first);
+    SDLTest_AssertCheck(SDL_GetWindowFromID(first_id) == NULL, "Final window is absent after destruction");
+    return TEST_COMPLETED;
+}
+
+static const SDLTest_TestCaseReference videoTestDestroyWindowUnlinksList = {
+    video_destroyWindowUnlinksList, "video_destroyWindowUnlinksList", "Remove middle and head windows without losing neighbors", TEST_ENABLED
+};
+
 /* Sequence of Video test cases */
 static const SDLTest_TestCaseReference *videoTests[] = {
     &videoTestEnableDisableScreensaver,
     &videoTestCreateWindowVariousSizes,
     &videoTestCreateWindowVariousFlags,
+    &videoTestRejectsModalWithoutParent,
+    &videoTestWindowHierarchy,
+    &videoTestRejectsConflictingGraphicsFlags,
+    &videoTestFullscreenEnterLeave,
     &videoTestGetWindowFlags,
     &videoTestGetFullscreenDisplayModes,
+    &videoTestDisplayModeOrderingAndMatch,
+    &videoTestDisplayRegistry,
     &videoTestGetClosestDisplayModeCurrentResolution,
     &videoTestGetClosestDisplayModeRandomResolution,
     &videoTestGetWindowDisplayMode,
@@ -2729,10 +3498,22 @@ static const SDLTest_TestCaseReference *videoTests[] = {
     &videoTestGetSetWindowData,
     &videoTestSetWindowCenteredOnDisplay,
     &videoTestGetSetWindowState,
+    &videoTestWaylandShowHideLifecycle,
+    &videoTestWaylandPopupShowHideLifecycle,
+    &videoTestRejectsPopupWithoutType,
     &videoTestCreateMinimized,
     &videoTestCreateMaximized,
     &videoTestGetWindowSurface,
     &videoTestRaiseWindow,
+    &videoTestGLContextLifecycle,
+    &videoTestVulkanLoaderReferences,
+    &videoTestGPUDriverEnumeration,
+    &videoTestGPUDeviceLifecycle,
+    &videoTestGPUBufferCopyPass,
+    &videoTestGPUBufferAllocationReuse,
+    &videoTestGPUBlitPipelineCacheOOM,
+    &videoTestRecreateWindowSettings,
+    &videoTestDestroyWindowUnlinksList,
     NULL
 };
 

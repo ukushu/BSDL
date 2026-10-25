@@ -2,10 +2,20 @@
  * Original code: automated SDL platform test written by Edgar Simo "bobbens"
  * Extended and extensively updated by aschiffler at ferzkopp dot net
  */
+#include "../src/dynapi/SDL_dynapi.h"
+#ifdef SDL_DYNAMIC_API
+#undef SDL_DYNAMIC_API
+#endif
+#define SDL_DYNAMIC_API 0
+#include "../src/SDL_internal.h"
+#include "../src/render/SDL_sysrender.h"
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_test.h>
 #include "testautomation_images.h"
 #include "testautomation_suites.h"
+
+extern const SDLTest_TestCaseReference renderTestTextureFromSurfaceUploadFailure;
+extern const SDLTest_TestCaseReference renderTestTexturePaletteFailure;
 
 /* ================= Test Case Implementation ================== */
 
@@ -42,6 +52,44 @@ static void compare2x(SDL_Surface *reference, int allowable_error);
 static SDL_Texture *loadTestFace(void);
 static bool isSupported(int code);
 static bool hasDrawColor(void);
+
+static bool SDLCALL render_failGeometryCopy(SDL_Renderer *test_renderer, SDL_RenderCommand *cmd, SDL_Texture *texture,
+                                            const SDL_FRect *srcrect, const SDL_FRect *dstrect)
+{
+    (void)test_renderer;
+    (void)cmd;
+    (void)texture;
+    (void)srcrect;
+    (void)dstrect;
+    return SDL_SetError("Controlled geometry draw failure");
+}
+
+static bool SDLCALL render_failGeometryCopyEx(SDL_Renderer *test_renderer, SDL_RenderCommand *cmd, SDL_Texture *texture,
+                                              const SDL_FRect *srcrect, const SDL_FRect *dstrect,
+                                              const double angle, const SDL_FPoint *center, const SDL_FlipMode flip,
+                                              float scale_x, float scale_y)
+{
+    (void)test_renderer;
+    (void)cmd;
+    (void)texture;
+    (void)srcrect;
+    (void)dstrect;
+    (void)angle;
+    (void)center;
+    (void)flip;
+    (void)scale_x;
+    (void)scale_y;
+    return SDL_SetError("Controlled geometry draw failure");
+}
+
+static bool SDLCALL render_failGeometryFill(SDL_Renderer *test_renderer, SDL_RenderCommand *cmd, const SDL_FRect *rects, int count)
+{
+    (void)test_renderer;
+    (void)cmd;
+    (void)rects;
+    (void)count;
+    return SDL_SetError("Controlled geometry draw failure");
+}
 
 /**
  * Create software renderer for tests
@@ -1151,6 +1199,20 @@ static int SDLCALL render_testBlendModes(void *arg)
     return TEST_COMPLETED;
 }
 
+static int SDLCALL render_testComposeBlendMode(void *arg)
+{
+    SDLTest_AssertCheck(SDL_ComposeCustomBlendMode(SDL_BLENDFACTOR_ONE, SDL_BLENDFACTOR_ZERO, SDL_BLENDOPERATION_ADD,
+                                                  SDL_BLENDFACTOR_ONE, SDL_BLENDFACTOR_ZERO, SDL_BLENDOPERATION_ADD) == SDL_BLENDMODE_NONE,
+                        "Compose the predefined none blend mode");
+    SDLTest_AssertCheck(SDL_ComposeCustomBlendMode(SDL_BLENDFACTOR_SRC_ALPHA, SDL_BLENDFACTOR_ONE_MINUS_SRC_ALPHA, SDL_BLENDOPERATION_ADD,
+                                                  SDL_BLENDFACTOR_ONE, SDL_BLENDFACTOR_ONE_MINUS_SRC_ALPHA, SDL_BLENDOPERATION_ADD) == SDL_BLENDMODE_BLEND,
+                        "Compose the predefined alpha blend mode");
+    SDLTest_AssertCheck(SDL_ComposeCustomBlendMode(SDL_BLENDFACTOR_SRC_ALPHA, SDL_BLENDFACTOR_ONE_MINUS_SRC_ALPHA, SDL_BLENDOPERATION_SUBTRACT,
+                                                  SDL_BLENDFACTOR_DST_ALPHA, SDL_BLENDFACTOR_ONE, SDL_BLENDOPERATION_REV_SUBTRACT) == 0x02930652u,
+                        "Preserve a custom blend mode value");
+    return TEST_COMPLETED;
+}
+
 /**
  * Test viewport
  */
@@ -1328,6 +1390,56 @@ static int SDLCALL render_testRGBSurfaceNoAlpha(void* arg)
     SDL_DestroySurface(surface2);
     SDL_DestroyRenderer(software_renderer);
     SDL_DestroySurface(surface);
+    return TEST_COMPLETED;
+}
+
+static int SDLCALL render_testColorKeyTextureFromSurface(void *arg)
+{
+    SDL_Surface *source = SDL_CreateSurface(2, 1, SDL_PIXELFORMAT_XRGB8888);
+    SDL_Surface *target = SDL_CreateSurface(2, 1, SDL_PIXELFORMAT_RGBA32);
+    SDL_Renderer *software = NULL;
+    SDL_Texture *texture = NULL;
+    const SDL_Rect second_pixel = { 1, 0, 1, 1 };
+    Uint8 r, g, b, a;
+
+    if (!SDLTest_AssertCheck(source && target, "Create color key surfaces: %s", SDL_GetError())) {
+        SDL_DestroySurface(source);
+        SDL_DestroySurface(target);
+        return TEST_ABORTED;
+    }
+    software = SDL_CreateSoftwareRenderer(target);
+    if (!SDLTest_AssertCheck(software != NULL, "Create color key renderer: %s", SDL_GetError())) {
+        SDL_DestroySurface(source);
+        SDL_DestroySurface(target);
+        return TEST_ABORTED;
+    }
+
+    const SDL_PixelFormatDetails *details = SDL_GetPixelFormatDetails(source->format);
+    const Uint32 red = SDL_MapRGB(details, NULL, 255, 0, 0);
+    const Uint32 green = SDL_MapRGB(details, NULL, 0, 255, 0);
+    SDLTest_AssertCheck(SDL_FillSurfaceRect(source, NULL, red), "Fill color key source: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_FillSurfaceRect(source, &second_pixel, green), "Fill opaque source pixel: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_SetSurfaceColorKey(source, true, red), "Set source color key: %s", SDL_GetError());
+    texture = SDL_CreateTextureFromSurface(software, source);
+    if (SDLTest_AssertCheck(texture != NULL, "Create color key texture: %s", SDL_GetError())) {
+        SDL_PixelFormat format = (SDL_PixelFormat)SDL_GetNumberProperty(SDL_GetTextureProperties(texture), SDL_PROP_TEXTURE_FORMAT_NUMBER, SDL_PIXELFORMAT_UNKNOWN);
+        SDLTest_AssertCheck(SDL_ISPIXELFORMAT_ALPHA(format), "Color key source selects an alpha texture format");
+        SDLTest_AssertCheck(SDL_SetRenderDrawColor(software, 0, 0, 255, 255), "Set color key background: %s", SDL_GetError());
+        SDLTest_AssertCheck(SDL_RenderClear(software), "Clear color key target: %s", SDL_GetError());
+        SDLTest_AssertCheck(SDL_RenderTexture(software, texture, NULL, NULL), "Render color key texture: %s", SDL_GetError());
+        SDLTest_AssertCheck(SDL_RenderPresent(software), "Present color key texture: %s", SDL_GetError());
+        if (SDLTest_AssertCheck(SDL_ReadSurfacePixel(target, 0, 0, &r, &g, &b, &a), "Read transparent pixel: %s", SDL_GetError())) {
+            SDLTest_AssertCheck(r == 0 && g == 0 && b == 255 && a == 255, "Color key pixel leaves blue background visible");
+        }
+        if (SDLTest_AssertCheck(SDL_ReadSurfacePixel(target, 1, 0, &r, &g, &b, &a), "Read opaque pixel: %s", SDL_GetError())) {
+            SDLTest_AssertCheck(r == 0 && g == 255 && b == 0 && a == 255, "Opaque source pixel remains green");
+        }
+    }
+
+    SDL_DestroyTexture(texture);
+    SDL_DestroyRenderer(software);
+    SDL_DestroySurface(source);
+    SDL_DestroySurface(target);
     return TEST_COMPLETED;
 }
 
@@ -1990,6 +2102,69 @@ static int SDLCALL render_testUVWrapping(void *arg)
     return TEST_COMPLETED;
 }
 
+static int SDLCALL render_testGeometryAutoTextureAddress(void *arg)
+{
+    SDL_Surface *target = SDL_CreateSurface(16, 16, SDL_PIXELFORMAT_RGBA32);
+    SDL_Surface *source = SDL_CreateSurface(2, 1, SDL_PIXELFORMAT_RGBA32);
+    SDL_Renderer *software = NULL;
+    SDL_Texture *texture = NULL;
+    const SDL_Rect left = { 0, 0, 1, 1 };
+    const SDL_Rect right = { 1, 0, 1, 1 };
+    const SDL_FColor white = { 1.0f, 1.0f, 1.0f, 1.0f };
+    SDL_Vertex vertices[4] = {
+        { { 0.0f, 0.0f }, white, { 0.0f, 0.0f } },
+        { { 16.0f, 0.0f }, white, { 2.0f, 0.0f } },
+        { { 16.0f, 16.0f }, white, { 2.0f, 1.0f } },
+        { { 0.0f, 16.0f }, white, { 0.0f, 1.0f } }
+    };
+    const int indices[6] = { 0, 1, 2, 0, 2, 3 };
+    Uint8 r = 0, g = 0, b = 0, a = 0;
+
+    if (!SDLTest_AssertCheck(target && source, "Create geometry address mode surfaces: %s", SDL_GetError())) {
+        SDL_DestroySurface(target);
+        SDL_DestroySurface(source);
+        return TEST_ABORTED;
+    }
+    SDL_FillSurfaceRect(source, &left, SDL_MapSurfaceRGB(source, 255, 0, 0));
+    SDL_FillSurfaceRect(source, &right, SDL_MapSurfaceRGB(source, 0, 255, 0));
+    software = SDL_CreateSoftwareRenderer(target);
+    if (!SDLTest_AssertCheck(software != NULL, "Create geometry address mode renderer: %s", SDL_GetError())) {
+        SDL_DestroySurface(target);
+        SDL_DestroySurface(source);
+        return TEST_ABORTED;
+    }
+    texture = SDL_CreateTextureFromSurface(software, source);
+    if (!SDLTest_AssertCheck(texture != NULL, "Create geometry address mode texture: %s", SDL_GetError())) {
+        SDL_DestroyRenderer(software);
+        SDL_DestroySurface(target);
+        SDL_DestroySurface(source);
+        return TEST_ABORTED;
+    }
+    CHECK_FUNC(SDL_SetTextureScaleMode, (texture, SDL_SCALEMODE_NEAREST));
+    CHECK_FUNC(SDL_SetRenderDrawColor, (software, 0, 0, 0, 255));
+    CHECK_FUNC(SDL_SetRenderTextureAddressMode, (software, SDL_TEXTURE_ADDRESS_AUTO, SDL_TEXTURE_ADDRESS_AUTO));
+    CHECK_FUNC(SDL_RenderClear, (software));
+    CHECK_FUNC(SDL_RenderGeometry, (software, texture, vertices, 4, indices, 6));
+    CHECK_FUNC(SDL_RenderPresent, (software));
+    if (SDLTest_AssertCheck(SDL_ReadSurfacePixel(target, 10, 8, &r, &g, &b, &a), "Read wrapped geometry pixel: %s", SDL_GetError())) {
+        SDLTest_AssertCheck(r > 200 && g < 50, "AUTO wraps U while V remains in range");
+    }
+
+    CHECK_FUNC(SDL_SetRenderTextureAddressMode, (software, SDL_TEXTURE_ADDRESS_CLAMP, SDL_TEXTURE_ADDRESS_AUTO));
+    CHECK_FUNC(SDL_RenderClear, (software));
+    CHECK_FUNC(SDL_RenderGeometry, (software, texture, vertices, 4, indices, 6));
+    CHECK_FUNC(SDL_RenderPresent, (software));
+    if (SDLTest_AssertCheck(SDL_ReadSurfacePixel(target, 10, 8, &r, &g, &b, &a), "Read clamped geometry pixel: %s", SDL_GetError())) {
+        SDLTest_AssertCheck(g > 200 && r < 50, "Explicit CLAMP keeps U at the texture edge");
+    }
+
+    SDL_DestroyTexture(texture);
+    SDL_DestroyRenderer(software);
+    SDL_DestroySurface(source);
+    SDL_DestroySurface(target);
+    return TEST_COMPLETED;
+}
+
 /**
  * Tests texture state changes
  */
@@ -2113,6 +2288,22 @@ static int SDLCALL render_testTextureState(void *arg)
     /* Clean up. */
     SDL_DestroyTexture(texture);
 
+    return TEST_COMPLETED;
+}
+
+static int SDLCALL render_rejectsFourCCRenderTarget(void *arg)
+{
+    SDL_Texture *texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_NV12, SDL_TEXTUREACCESS_TARGET, 16, 16);
+    char expected_error[128];
+
+    SDL_snprintf(expected_error, sizeof(expected_error), "%s textures can't be render targets",
+                 SDL_GetPixelFormatName(SDL_PIXELFORMAT_NV12));
+    SDLTest_AssertCheck(texture == NULL, "FourCC render target textures are rejected");
+    SDLTest_AssertCheck(SDL_strcmp(SDL_GetError(), expected_error) == 0,
+                        "FourCC render target error is preserved: %s", SDL_GetError());
+    if (texture) {
+        SDL_DestroyTexture(texture);
+    }
     return TEST_COMPLETED;
 }
 
@@ -2360,6 +2551,543 @@ static int SDLCALL render_testSoftware(void *arg)
     return TEST_COMPLETED;
 }
 
+static int SDLCALL render_testSoftwareTextureFallback(void *arg)
+{
+    const Uint8 pixels[] = {
+        0xFF, 0x00, 0x00, 0x00, 0xFF, 0x00,
+        0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF
+    };
+    SDL_Surface *surface = SDL_CreateSurface(2, 2, SDL_PIXELFORMAT_RGBA32);
+    SDL_Renderer *software = NULL;
+    SDL_Texture *texture = NULL;
+    SDL_Texture *retained = NULL;
+    float retained_w = 0.0f, retained_h = 0.0f;
+
+    if (!SDLTest_AssertCheck(surface != NULL, "Create software fallback surface: %s", SDL_GetError())) {
+        return TEST_ABORTED;
+    }
+    software = SDL_CreateSoftwareRenderer(surface);
+    if (!SDLTest_AssertCheck(software != NULL, "Create software fallback renderer: %s", SDL_GetError())) {
+        SDL_DestroySurface(surface);
+        return TEST_ABORTED;
+    }
+
+    retained = SDL_CreateTexture(software, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STATIC, 2, 2);
+    if (!SDLTest_AssertCheck(retained != NULL, "Create texture before fallback: %s", SDL_GetError())) {
+        SDL_DestroyRenderer(software);
+        SDL_DestroySurface(surface);
+        return TEST_ABORTED;
+    }
+
+    texture = SDL_CreateTexture(software, SDL_PIXELFORMAT_RGB24, SDL_TEXTUREACCESS_STREAMING, 2, 2);
+    SDLTest_AssertCheck(texture != NULL, "Create RGB24 fallback texture: %s", SDL_GetError());
+    if (texture) {
+        SDLTest_AssertCheck(SDL_GetNumberProperty(SDL_GetTextureProperties(texture), SDL_PROP_TEXTURE_FORMAT_NUMBER, SDL_PIXELFORMAT_UNKNOWN) == SDL_PIXELFORMAT_RGB24,
+                            "Fallback texture keeps its requested format");
+        SDLTest_AssertCheck(SDL_UpdateTexture(texture, NULL, pixels, 6), "Update RGB24 fallback texture: %s", SDL_GetError());
+        SDLTest_AssertCheck(SDL_SetRenderDrawColor(software, 0, 0, 0, 255), "Set fallback clear color: %s", SDL_GetError());
+        SDLTest_AssertCheck(SDL_RenderClear(software), "Clear fallback target: %s", SDL_GetError());
+        SDLTest_AssertCheck(SDL_RenderTexture(software, texture, NULL, NULL), "Render fallback texture: %s", SDL_GetError());
+        SDLTest_AssertCheck(SDL_RenderPresent(software), "Present fallback texture: %s", SDL_GetError());
+        for (int i = 0; i < 4; ++i) {
+            Uint8 r = 0, g = 0, b = 0, a = 0;
+            if (SDLTest_AssertCheck(SDL_ReadSurfacePixel(surface, i % 2, i / 2, &r, &g, &b, &a),
+                                    "Read fallback pixel %d: %s", i, SDL_GetError())) {
+                SDLTest_AssertCheck(r == pixels[3 * i] && g == pixels[3 * i + 1] && b == pixels[3 * i + 2] && a == 255,
+                                    "Fallback pixel %d matches uploaded RGB24 data", i);
+            }
+        }
+        SDL_DestroyTexture(texture);
+    }
+
+    SDLTest_AssertCheck(SDL_GetTextureSize(retained, &retained_w, &retained_h) && retained_w == 2.0f && retained_h == 2.0f,
+                        "Texture before fallback remains valid after fallback destruction");
+    SDL_DestroyTexture(retained);
+
+    SDL_DestroyRenderer(software);
+    SDL_DestroySurface(surface);
+    return TEST_COMPLETED;
+}
+
+static int SDLCALL render_testTextureCreationProperties(void *arg)
+{
+    SDL_Surface *surface = SDL_CreateSurface(4, 4, SDL_PIXELFORMAT_RGBA32);
+    SDL_Renderer *software = NULL;
+    SDL_PropertiesID create_props = 0;
+    SDL_Texture *texture = NULL;
+
+    if (!SDLTest_AssertCheck(surface != NULL, "Create texture properties surface: %s", SDL_GetError())) {
+        return TEST_ABORTED;
+    }
+    software = SDL_CreateSoftwareRenderer(surface);
+    if (!SDLTest_AssertCheck(software != NULL, "Create texture properties renderer: %s", SDL_GetError())) {
+        SDL_DestroySurface(surface);
+        return TEST_ABORTED;
+    }
+    create_props = SDL_CreateProperties();
+    if (!SDLTest_AssertCheck(create_props != 0, "Create texture properties: %s", SDL_GetError())) {
+        SDL_DestroyRenderer(software);
+        SDL_DestroySurface(surface);
+        return TEST_ABORTED;
+    }
+
+    SDL_SetNumberProperty(create_props, SDL_PROP_TEXTURE_CREATE_FORMAT_NUMBER, SDL_PIXELFORMAT_RGBA32);
+    SDL_SetNumberProperty(create_props, SDL_PROP_TEXTURE_CREATE_ACCESS_NUMBER, SDL_TEXTUREACCESS_STATIC);
+    SDL_SetNumberProperty(create_props, SDL_PROP_TEXTURE_CREATE_WIDTH_NUMBER, 0);
+    SDL_SetNumberProperty(create_props, SDL_PROP_TEXTURE_CREATE_HEIGHT_NUMBER, 2);
+    SDL_SetNumberProperty(create_props, SDL_PROP_TEXTURE_CREATE_COLORSPACE_NUMBER, SDL_COLORSPACE_SRGB);
+
+    texture = SDL_CreateTextureWithProperties(software, create_props);
+    SDLTest_AssertCheck(texture == NULL, "Reject zero-width texture");
+    SDLTest_AssertCheck(SDL_strcmp(SDL_GetError(), "Texture dimensions can't be 0") == 0,
+                        "Keep zero-width texture error: %s", SDL_GetError());
+    SDL_DestroyTexture(texture);
+
+    SDL_SetNumberProperty(create_props, SDL_PROP_TEXTURE_CREATE_WIDTH_NUMBER, 3);
+    texture = SDL_CreateTextureWithProperties(software, create_props);
+    if (SDLTest_AssertCheck(texture != NULL, "Create texture after rejected dimensions: %s", SDL_GetError())) {
+        SDL_PropertiesID texture_props = SDL_GetTextureProperties(texture);
+        SDLTest_AssertCheck(SDL_GetNumberProperty(texture_props, SDL_PROP_TEXTURE_FORMAT_NUMBER, 0) == SDL_PIXELFORMAT_RGBA32,
+                            "Texture format matches create properties");
+        SDLTest_AssertCheck(SDL_GetNumberProperty(texture_props, SDL_PROP_TEXTURE_ACCESS_NUMBER, -1) == SDL_TEXTUREACCESS_STATIC,
+                            "Texture access matches create properties");
+        SDLTest_AssertCheck(SDL_GetNumberProperty(texture_props, SDL_PROP_TEXTURE_WIDTH_NUMBER, 0) == 3 &&
+                            SDL_GetNumberProperty(texture_props, SDL_PROP_TEXTURE_HEIGHT_NUMBER, 0) == 2,
+                            "Texture dimensions match create properties");
+        SDLTest_AssertCheck(SDL_GetNumberProperty(texture_props, SDL_PROP_TEXTURE_COLORSPACE_NUMBER, 0) == SDL_COLORSPACE_SRGB,
+                            "Texture colorspace matches create properties");
+    }
+
+    SDL_DestroyTexture(texture);
+    SDL_DestroyProperties(create_props);
+    SDL_DestroyRenderer(software);
+    SDL_DestroySurface(surface);
+    return TEST_COMPLETED;
+}
+
+static int SDLCALL render_testSoftwareGeometryQuads(void *arg)
+{
+    const SDL_FColor red = { 1.0f, 0.0f, 0.0f, 1.0f };
+    const SDL_FColor green = { 0.0f, 1.0f, 0.0f, 1.0f };
+    const SDL_FColor white = { 1.0f, 1.0f, 1.0f, 1.0f };
+    const SDL_Vertex indexed[] = {
+        { { 1.0f, 1.0f }, red, { 0.0f, 0.0f } },
+        { { 3.0f, 1.0f }, red, { 1.0f, 0.0f } },
+        { { 1.0f, 3.0f }, red, { 0.0f, 1.0f } },
+        { { 3.0f, 3.0f }, red, { 1.0f, 1.0f } }
+    };
+    const int indices[] = { 0, 1, 3, 0, 3, 2 };
+    const SDL_Vertex unindexed[] = {
+        { { 4.0f, 1.0f }, white, { 0.0f, 0.0f } },
+        { { 6.0f, 1.0f }, white, { 1.0f, 0.0f } },
+        { { 6.0f, 3.0f }, white, { 1.0f, 1.0f } },
+        { { 4.0f, 1.0f }, white, { 0.0f, 0.0f } },
+        { { 6.0f, 3.0f }, white, { 1.0f, 1.0f } },
+        { { 4.0f, 3.0f }, white, { 0.0f, 1.0f } }
+    };
+    const SDL_Vertex varied_color[] = {
+        { { 8.0f, 1.0f }, red, { 0.0f, 0.0f } },
+        { { 14.0f, 1.0f }, green, { 1.0f, 0.0f } },
+        { { 8.0f, 7.0f }, green, { 0.0f, 1.0f } },
+        { { 14.0f, 7.0f }, green, { 1.0f, 1.0f } }
+    };
+    const float raw_xy[][2] = {
+        { 10.0f, 1.0f }, { 14.0f, 1.0f }, { 10.0f, 5.0f }, { 14.0f, 5.0f }
+    };
+    const SDL_FColor raw_color[][2] = { { white }, { white }, { white }, { white } };
+    const float raw_uv[][4] = {
+        { 0.0f, 0.0f, 0.0f, 0.0f }, { 1.0f, 0.0f, 0.0f, 0.0f },
+        { 0.0f, 1.0f, 0.0f, 0.0f }, { 1.0f, 1.0f, 0.0f, 0.0f }
+    };
+    const float raw_uv_flipped[][2] = { { 1.0f, 0.0f }, { 0.0f, 0.0f }, { 1.0f, 1.0f }, { 0.0f, 1.0f } };
+    const int raw_indices[] = { 0, 1, 3, 0, 3, 2 };
+    SDL_Surface *surface = SDL_CreateSurface(16, 8, SDL_PIXELFORMAT_RGBA32);
+    SDL_Surface *source = SDL_CreateSurface(1, 1, SDL_PIXELFORMAT_RGBA32);
+    SDL_Renderer *software = NULL;
+    SDL_Texture *texture = NULL;
+    Uint8 r, g, b, a;
+    SDL_BlendMode blend;
+    bool (*queue_copy)(SDL_Renderer *, SDL_RenderCommand *, SDL_Texture *, const SDL_FRect *, const SDL_FRect *) = NULL;
+    bool (*queue_copy_ex)(SDL_Renderer *, SDL_RenderCommand *, SDL_Texture *, const SDL_FRect *, const SDL_FRect *,
+                          double, const SDL_FPoint *, SDL_FlipMode, float, float) = NULL;
+    bool (*queue_fill_rects)(SDL_Renderer *, SDL_RenderCommand *, const SDL_FRect *, int) = NULL;
+
+    if (!SDLTest_AssertCheck(surface && source, "Create software geometry surfaces: %s", SDL_GetError())) {
+        goto done;
+    }
+    software = SDL_CreateSoftwareRenderer(surface);
+    if (!SDLTest_AssertCheck(software != NULL, "Create software geometry renderer: %s", SDL_GetError())) {
+        goto done;
+    }
+    SDLTest_AssertCheck(SDL_WriteSurfacePixel(source, 0, 0, 0, 255, 0, 255), "Write source pixel: %s", SDL_GetError());
+    texture = SDL_CreateTextureFromSurface(software, source);
+    if (!SDLTest_AssertCheck(texture != NULL, "Create software geometry texture: %s", SDL_GetError())) {
+        goto done;
+    }
+    SDLTest_AssertCheck(SDL_SetRenderDrawColor(software, 0, 0, 0, 255), "Set clear color: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_RenderClear(software), "Clear geometry target: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_SetRenderDrawColor(software, 0, 0, 255, 255), "Set sentinel draw color: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_SetRenderDrawBlendMode(software, SDL_BLENDMODE_NONE), "Set sentinel blend mode: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_RenderGeometry(software, NULL, indexed, 4, indices, SDL_arraysize(indices)), "Render indexed quad: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_RenderGeometry(software, texture, unindexed, SDL_arraysize(unindexed), NULL, 0), "Render unindexed textured quad: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_RenderGeometry(software, NULL, varied_color, SDL_arraysize(varied_color), indices, SDL_arraysize(indices)),
+                        "Render quad with varied vertex colors as triangles: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_RenderGeometryRaw(software, texture,
+                                              &raw_xy[0][0], sizeof(raw_xy[0]),
+                                              &raw_color[0][0], sizeof(raw_color[0]),
+                                              &raw_uv[0][0], sizeof(raw_uv[0]),
+                                              SDL_arraysize(raw_xy), raw_indices,
+                                              SDL_arraysize(raw_indices), sizeof(raw_indices[0])),
+                        "Render raw quad with separate strides: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_GetRenderDrawColor(software, &r, &g, &b, &a) && r == 0 && g == 0 && b == 255 && a == 255,
+                        "Software geometry restores draw color");
+    SDLTest_AssertCheck(SDL_GetRenderDrawBlendMode(software, &blend) && blend == SDL_BLENDMODE_NONE,
+                        "Software geometry restores blend mode");
+    SDLTest_AssertCheck(SDL_RenderPresent(software), "Present geometry target: %s", SDL_GetError());
+    if (SDLTest_AssertCheck(SDL_ReadSurfacePixel(surface, 2, 2, &r, &g, &b, &a), "Read indexed quad pixel: %s", SDL_GetError())) {
+        SDLTest_AssertCheck(r == 255 && g == 0 && b == 0 && a == 255, "Indexed quad renders red");
+    }
+    if (SDLTest_AssertCheck(SDL_ReadSurfacePixel(surface, 5, 2, &r, &g, &b, &a), "Read textured quad pixel: %s", SDL_GetError())) {
+        SDLTest_AssertCheck(r == 0 && g == 255 && b == 0 && a == 255, "Unindexed textured quad renders green");
+    }
+    if (SDLTest_AssertCheck(SDL_ReadSurfacePixel(surface, 8, 1, &r, &g, &b, &a), "Read varied-color top-left pixel: %s", SDL_GetError())) {
+        SDLTest_AssertCheck(r > 0, "Varied-color quad preserves red at top left");
+    }
+    if (SDLTest_AssertCheck(SDL_ReadSurfacePixel(surface, 13, 6, &r, &g, &b, &a), "Read varied-color bottom-right pixel: %s", SDL_GetError())) {
+        SDLTest_AssertCheck(g > r, "Varied-color quad preserves green at bottom right (R=%u G=%u B=%u A=%u)", r, g, b, a);
+    }
+    if (SDLTest_AssertCheck(SDL_ReadSurfacePixel(surface, 0, 0, &r, &g, &b, &a), "Read untouched pixel: %s", SDL_GetError())) {
+        SDLTest_AssertCheck(r == 0 && g == 0 && b == 0 && a == 255, "Outside both quads stays black");
+    }
+    if (SDLTest_AssertCheck(SDL_ReadSurfacePixel(surface, 12, 3, &r, &g, &b, &a), "Read raw stride quad pixel: %s", SDL_GetError())) {
+        SDLTest_AssertCheck(r == 0 && g == 255 && b == 0 && a == 255, "Raw stride quad renders green");
+    }
+
+    queue_copy = software->QueueCopy;
+    software->QueueCopy = render_failGeometryCopy;
+    SDL_ClearError();
+    SDLTest_AssertCheck(!SDL_RenderGeometry(software, texture, indexed, SDL_arraysize(indexed), indices, SDL_arraysize(indices)),
+                        "Propagate textured quad draw failure");
+    SDLTest_AssertCheck(SDL_strcmp(SDL_GetError(), "Controlled geometry draw failure") == 0,
+                        "Preserve textured quad draw error: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_GetRenderDrawColor(software, &r, &g, &b, &a) && r == 0 && g == 0 && b == 255 && a == 255,
+                        "Restore draw color after textured quad failure");
+    SDLTest_AssertCheck(SDL_GetRenderDrawBlendMode(software, &blend) && blend == SDL_BLENDMODE_NONE,
+                        "Restore blend mode after textured quad failure");
+    software->QueueCopy = queue_copy;
+
+    queue_copy_ex = software->QueueCopyEx;
+    software->QueueCopyEx = render_failGeometryCopyEx;
+    SDL_ClearError();
+    SDLTest_AssertCheck(!SDL_RenderGeometryRaw(software, texture,
+                                              &raw_xy[0][0], sizeof(raw_xy[0]),
+                                              &raw_color[0][0], sizeof(raw_color[0]),
+                                              &raw_uv_flipped[0][0], sizeof(raw_uv_flipped[0]),
+                                              SDL_arraysize(raw_xy), raw_indices,
+                                              SDL_arraysize(raw_indices), sizeof(raw_indices[0])),
+                        "Propagate flipped textured quad draw failure");
+    SDLTest_AssertCheck(SDL_strcmp(SDL_GetError(), "Controlled geometry draw failure") == 0,
+                        "Preserve flipped textured quad draw error: %s", SDL_GetError());
+    software->QueueCopyEx = queue_copy_ex;
+
+    queue_fill_rects = software->QueueFillRects;
+    software->QueueFillRects = render_failGeometryFill;
+    SDL_ClearError();
+    SDLTest_AssertCheck(!SDL_RenderGeometry(software, NULL, indexed, SDL_arraysize(indexed), indices, SDL_arraysize(indices)),
+                        "Propagate untextured quad draw failure");
+    SDLTest_AssertCheck(SDL_strcmp(SDL_GetError(), "Controlled geometry draw failure") == 0,
+                        "Preserve untextured quad draw error: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_GetRenderDrawColor(software, &r, &g, &b, &a) && r == 0 && g == 0 && b == 255 && a == 255,
+                        "Restore draw color after untextured quad failure");
+    SDLTest_AssertCheck(SDL_GetRenderDrawBlendMode(software, &blend) && blend == SDL_BLENDMODE_NONE,
+                        "Restore blend mode after untextured quad failure");
+    software->QueueFillRects = queue_fill_rects;
+
+done:
+    if (software) {
+        if (queue_copy) {
+            software->QueueCopy = queue_copy;
+        }
+        if (queue_copy_ex) {
+            software->QueueCopyEx = queue_copy_ex;
+        }
+        if (queue_fill_rects) {
+            software->QueueFillRects = queue_fill_rects;
+        }
+    }
+    SDL_DestroyTexture(texture);
+    SDL_DestroyRenderer(software);
+    SDL_DestroySurface(source);
+    SDL_DestroySurface(surface);
+    return TEST_COMPLETED;
+}
+
+static int SDLCALL render_testSoftwareTexturePalette(void *arg)
+{
+    const SDL_Color red = { 255, 0, 0, 255 };
+    const SDL_Color blue = { 0, 0, 255, 255 };
+    const SDL_FRect left = { 0.0f, 0.0f, 1.0f, 1.0f };
+    const SDL_FRect right = { 1.0f, 0.0f, 1.0f, 1.0f };
+    const Uint8 index = 1;
+    SDL_Surface *surface = SDL_CreateSurface(2, 1, SDL_PIXELFORMAT_RGBA32);
+    SDL_Renderer *software = NULL;
+    SDL_Texture *texture = NULL;
+    SDL_Palette *palette = NULL;
+    Uint8 r, g, b, a;
+
+    if (!SDLTest_AssertCheck(surface != NULL, "Create palette target: %s", SDL_GetError())) {
+        goto done;
+    }
+    software = SDL_CreateSoftwareRenderer(surface);
+    if (!SDLTest_AssertCheck(software != NULL, "Create palette renderer: %s", SDL_GetError())) {
+        goto done;
+    }
+    texture = SDL_CreateTexture(software, SDL_PIXELFORMAT_INDEX8, SDL_TEXTUREACCESS_STATIC, 1, 1);
+    palette = SDL_CreatePalette(256);
+    if (!SDLTest_AssertCheck(texture && palette, "Create indexed texture and palette: %s", SDL_GetError())) {
+        goto done;
+    }
+    SDLTest_AssertCheck(SDL_SetPaletteColors(palette, &red, index, 1), "Set initial palette color: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_SetTexturePalette(texture, palette), "Assign texture palette: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_GetTexturePalette(texture) == palette, "Read assigned texture palette");
+    SDLTest_AssertCheck(SDL_UpdateTexture(texture, NULL, &index, 1), "Upload indexed pixel: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_SetRenderDrawColor(software, 0, 0, 0, 255), "Set palette target clear color: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_RenderClear(software), "Clear palette target: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_RenderTexture(software, texture, NULL, &left), "Queue texture before palette change: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_SetPaletteColors(palette, &blue, index, 1), "Change palette color: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_RenderTexture(software, texture, NULL, &right), "Queue texture after palette change: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_RenderPresent(software), "Present palette target: %s", SDL_GetError());
+    if (SDLTest_AssertCheck(SDL_ReadSurfacePixel(surface, 0, 0, &r, &g, &b, &a), "Read old palette pixel: %s", SDL_GetError())) {
+        SDLTest_AssertCheck(r == 255 && g == 0 && b == 0 && a == 255, "Queued draw keeps old palette color");
+    }
+    if (SDLTest_AssertCheck(SDL_ReadSurfacePixel(surface, 1, 0, &r, &g, &b, &a), "Read new palette pixel: %s", SDL_GetError())) {
+        SDLTest_AssertCheck(r == 0 && g == 0 && b == 255 && a == 255, "Later draw uses new palette color");
+    }
+
+done:
+    SDL_DestroyTexture(texture);
+    SDL_DestroyPalette(palette);
+    SDL_DestroyRenderer(software);
+    SDL_DestroySurface(surface);
+    return TEST_COMPLETED;
+}
+
+static int SDLCALL render_testDebugText(void *arg)
+{
+    SDL_Surface *surface = SDL_CreateSurface(24, 8, SDL_PIXELFORMAT_RGBA32);
+    SDL_Renderer *software = NULL;
+    int white = 0, red = 0, blank = 0;
+
+    if (!SDLTest_AssertCheck(surface != NULL, "Create debug text surface: %s", SDL_GetError())) {
+        return TEST_ABORTED;
+    }
+    software = SDL_CreateSoftwareRenderer(surface);
+    if (!SDLTest_AssertCheck(software != NULL, "Create debug text renderer: %s", SDL_GetError())) {
+        SDL_DestroySurface(surface);
+        return TEST_ABORTED;
+    }
+
+    SDLTest_AssertCheck(SDL_SetRenderDrawColor(software, 0, 0, 0, 255), "Set debug text background: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_RenderClear(software), "Clear debug text surface: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_SetRenderDrawColor(software, 255, 255, 255, 255), "Set white debug text: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_RenderDebugText(software, 0, 0, "A "), "Draw glyph and blank: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_SetRenderDrawColor(software, 255, 0, 0, 255), "Set red debug text: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_RenderDebugTextFormat(software, 16, 0, "%s", "A"), "Draw formatted glyph: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_RenderPresent(software), "Present debug text: %s", SDL_GetError());
+
+    for (int y = 0; y < 8; ++y) {
+        for (int x = 0; x < 24; ++x) {
+            Uint8 r, g, b, a;
+            if (SDL_ReadSurfacePixel(surface, x, y, &r, &g, &b, &a)) {
+                if (x < 8 && r == 255 && g == 255 && b == 255) {
+                    ++white;
+                } else if (x >= 8 && x < 16 && (r != 0 || g != 0 || b != 0)) {
+                    ++blank;
+                } else if (x >= 16 && r == 255 && g == 0 && b == 0) {
+                    ++red;
+                }
+            }
+        }
+    }
+    SDLTest_AssertCheck(white > 0 && red > 0 && blank == 0, "Debug glyphs use draw color and spaces stay blank");
+    SDLTest_AssertCheck(!SDL_RenderDebugText(NULL, 0, 0, "A"), "Debug text rejects invalid renderer");
+
+    SDL_DestroyRenderer(software);
+    SDL_DestroySurface(surface);
+    return TEST_COMPLETED;
+}
+
+static int SDLCALL render_testSoftwareTextureLock(void *arg)
+{
+    SDL_Surface *surface = SDL_CreateSurface(2, 1, SDL_PIXELFORMAT_RGBA32);
+    SDL_Renderer *software = NULL;
+    SDL_Texture *texture = NULL;
+    SDL_Surface *locked = NULL;
+
+    if (!SDLTest_AssertCheck(surface != NULL, "Create texture lock surface: %s", SDL_GetError())) {
+        return TEST_ABORTED;
+    }
+    software = SDL_CreateSoftwareRenderer(surface);
+    if (!SDLTest_AssertCheck(software != NULL, "Create texture lock renderer: %s", SDL_GetError())) {
+        SDL_DestroySurface(surface);
+        return TEST_ABORTED;
+    }
+
+    texture = SDL_CreateTexture(software, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STREAMING, 2, 1);
+    if (SDLTest_AssertCheck(texture != NULL, "Create streaming texture: %s", SDL_GetError()) &&
+        SDLTest_AssertCheck(SDL_LockTextureToSurface(texture, NULL, &locked), "Lock texture to surface: %s", SDL_GetError())) {
+        SDLTest_AssertCheck(SDL_WriteSurfacePixel(locked, 0, 0, 255, 0, 0, 255), "Write red locked pixel: %s", SDL_GetError());
+        SDLTest_AssertCheck(SDL_WriteSurfacePixel(locked, 1, 0, 0, 0, 255, 255), "Write blue locked pixel: %s", SDL_GetError());
+        SDL_UnlockTexture(texture);
+
+        SDLTest_AssertCheck(SDL_RenderTexture(software, texture, NULL, NULL), "Render unlocked texture: %s", SDL_GetError());
+        SDLTest_AssertCheck(SDL_RenderPresent(software), "Present unlocked texture: %s", SDL_GetError());
+        for (int x = 0; x < 2; ++x) {
+            Uint8 r = 0, g = 0, b = 0, a = 0;
+            if (SDLTest_AssertCheck(SDL_ReadSurfacePixel(surface, x, 0, &r, &g, &b, &a), "Read texture lock pixel %d: %s", x, SDL_GetError())) {
+                SDLTest_AssertCheck(r == (x == 0 ? 255 : 0) && g == 0 && b == (x == 0 ? 0 : 255) && a == 255,
+                                    "Texture lock pixel %d matches written color", x);
+            }
+        }
+    }
+
+    SDL_DestroyTexture(texture);
+    SDL_DestroyRenderer(software);
+    SDL_DestroySurface(surface);
+    return TEST_COMPLETED;
+}
+
+static void checkSoftwareYUVPixels(SDL_Surface *surface, const char *format)
+{
+    const Uint8 minimum[] = { 0, 40, 110, 235 };
+    const Uint8 maximum[] = { 10, 80, 150, 255 };
+
+    for (int x = 0; x < 4; ++x) {
+        Uint8 r = 0, g = 0, b = 0, a = 0;
+        if (SDLTest_AssertCheck(SDL_ReadSurfacePixel(surface, x, 0, &r, &g, &b, &a),
+                                "Read %s pixel %d: %s", format, x, SDL_GetError())) {
+            SDLTest_AssertCheck(r >= minimum[x] && r <= maximum[x] &&
+                                g >= minimum[x] && g <= maximum[x] &&
+                                b >= minimum[x] && b <= maximum[x] && a == 255,
+                                "%s grayscale pixel %d matches input luminance, got %u,%u,%u,%u",
+                                format, x, r, g, b, a);
+        }
+    }
+
+    {
+        Uint8 left_r = 0, left_g = 0, left_b = 0, left_a = 0;
+        Uint8 right_r = 0, right_g = 0, right_b = 0, right_a = 0;
+        bool left_read = SDLTest_AssertCheck(SDL_ReadSurfacePixel(surface, 1, 3, &left_r, &left_g, &left_b, &left_a),
+                                             "Read %s red pixel: %s", format, SDL_GetError());
+        bool right_read = SDLTest_AssertCheck(SDL_ReadSurfacePixel(surface, 2, 3, &right_r, &right_g, &right_b, &right_a),
+                                              "Read %s blue pixel: %s", format, SDL_GetError());
+        if (left_read && right_read) {
+            SDLTest_AssertCheck(left_r > left_b + 40 && right_b > right_r + 40 && left_a == 255 && right_a == 255,
+                                "%s chroma produces red and blue pixels, got %u,%u,%u and %u,%u,%u",
+                                format, left_r, left_g, left_b, right_r, right_g, right_b);
+        }
+    }
+}
+
+static int SDLCALL render_testSoftwareYUVTextureUpdates(void *arg)
+{
+    const Uint8 y[] = { 16, 64, 128, 235, 16, 64, 128, 235, 16, 64, 128, 235, 16, 64, 128, 235 };
+    const Uint8 u[] = { 128, 128, 80, 200 };
+    const Uint8 v[] = { 128, 128, 200, 80 };
+    const Uint8 uv[] = { 128, 128, 128, 128, 80, 200, 200, 80 };
+    SDL_Surface *surface = SDL_CreateSurface(4, 4, SDL_PIXELFORMAT_RGBA32);
+    SDL_Renderer *software = NULL;
+    SDL_Texture *texture = NULL;
+
+    if (!SDLTest_AssertCheck(surface != NULL, "Create software YUV surface: %s", SDL_GetError())) {
+        return TEST_ABORTED;
+    }
+    software = SDL_CreateSoftwareRenderer(surface);
+    if (!SDLTest_AssertCheck(software != NULL, "Create software YUV renderer: %s", SDL_GetError())) {
+        SDL_DestroySurface(surface);
+        return TEST_ABORTED;
+    }
+
+    texture = SDL_CreateTexture(software, SDL_PIXELFORMAT_IYUV, SDL_TEXTUREACCESS_STATIC, 4, 4);
+    if (!texture && SDL_strcmp(SDL_GetError(), "SDL not built with YUV support") == 0) {
+        SDL_DestroyRenderer(software);
+        SDL_DestroySurface(surface);
+        return TEST_SKIPPED;
+    }
+    if (!SDLTest_AssertCheck(texture != NULL, "Create IYUV fallback texture: %s", SDL_GetError())) {
+        SDL_DestroyRenderer(software);
+        SDL_DestroySurface(surface);
+        return TEST_ABORTED;
+    }
+    SDLTest_AssertCheck(SDL_UpdateYUVTexture(texture, NULL, y, 4, u, 2, v, 2),
+                        "Update IYUV fallback texture: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_RenderClear(software), "Clear IYUV target: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_RenderTexture(software, texture, NULL, NULL), "Render IYUV fallback texture: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_RenderPresent(software), "Present IYUV fallback texture: %s", SDL_GetError());
+    checkSoftwareYUVPixels(surface, "IYUV");
+    SDL_DestroyTexture(texture);
+
+    texture = SDL_CreateTexture(software, SDL_PIXELFORMAT_NV12, SDL_TEXTUREACCESS_STATIC, 4, 4);
+    if (!SDLTest_AssertCheck(texture != NULL, "Create NV12 fallback texture: %s", SDL_GetError())) {
+        SDL_DestroyRenderer(software);
+        SDL_DestroySurface(surface);
+        return TEST_ABORTED;
+    }
+    SDLTest_AssertCheck(SDL_UpdateNVTexture(texture, NULL, y, 4, uv, 4),
+                        "Update NV12 fallback texture: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_RenderClear(software), "Clear NV12 target: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_RenderTexture(software, texture, NULL, NULL), "Render NV12 fallback texture: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_RenderPresent(software), "Present NV12 fallback texture: %s", SDL_GetError());
+    checkSoftwareYUVPixels(surface, "NV12");
+    SDL_DestroyTexture(texture);
+    SDL_DestroyRenderer(software);
+    SDL_DestroySurface(surface);
+    return TEST_COMPLETED;
+}
+
+static int SDLCALL render_testDriverFallback(void *arg)
+{
+    SDL_Window *test_window;
+    SDL_Renderer *test_renderer;
+    bool has_software = false;
+
+    for (int i = 0; i < SDL_GetNumRenderDrivers(); ++i) {
+        if (SDL_strcmp(SDL_GetRenderDriver(i), SDL_SOFTWARE_RENDERER) == 0) {
+            has_software = true;
+        }
+    }
+    if (!has_software) {
+        return TEST_SKIPPED;
+    }
+
+    test_window = SDL_CreateWindow("render_testDriverFallback", 64, 64, SDL_WINDOW_HIDDEN);
+    if (!SDLTest_AssertCheck(test_window != NULL, "Create fallback test window: %s", SDL_GetError())) {
+        return TEST_ABORTED;
+    }
+
+    test_renderer = SDL_CreateRenderer(test_window, "no-such-renderer");
+    SDLTest_AssertCheck(test_renderer == NULL, "Unknown render driver is rejected");
+    SDLTest_AssertCheck(SDL_strcmp(SDL_GetError(), "no-such-renderer not available") == 0,
+                        "Unknown driver error is preserved: %s", SDL_GetError());
+    if (test_renderer) {
+        SDL_DestroyRenderer(test_renderer);
+    }
+
+    test_renderer = SDL_CreateRenderer(test_window, "no-such-renderer,software");
+    SDLTest_AssertCheck(test_renderer != NULL, "Software renderer is selected after an unknown driver: %s", SDL_GetError());
+    if (test_renderer) {
+        SDLTest_AssertCheck(SDL_strcmp(SDL_GetRendererName(test_renderer), SDL_SOFTWARE_RENDERER) == 0,
+                            "Selected renderer is software");
+    }
+
+    if (test_renderer) {
+        SDL_DestroyRenderer(test_renderer);
+    }
+
+    SDL_DestroyWindow(test_window);
+    return TEST_COMPLETED;
+}
+
 /* ================= Test References ================== */
 
 /* Render test cases */
@@ -2399,6 +3127,10 @@ static const SDLTest_TestCaseReference renderTestBlendModes = {
     render_testBlendModes, "render_testBlendModes", "Tests rendering blend modes", TEST_ENABLED
 };
 
+static const SDLTest_TestCaseReference renderTestComposeBlendMode = {
+    render_testComposeBlendMode, "render_testComposeBlendMode", "Tests blend mode composition", TEST_ENABLED
+};
+
 static const SDLTest_TestCaseReference renderTestViewport = {
     render_testViewport, "render_testViewport", "Tests viewport", TEST_ENABLED
 };
@@ -2419,8 +3151,16 @@ static const SDLTest_TestCaseReference renderTestUVWrapping = {
     render_testUVWrapping, "render_testUVWrapping", "Tests geometry UV wrapping", TEST_ENABLED
 };
 
+static const SDLTest_TestCaseReference renderTestGeometryAutoTextureAddress = {
+    render_testGeometryAutoTextureAddress, "render_testGeometryAutoTextureAddress", "Tests per-axis geometry texture address modes", TEST_ENABLED
+};
+
 static const SDLTest_TestCaseReference renderTestTextureState = {
     render_testTextureState, "render_testTextureState", "Tests texture state changes", TEST_ENABLED
+};
+
+static const SDLTest_TestCaseReference renderTestRejectsFourCCRenderTarget = {
+    render_rejectsFourCCRenderTarget, "render_rejectsFourCCRenderTarget", "Reject FourCC render target textures", TEST_ENABLED
 };
 
 static const SDLTest_TestCaseReference renderTestGetSetTextureScaleMode = {
@@ -2429,6 +3169,10 @@ static const SDLTest_TestCaseReference renderTestGetSetTextureScaleMode = {
 
 static const SDLTest_TestCaseReference renderTestRGBSurfaceNoAlpha = {
     render_testRGBSurfaceNoAlpha, "render_testRGBSurfaceNoAlpha", "Tests RGB surface with no alpha using software renderer", TEST_ENABLED
+};
+
+static const SDLTest_TestCaseReference renderTestColorKeyTextureFromSurface = {
+    render_testColorKeyTextureFromSurface, "render_testColorKeyTextureFromSurface", "Tests color key texture format and pixels", TEST_ENABLED
 };
 
 static const SDLTest_TestCaseReference renderTestColorspaceLinear = {
@@ -2443,6 +3187,336 @@ static const SDLTest_TestCaseReference renderTestSoftware = {
     render_testSoftware, "render_testSoftware", "Tests software renderer support", TEST_ENABLED
 };
 
+static int SDLCALL render_testLogicalLinesGeometry(void *arg)
+{
+    const SDL_FPoint points[] = { { 2.0f, 2.0f }, { 8.0f, 2.0f }, { 8.0f, 8.0f } };
+    SDL_Surface *surface = SDL_CreateSurface(16, 16, SDL_PIXELFORMAT_RGBA32);
+    SDL_Renderer *software;
+    Uint8 r, g, b, a;
+
+    if (!SDLTest_AssertCheck(surface != NULL, "Create line target: %s", SDL_GetError())) {
+        return TEST_ABORTED;
+    }
+    software = SDL_CreateSoftwareRenderer(surface);
+    if (!SDLTest_AssertCheck(software != NULL, "Create line renderer: %s", SDL_GetError())) {
+        SDL_DestroySurface(surface);
+        return TEST_ABORTED;
+    }
+
+    SDLTest_AssertCheck(SDL_SetRenderLogicalPresentation(software, 16, 16, SDL_LOGICAL_PRESENTATION_LETTERBOX),
+                        "Enable logical presentation: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_SetRenderDrawColor(software, 0, 0, 0, 255), "Set clear color: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_RenderClear(software), "Clear line target: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_SetRenderDrawColor(software, 255, 255, 255, 255), "Set line color: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_RenderLines(software, points, SDL_arraysize(points)), "Draw logical lines: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_RenderPresent(software), "Present logical lines: %s", SDL_GetError());
+
+    if (SDLTest_AssertCheck(SDL_ReadSurfacePixel(surface, 4, 2, &r, &g, &b, &a), "Read horizontal line pixel: %s", SDL_GetError())) {
+        SDLTest_AssertCheck(r == 255 && g == 255 && b == 255, "Horizontal line pixel is white");
+    }
+    if (SDLTest_AssertCheck(SDL_ReadSurfacePixel(surface, 8, 5, &r, &g, &b, &a), "Read vertical line pixel: %s", SDL_GetError())) {
+        SDLTest_AssertCheck(r == 255 && g == 255 && b == 255, "Vertical line pixel is white");
+    }
+    if (SDLTest_AssertCheck(SDL_ReadSurfacePixel(surface, 0, 0, &r, &g, &b, &a), "Read background pixel: %s", SDL_GetError())) {
+        SDLTest_AssertCheck(r == 0 && g == 0 && b == 0, "Background pixel stays black");
+    }
+
+    SDL_DestroyRenderer(software);
+    SDL_DestroySurface(surface);
+    return TEST_COMPLETED;
+}
+
+static const SDLTest_TestCaseReference renderTestLogicalLinesGeometry = {
+    render_testLogicalLinesGeometry, "render_testLogicalLinesGeometry", "Tests logical line geometry on software renderer", TEST_ENABLED
+};
+
+static const SDLTest_TestCaseReference renderTestSoftwareTextureFallback = {
+    render_testSoftwareTextureFallback, "render_testSoftwareTextureFallback", "Tests software texture fallback creation", TEST_ENABLED
+};
+
+static int SDLCALL render_testSoftwareRendererFlushSequence(void *arg)
+{
+    const SDL_FRect rect = { 0.0f, 0.0f, 1.0f, 1.0f };
+    SDL_Surface *surface = SDL_CreateSurface(2, 2, SDL_PIXELFORMAT_RGBA32);
+    SDL_Renderer *test_renderer = NULL;
+    Uint8 r = 0, g = 0, b = 0, a = 0;
+
+    if (!SDLTest_AssertCheck(surface != NULL, "Create flush sequence surface: %s", SDL_GetError())) {
+        return TEST_ABORTED;
+    }
+    test_renderer = SDL_CreateSoftwareRenderer(surface);
+    if (!SDLTest_AssertCheck(test_renderer != NULL, "Create flush sequence renderer: %s", SDL_GetError())) {
+        SDL_DestroySurface(surface);
+        return TEST_ABORTED;
+    }
+
+    SDLTest_AssertCheck(SDL_SetRenderDrawColor(test_renderer, 255, 0, 0, 255), "Set first frame color: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_RenderClear(test_renderer), "Queue first frame: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_RenderPresent(test_renderer), "Flush first frame: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_SetRenderDrawColor(test_renderer, 0, 0, 255, 255), "Set second frame color: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_RenderClear(test_renderer), "Queue second frame after flush: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_SetRenderDrawColor(test_renderer, 255, 255, 255, 255), "Set draw state after flush: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_RenderFillRect(test_renderer, &rect), "Queue draw after flush: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_RenderPresent(test_renderer), "Flush second frame: %s", SDL_GetError());
+    if (SDLTest_AssertCheck(SDL_ReadSurfacePixel(surface, 0, 0, &r, &g, &b, &a), "Read second frame: %s", SDL_GetError())) {
+        SDLTest_AssertCheck(r != 0 || g != 0 || b != 255 || a != 255, "Draw state is applied after a flush");
+    }
+    if (SDLTest_AssertCheck(SDL_ReadSurfacePixel(surface, 1, 1, &r, &g, &b, &a), "Read second frame background: %s", SDL_GetError())) {
+        SDLTest_AssertCheck(r == 0 && g == 0 && b == 255 && a == 255, "Second frame replaces the first frame");
+    }
+
+    SDL_DestroyRenderer(test_renderer);
+    SDL_DestroySurface(surface);
+    return TEST_COMPLETED;
+}
+
+static const SDLTest_TestCaseReference renderTestSoftwareRendererFlushSequence = {
+    render_testSoftwareRendererFlushSequence, "render_testSoftwareRendererFlushSequence", "Tests consecutive software renderer queue flushes", TEST_ENABLED
+};
+
+static const SDLTest_TestCaseReference renderTestTextureCreationProperties = {
+    render_testTextureCreationProperties, "render_testTextureCreationProperties", "Tests texture creation validation and published properties", TEST_ENABLED
+};
+
+static const SDLTest_TestCaseReference renderTestSoftwareGeometryQuads = {
+    render_testSoftwareGeometryQuads, "render_testSoftwareGeometryQuads", "Tests software geometry quad rendering and state restoration", TEST_ENABLED
+};
+
+static int SDLCALL render_testGeometryRawIndexWidths(void *arg)
+{
+    const float xy[] = { 1.0f, 1.0f, 14.0f, 1.0f, 1.0f, 14.0f };
+    const SDL_FColor color[] = {
+        { 1.0f, 0.0f, 0.0f, 1.0f },
+        { 1.0f, 0.0f, 0.0f, 1.0f },
+        { 1.0f, 0.0f, 0.0f, 1.0f }
+    };
+    const Uint8 valid8[] = { 0, 1, 2 }, invalid8[] = { 0, 1, 3 };
+    const Uint16 valid16[] = { 0, 1, 2 }, invalid16[] = { 0, 1, 3 };
+    const Uint32 valid32[] = { 0, 1, 2 }, invalid32[] = { 0, 1, 3 };
+    const void *valid[] = { valid8, valid16, valid32 };
+    const void *invalid[] = { invalid8, invalid16, invalid32 };
+    const int index_size[] = { 1, 2, 4 };
+    SDL_Surface *surface = SDL_CreateSurface(16, 16, SDL_PIXELFORMAT_RGBA32);
+    SDL_Renderer *software;
+
+    if (!SDLTest_AssertCheck(surface != NULL, "Create geometry surface: %s", SDL_GetError())) {
+        return TEST_ABORTED;
+    }
+    software = SDL_CreateSoftwareRenderer(surface);
+    if (!SDLTest_AssertCheck(software != NULL, "Create software renderer: %s", SDL_GetError())) {
+        SDL_DestroySurface(surface);
+        return TEST_ABORTED;
+    }
+
+    for (int i = 0; i < SDL_arraysize(index_size); ++i) {
+        Uint8 r = 0, g = 0, b = 0, a = 0;
+        SDLTest_AssertCheck(SDL_SetRenderDrawColor(software, 0, 0, 0, 255), "Set geometry background");
+        SDLTest_AssertCheck(SDL_RenderClear(software), "Clear geometry surface");
+        SDLTest_AssertCheck(SDL_RenderGeometryRaw(software, NULL, xy, 2 * sizeof(float),
+                                                  color, sizeof(SDL_FColor), NULL, 0, 3,
+                                                  valid[i], 3, index_size[i]),
+                            "Render geometry with %d-byte indices: %s", index_size[i], SDL_GetError());
+        SDLTest_AssertCheck(SDL_RenderPresent(software), "Present geometry with %d-byte indices", index_size[i]);
+        if (SDLTest_AssertCheck(SDL_ReadSurfacePixel(surface, 2, 2, &r, &g, &b, &a),
+                                "Read geometry pixel with %d-byte indices", index_size[i])) {
+            SDLTest_AssertCheck(r == 255 && g == 0 && b == 0, "Geometry pixel is red with %d-byte indices", index_size[i]);
+        }
+
+        SDL_ClearError();
+        SDLTest_AssertCheck(!SDL_RenderGeometryRaw(software, NULL, xy, 2 * sizeof(float),
+                                                    color, sizeof(SDL_FColor), NULL, 0, 3,
+                                                    invalid[i], 3, index_size[i]),
+                            "Reject out-of-range %d-byte index", index_size[i]);
+        SDLTest_AssertCheck(SDL_GetError()[0] != '\0', "Out-of-range %d-byte index sets an error", index_size[i]);
+    }
+
+    SDL_DestroyRenderer(software);
+    SDL_DestroySurface(surface);
+    return TEST_COMPLETED;
+}
+
+static const SDLTest_TestCaseReference renderTestGeometryRawIndexWidths = {
+    render_testGeometryRawIndexWidths, "render_testGeometryRawIndexWidths", "Checks geometry index widths and bounds", TEST_ENABLED
+};
+
+static int SDLCALL render_testFillRectsGeometryFallback(void *arg)
+{
+    const SDL_FRect rects[] = { { 2.0f, 2.0f, 4.0f, 4.0f }, { 10.0f, 5.0f, 3.0f, 2.0f } };
+    const SDL_Point samples[] = { { 3, 3 }, { 11, 6 }, { 0, 0 }, { 8, 8 } };
+    SDL_Surface *surface;
+
+    if (!renderer || SDL_strcmp(SDL_GetRendererName(renderer), SDL_SOFTWARE_RENDERER) == 0) {
+        return TEST_SKIPPED;
+    }
+
+    SDLTest_AssertCheck(SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255), "Set fill background");
+    SDLTest_AssertCheck(SDL_RenderClear(renderer), "Clear fill background");
+    SDLTest_AssertCheck(SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255), "Set fill color");
+    SDLTest_AssertCheck(SDL_RenderFillRects(renderer, rects, SDL_arraysize(rects)), "Fill two rectangles: %s", SDL_GetError());
+
+    surface = SDL_RenderReadPixels(renderer, NULL);
+    if (!SDLTest_AssertCheck(surface != NULL, "Read filled rectangles: %s", SDL_GetError())) {
+        return TEST_ABORTED;
+    }
+    for (int i = 0; i < SDL_arraysize(samples); ++i) {
+        Uint8 r = 0, g = 0, b = 0, a = 0;
+        if (SDLTest_AssertCheck(SDL_ReadSurfacePixel(surface, samples[i].x, samples[i].y, &r, &g, &b, &a),
+                                "Read fill sample %d: %s", i, SDL_GetError())) {
+            const Uint8 expected = i < 2 ? 255 : 0;
+            SDLTest_AssertCheck(r == expected && g == expected && b == expected && a == 255,
+                                "Fill sample %d has expected color", i);
+        }
+    }
+    SDL_DestroySurface(surface);
+    return TEST_COMPLETED;
+}
+
+static const SDLTest_TestCaseReference renderTestFillRectsGeometryFallback = {
+    render_testFillRectsGeometryFallback, "render_testFillRectsGeometryFallback", "Checks rectangle geometry fallback pixels", TEST_ENABLED
+};
+
+static const SDLTest_TestCaseReference renderTestSoftwareTexturePalette = {
+    render_testSoftwareTexturePalette, "render_testSoftwareTexturePalette", "Tests queued draws across a texture palette change", TEST_ENABLED
+};
+
+static const SDLTest_TestCaseReference renderTestDebugText = {
+    render_testDebugText, "render_testDebugText", "Tests software debug text rendering", TEST_ENABLED
+};
+
+static const SDLTest_TestCaseReference renderTestSoftwareYUVTextureUpdates = {
+    render_testSoftwareYUVTextureUpdates, "render_testSoftwareYUVTextureUpdates", "Tests software YUV texture update paths", TEST_ENABLED
+};
+
+static const SDLTest_TestCaseReference renderTestSoftwareTextureLock = {
+    render_testSoftwareTextureLock, "render_testSoftwareTextureLock", "Tests lock-to-surface texture update path", TEST_ENABLED
+};
+
+static const SDLTest_TestCaseReference renderTestDriverFallback = {
+    render_testDriverFallback, "render_testDriverFallback", "Tests render driver fallback and error", TEST_ENABLED
+};
+
+static int SDLCALL render_testInitialSoftwareView(void *arg)
+{
+    SDL_Surface *surface = SDL_CreateSurface(13, 7, SDL_PIXELFORMAT_RGBA32);
+    SDL_Renderer *software = NULL;
+    SDL_Rect viewport;
+    int width, height;
+    float scale_x, scale_y;
+    Uint8 r, g, b, a;
+
+    if (!SDLTest_AssertCheck(surface != NULL, "Create renderer target: %s", SDL_GetError())) {
+        return TEST_ABORTED;
+    }
+    software = SDL_CreateSoftwareRenderer(surface);
+    if (!SDLTest_AssertCheck(software != NULL, "Create surface renderer: %s", SDL_GetError())) {
+        SDL_DestroySurface(surface);
+        return TEST_ABORTED;
+    }
+
+    SDLTest_AssertCheck(SDL_GetRenderOutputSize(software, &width, &height) && width == 13 && height == 7,
+                        "Initial output matches the surface");
+    SDLTest_AssertCheck(SDL_GetRenderViewport(software, &viewport) &&
+                        viewport.x == 0 && viewport.y == 0 && viewport.w == 13 && viewport.h == 7,
+                        "Initial viewport covers the surface");
+    SDLTest_AssertCheck(SDL_GetRenderScale(software, &scale_x, &scale_y) &&
+                        scale_x == 1.0f && scale_y == 1.0f, "Initial render scale is one");
+    SDLTest_AssertCheck(SDL_SetRenderDrawColor(software, 255, 0, 0, 255) &&
+                        SDL_RenderPoint(software, 12.0f, 6.0f) && SDL_RenderPresent(software),
+                        "Render at the far edge: %s", SDL_GetError());
+    if (SDLTest_AssertCheck(SDL_ReadSurfacePixel(surface, 12, 6, &r, &g, &b, &a),
+                            "Read far edge pixel: %s", SDL_GetError())) {
+        SDLTest_AssertCheck(r == 255 && g == 0 && b == 0 && a == 255,
+                            "Far edge pixel is red");
+    }
+
+    SDL_DestroyRenderer(software);
+    SDL_DestroySurface(surface);
+    return TEST_COMPLETED;
+}
+
+static const SDLTest_TestCaseReference renderTestInitialSoftwareView = {
+    render_testInitialSoftwareView, "render_testInitialSoftwareView", "Tests initial surface renderer viewport and scale", TEST_ENABLED
+};
+
+static int SDLCALL render_testVulkanCommandQueue(void *arg)
+{
+    SDL_Window *test_window = SDL_CreateWindow("Vulkan command queue", 32, 32, SDL_WINDOW_VULKAN);
+    SDL_Renderer *test_renderer = NULL;
+    SDL_Surface *pixels = NULL;
+    const SDL_FPoint strip[] = { { 2.0f, 14.0f }, { 20.0f, 14.0f }, { 20.0f, 20.0f } };
+    const SDL_Vertex triangle[] = {
+        { { 5.0f, 22.0f }, { 0.0f, 1.0f, 0.0f, 1.0f }, { 0.0f, 0.0f } },
+        { { 11.0f, 22.0f }, { 0.0f, 1.0f, 0.0f, 1.0f }, { 0.0f, 0.0f } },
+        { { 8.0f, 28.0f }, { 0.0f, 1.0f, 0.0f, 1.0f }, { 0.0f, 0.0f } }
+    };
+    const SDL_Point samples[] = { { 10, 2 }, { 10, 8 }, { 10, 14 }, { 25, 25 }, { 8, 24 }, { 10, 5 } };
+    Uint8 r, g, b, a;
+
+    if (!test_window) {
+        SDLTest_Log("Skipping Vulkan clear readback: %s", SDL_GetError());
+        return TEST_SKIPPED;
+    }
+    test_renderer = SDL_CreateRenderer(test_window, "vulkan");
+    if (!test_renderer) {
+        SDLTest_Log("Skipping Vulkan clear readback: %s", SDL_GetError());
+        SDL_DestroyWindow(test_window);
+        return TEST_SKIPPED;
+    }
+
+    if (SDLTest_AssertCheck(SDL_SetRenderDrawColor(test_renderer, 255, 0, 0, 255) &&
+                            SDL_RenderClear(test_renderer) &&
+                            SDL_SetRenderDrawColor(test_renderer, 0, 255, 0, 255) &&
+                            SDL_RenderLine(test_renderer, 2.0f, 2.0f, 20.0f, 2.0f) &&
+                            SDL_RenderLine(test_renderer, 2.0f, 8.0f, 20.0f, 8.0f) &&
+                            SDL_RenderLines(test_renderer, strip, SDL_arraysize(strip)) &&
+                            SDL_RenderPoint(test_renderer, 25.0f, 25.0f) &&
+                            SDL_RenderGeometry(test_renderer, NULL, triangle, SDL_arraysize(triangle), NULL, 0),
+                            "Clear and draw Vulkan primitives: %s", SDL_GetError())) {
+        pixels = SDL_RenderReadPixels(test_renderer, NULL);
+        if (SDLTest_AssertCheck(pixels != NULL, "Read Vulkan primitives: %s", SDL_GetError())) {
+            for (int i = 0; i < SDL_arraysize(samples); ++i) {
+                if (SDLTest_AssertCheck(SDL_ReadSurfacePixel(pixels, samples[i].x, samples[i].y, &r, &g, &b, &a),
+                                        "Read Vulkan sample %d: %s", i, SDL_GetError())) {
+                    SDLTest_AssertCheck(r == (i == 5 ? 255 : 0) && g == (i == 5 ? 0 : 255) && b == 0 && a == 255,
+                                        "Vulkan sample %d matches primitive or clear color", i);
+                }
+            }
+        }
+        SDL_DestroySurface(pixels);
+        pixels = NULL;
+
+        bool queued = true;
+        SDLTest_AssertCheck(SDL_SetRenderDrawColor(test_renderer, 0, 0, 0, 255) && SDL_RenderClear(test_renderer),
+                            "Clear Vulkan color changes: %s", SDL_GetError());
+        for (int i = 0; i < 1024; ++i) {
+            if (!SDL_SetRenderColorScale(test_renderer, (i & 1) ? 1.0f : 0.5f) ||
+                !SDL_SetRenderDrawColor(test_renderer, (i & 1) ? 0 : 255, (i & 1) ? 255 : 0, 0, 255) ||
+                !SDL_RenderPoint(test_renderer, 29.0f, 29.0f)) {
+                queued = false;
+                break;
+            }
+        }
+        SDLTest_AssertCheck(queued, "Queue repeated Vulkan color changes: %s", SDL_GetError());
+        pixels = SDL_RenderReadPixels(test_renderer, NULL);
+        if (SDLTest_AssertCheck(pixels != NULL, "Read repeated Vulkan draws: %s", SDL_GetError()) &&
+            SDLTest_AssertCheck(SDL_ReadSurfacePixel(pixels, 29, 29, &r, &g, &b, &a),
+                                "Read final Vulkan point: %s", SDL_GetError())) {
+            SDLTest_AssertCheck(r == 0 && g == 255 && b == 0 && a == 255,
+                                "Final Vulkan point uses final color scale");
+        }
+        SDLTest_AssertCheck(SDL_RenderPresent(test_renderer), "Present Vulkan frame: %s", SDL_GetError());
+    }
+
+    SDL_DestroySurface(pixels);
+    SDL_DestroyRenderer(test_renderer);
+    SDL_DestroyWindow(test_window);
+    return TEST_COMPLETED;
+}
+
+static const SDLTest_TestCaseReference renderTestVulkanCommandQueue = {
+    render_testVulkanCommandQueue, "render_testVulkanCommandQueue", "Checks Vulkan primitives, repeated color scales, readback, and present", TEST_ENABLED
+};
+
 /* Sequence of Render test cases */
 static const SDLTest_TestCaseReference *renderTests[] = {
     &renderTestGetNumRenderDrivers,
@@ -2454,17 +3528,37 @@ static const SDLTest_TestCaseReference *renderTests[] = {
     &renderTestBlit9GridTiled,
     &renderTestBlitColor,
     &renderTestBlendModes,
+    &renderTestComposeBlendMode,
     &renderTestViewport,
     &renderTestClipRect,
     &renderTestLogicalSize,
     &renderTestUVClamping,
     &renderTestUVWrapping,
+    &renderTestGeometryAutoTextureAddress,
     &renderTestTextureState,
+    &renderTestRejectsFourCCRenderTarget,
     &renderTestGetSetTextureScaleMode,
     &renderTestRGBSurfaceNoAlpha,
+    &renderTestColorKeyTextureFromSurface,
     &renderTestColorspaceLinear,
     &renderTestColorspaceSRGB,
     &renderTestSoftware,
+    &renderTestLogicalLinesGeometry,
+    &renderTestSoftwareTextureFallback,
+    &renderTestSoftwareRendererFlushSequence,
+    &renderTestTextureCreationProperties,
+    &renderTestTextureFromSurfaceUploadFailure,
+    &renderTestTexturePaletteFailure,
+    &renderTestSoftwareGeometryQuads,
+    &renderTestGeometryRawIndexWidths,
+    &renderTestFillRectsGeometryFallback,
+    &renderTestSoftwareTexturePalette,
+    &renderTestDebugText,
+    &renderTestSoftwareTextureLock,
+    &renderTestSoftwareYUVTextureUpdates,
+    &renderTestDriverFallback,
+    &renderTestInitialSoftwareView,
+    &renderTestVulkanCommandQueue,
     NULL
 };
 

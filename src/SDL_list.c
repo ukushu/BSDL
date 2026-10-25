@@ -76,6 +76,7 @@ bool SDL_ListInsertAtPosition(SDL_ListNode **head, int pos, void *ent)
         }
 
         *head = node;
+        return true;
     }
 
     cursor = *head;

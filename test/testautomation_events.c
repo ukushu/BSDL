@@ -17,12 +17,122 @@ static int g_userdataValue = 0;
 
 /* Flag indicating that the filter was called */
 static int g_eventFilterCalled = 0;
+static int g_eventTypeFilterCalls = 0;
 
 /* Userdata values for event */
 static int g_userdataValue1 = 1;
 static int g_userdataValue2 = 2;
 
 #define MAX_ITERATIONS 100
+
+typedef struct EventLogCapture
+{
+    char message[256];
+    int count;
+} EventLogCapture;
+
+static void SDLCALL events_captureLog(void *userdata, int category, SDL_LogPriority priority, const char *message)
+{
+    EventLogCapture *capture = (EventLogCapture *)userdata;
+
+    if (SDL_strncmp(message, "SDL EVENT: ", 11) == 0) {
+        SDL_strlcpy(capture->message, message, sizeof(capture->message));
+        ++capture->count;
+    }
+}
+
+static bool SDLCALL events_countTypeFilter(void *userdata, SDL_Event *event)
+{
+    ++g_eventTypeFilterCalls;
+    return true;
+}
+
+static int SDLCALL events_logDescription(void *arg)
+{
+    SDL_LogOutputFunction previous_output;
+    void *previous_userdata;
+    const char *hint = SDL_GetHint(SDL_HINT_EVENT_LOGGING);
+    char *previous_hint = hint ? SDL_strdup(hint) : NULL;
+    EventLogCapture capture = { { 0 }, 0 };
+    SDL_Event event;
+    bool pushed;
+
+    if (hint && !previous_hint) {
+        return TEST_ABORTED;
+    }
+    if (!SDL_InitSubSystem(SDL_INIT_EVENTS)) {
+        SDL_free(previous_hint);
+        return TEST_ABORTED;
+    }
+
+    SDL_GetLogOutputFunction(&previous_output, &previous_userdata);
+    SDL_SetLogOutputFunction(events_captureLog, &capture);
+    SDL_SetHint(SDL_HINT_EVENT_LOGGING, "1");
+
+    SDL_zero(event);
+    event.type = SDL_EVENT_USER;
+    event.user.code = 42;
+    pushed = SDL_PushEvent(&event);
+
+    SDL_SetLogOutputFunction(previous_output, previous_userdata);
+    if (previous_hint) {
+        SDL_SetHint(SDL_HINT_EVENT_LOGGING, previous_hint);
+    } else {
+        SDL_ResetHint(SDL_HINT_EVENT_LOGGING);
+    }
+    SDL_free(previous_hint);
+    SDL_FlushEvent(SDL_EVENT_USER);
+    SDL_QuitSubSystem(SDL_INIT_EVENTS);
+
+    SDLTest_AssertCheck(pushed, "Push user event for logging: %s", SDL_GetError());
+    SDLTest_AssertCheck(capture.count == 1, "Log exactly one event, got %d", capture.count);
+    SDLTest_AssertCheck(SDL_strstr(capture.message, "SDL EVENT: SDL_EVENT_USER") != NULL,
+                        "Log user event name: %s", capture.message);
+    SDLTest_AssertCheck(SDL_strstr(capture.message, "windowid=0 code=42") != NULL,
+                        "Log user event details: %s", capture.message);
+    return TEST_COMPLETED;
+}
+
+static int SDLCALL events_enableState(void *arg)
+{
+    SDL_Event event;
+    SDL_EventFilter previous_filter;
+    void *previous_userdata;
+    Uint32 type = SDL_RegisterEvents(1);
+
+    if (!SDLTest_AssertCheck(type != 0, "Register a user event type")) {
+        return TEST_ABORTED;
+    }
+
+    SDL_FlushEvent(type);
+    SDL_SetEventEnabled(type, true);
+    SDL_GetEventFilter(&previous_filter, &previous_userdata);
+    SDL_SetEventFilter(events_countTypeFilter, NULL);
+    g_eventTypeFilterCalls = 0;
+    SDL_zero(event);
+    event.type = type;
+    SDLTest_AssertCheck(SDL_PushEvent(&event), "Queue enabled user event: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_HasEvents(type, type), "Enabled event is present in the queue");
+    SDLTest_AssertCheck(g_eventTypeFilterCalls == 1, "Enabled event reaches the event filter");
+
+    SDL_SetEventEnabled(type, false);
+    SDLTest_AssertCheck(!SDL_EventEnabled(type), "Disabled event reports disabled state");
+    SDLTest_AssertCheck(!SDL_HasEvents(type, type), "Disabling an event flushes queued events");
+    g_eventTypeFilterCalls = 0;
+    SDLTest_AssertCheck(!SDL_PushEvent(&event), "Disabled event push is filtered");
+    SDLTest_AssertCheck(g_eventTypeFilterCalls == 0, "Disabled event does not reach the event filter");
+    SDLTest_AssertCheck(!SDL_HasEvents(type, type), "Disabled event is not added to the queue");
+
+    SDL_SetEventEnabled(type, true);
+    SDLTest_AssertCheck(SDL_EventEnabled(type), "Re-enabled event reports enabled state");
+    SDLTest_AssertCheck(SDL_PushEvent(&event), "Queue re-enabled user event: %s", SDL_GetError());
+    SDLTest_AssertCheck(g_eventTypeFilterCalls == 1, "Re-enabled event reaches the event filter");
+    SDLTest_AssertCheck(SDL_PeepEvents(&event, 1, SDL_PEEKEVENT, type, type) == 1,
+                        "Re-enabled event can be read from the queue");
+    SDL_FlushEvent(type);
+    SDL_SetEventFilter(previous_filter, previous_userdata);
+    return TEST_COMPLETED;
+}
 
 /* Event filter that sets some flags and optionally checks userdata */
 static bool SDLCALL events_sampleNullEventFilter(void *userdata, SDL_Event *event)
@@ -73,6 +183,11 @@ static int SDLCALL events_pushPumpAndPollUserevent(void *arg)
     SDLTest_AssertPass("Call to SDL_PumpEvents()");
 
     SDLTest_AssertCheck(SDL_HasEvents(SDL_EVENT_USER, SDL_EVENT_USER), "Check SDL_HasEvents returns true");
+
+    result = SDL_PeepEvents(&event_out, 1, SDL_PEEKEVENT, SDL_EVENT_USER, SDL_EVENT_USER);
+    SDLTest_AssertCheck(result == 1, "Peek the queued user event without removing it");
+    SDLTest_AssertCheck(event_out.user.code == ref_code, "Peek returns the queued event data");
+    SDLTest_AssertCheck(SDL_HasEvents(SDL_EVENT_USER, SDL_EVENT_USER), "Peeking leaves the user event queued");
 
     /* Poll until we get a user event. */
     for (i = 0; i < MAX_ITERATIONS; i++) {
@@ -315,6 +430,14 @@ static const SDLTest_TestCaseReference eventsTest_pushPumpAndPollUserevent = {
     events_pushPumpAndPollUserevent, "events_pushPumpAndPollUserevent", "Pushes, pumps and polls a user event", TEST_ENABLED
 };
 
+static const SDLTest_TestCaseReference eventsTest_logDescription = {
+    events_logDescription, "events_logDescription", "Formats an event in the event log", TEST_ENABLED
+};
+
+static const SDLTest_TestCaseReference eventsTest_enableState = {
+    events_enableState, "events_enableState", "Enables and disables event types", TEST_ENABLED
+};
+
 static const SDLTest_TestCaseReference eventsTest_addDelEventWatch = {
     events_addDelEventWatch, "events_addDelEventWatch", "Adds and deletes an event watch function with NULL userdata", TEST_ENABLED
 };
@@ -330,6 +453,8 @@ static const SDLTest_TestCaseReference eventsTest_mainThreadCallbacks = {
 /* Sequence of Events test cases */
 static const SDLTest_TestCaseReference *eventsTests[] = {
     &eventsTest_pushPumpAndPollUserevent,
+    &eventsTest_logDescription,
+    &eventsTest_enableState,
     &eventsTest_addDelEventWatch,
     &eventsTest_addDelEventWatchWithUserdata,
     &eventsTest_mainThreadCallbacks,

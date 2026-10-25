@@ -554,6 +554,30 @@ extern bool SDL_UninitializedVideo(void);
 // Use SDL_OnVideoThread() sparingly, to avoid regressions in use cases that currently happen to work
 extern bool SDL_OnVideoThread(void);
 extern SDL_VideoDevice *SDL_GetVideoDevice(void);
+
+static SDL_INLINE bool SDL_CheckWindowMagicForVideo(SDL_Window *window)
+{
+    if (!SDL_GetVideoDevice()) {
+        SDL_UninitializedVideo();
+        return false;
+    }
+    if (!SDL_ObjectValid(window, SDL_OBJECT_TYPE_WINDOW)) {
+        SDL_SetError("Invalid window");
+        return false;
+    }
+    return true;
+}
+
+#define CHECK_WINDOW_MAGIC(window, result) \
+    CHECK_PARAM(!SDL_CheckWindowMagicForVideo(window)) { \
+        return result; \
+    }
+
+#define CHECK_WINDOW_NOT_POPUP(window, result) \
+    CHECK_PARAM(SDL_WINDOW_IS_POPUP(window)) { \
+        SDL_SetError("Operation invalid on popup windows"); \
+        return result; \
+    }
 extern void SDL_SetSystemTheme(SDL_SystemTheme theme);
 extern SDL_DisplayID SDL_AddBasicVideoDisplay(const SDL_DisplayMode *desktop_mode);
 extern SDL_DisplayID SDL_AddVideoDisplay(const SDL_VideoDisplay *display, bool send_event);
@@ -567,14 +591,18 @@ extern void SDL_SetDisplayHDRProperties(SDL_VideoDisplay *display, const SDL_HDR
 extern bool SDL_SetDisplayModeForDisplay(SDL_VideoDisplay *display, SDL_DisplayMode *mode);
 extern SDL_VideoDisplay *SDL_GetVideoDisplay(SDL_DisplayID display);
 extern SDL_DisplayID SDL_GetDisplayForWindowPosition(SDL_Window *window);
+extern SDL_DisplayID SDL_ResolveWindowPosition(int *window_x, int *window_y, int w, int h, bool *undefined_x, bool *undefined_y);
+extern SDL_DisplayID SDL_GetDisplayAtOrigin(int x, int y);
 extern SDL_VideoDisplay *SDL_GetVideoDisplayForWindow(SDL_Window *window);
 extern SDL_VideoDisplay *SDL_GetVideoDisplayForFullscreenWindow(SDL_Window *window);
 extern int SDL_GetDisplayIndex(SDL_DisplayID displayID);
 extern SDL_DisplayData *SDL_GetDisplayDriverData(SDL_DisplayID display);
 extern SDL_DisplayData *SDL_GetDisplayDriverDataForWindow(SDL_Window *window);
 extern int SDL_GetMessageBoxCount(void);
+extern bool SDL_ShowMessageBoxWithFallback(const SDL_MessageBoxData *messageboxdata, int *buttonID);
 extern void SDL_SetWindowHDRProperties(SDL_Window *window, const SDL_HDROutputProperties *HDR, bool send_event);
 extern void SDL_SetWindowSafeAreaInsets(SDL_Window *window, int left, int right, int top, int bottom);
+extern void SDL_CheckWindowSafeAreaChanged(SDL_Window *window);
 
 extern void SDL_GL_DeduceMaxSupportedESProfile(int *major, int *minor);
 
@@ -583,10 +611,14 @@ extern bool SDL_ReconfigureWindow(SDL_Window *window, SDL_WindowFlags flags);
 extern bool SDL_HasWindows(void);
 extern void SDL_RelativeToGlobalForWindow(SDL_Window *window, int rel_x, int rel_y, int *abs_x, int *abs_y);
 extern void SDL_GlobalToRelativeForWindow(SDL_Window *window, int abs_x, int abs_y, int *rel_x, int *rel_y);
+extern void SDL_UpdateWindowHierarchy(SDL_Window *window, SDL_Window *parent);
 extern bool SDL_ShouldFocusPopup(SDL_Window *window);
 extern bool SDL_ShouldRelinquishPopupFocus(SDL_Window *window, SDL_Window **new_focus);
 
 extern void SDL_OnDisplayAdded(SDL_VideoDisplay *display);
+extern void SDL_CheckWindowDisplayChanged(SDL_Window *window);
+extern void SDL_CheckWindowDisplayScaleChanged(SDL_Window *window);
+extern SDL_DisplayID SDL_GetDisplayForWindowInternal(SDL_Window *window);
 extern void SDL_OnDisplayMoved(SDL_VideoDisplay *display);
 extern void SDL_OnWindowShown(SDL_Window *window);
 extern void SDL_OnWindowHidden(SDL_Window *window);
@@ -605,6 +637,9 @@ extern void SDL_OnWindowFocusLost(SDL_Window *window);
 extern void SDL_OnWindowDisplayChanged(SDL_Window *window);
 extern void SDL_UpdateWindowGrab(SDL_Window *window);
 extern bool SDL_UpdateFullscreenMode(SDL_Window *window, SDL_FullscreenOp fullscreen, bool commit);
+extern bool SDL_GetVideoSyncHint(void);
+extern void SDL_SyncIfRequired(SDL_Window *window);
+extern void SDL_InitVideoSyncHint(void);
 extern SDL_Window *SDL_GetToplevelForKeyboardFocus(void);
 
 extern bool SDL_ShouldAllowTopmost(void);

@@ -403,6 +403,30 @@ extern void SDL_QuitRender(void);
 
 // Add a supported texture format to a renderer
 extern bool SDL_AddSupportedTextureFormat(SDL_Renderer *renderer, SDL_PixelFormat format);
+extern bool SDL_FlushRenderCommandsIfTextureNeeded(SDL_Texture *texture);
+extern bool SDL_FlushRenderCommandsIfGPURenderStateNeeded(SDL_GPURenderState *state);
+extern bool SDL_FlushRenderCommandsIfPaletteNeeded(SDL_Renderer *renderer, SDL_TexturePalette *palette);
+extern void SDL_UpdatePixelViewport(SDL_Renderer *renderer, SDL_RenderViewState *view);
+extern void SDL_UpdatePixelClipRect(SDL_Renderer *renderer, SDL_RenderViewState *view);
+extern void SDL_GetRenderViewportSize(SDL_Renderer *renderer, SDL_FRect *rect);
+extern bool SDL_QueueCmdSetViewport(SDL_Renderer *renderer);
+extern bool SDL_QueueCmdSetClipRect(SDL_Renderer *renderer);
+extern SDL_RenderCommand *SDL_PrepQueueCmdDraw(SDL_Renderer *renderer, SDL_RenderCommandType cmdtype, SDL_Texture *texture);
+extern bool SDL_QueueCmdDrawPoints(SDL_Renderer *renderer, const SDL_FPoint *points, int count);
+extern bool SDL_QueueCmdDrawLines(SDL_Renderer *renderer, const SDL_FPoint *points, int count);
+extern bool SDL_QueueCmdFillRects(SDL_Renderer *renderer, const SDL_FRect *rects, int count);
+extern bool SDL_QueueCmdGeometry(SDL_Renderer *renderer, SDL_Texture *texture, const float *xy, int xy_stride,
+                                 const SDL_FColor *color, int color_stride, const float *uv, int uv_stride,
+                                 int num_vertices, const void *indices, int num_indices, int size_indices,
+                                 float scale_x, float scale_y, SDL_TextureAddressMode texture_address_mode_u,
+                                 SDL_TextureAddressMode texture_address_mode_v);
+extern const int SDL_rect_index_order[6];
+extern bool SDL_UpdateTexturePalette(SDL_Texture *texture);
+extern bool SDL_IsNPOT(int value);
+extern void SDL_UpdateColorScale(SDL_Renderer *renderer);
+extern void SDL_UpdateHDRProperties(SDL_Renderer *renderer);
+extern void SDL_UpdateLogicalPresentation(SDL_Renderer *renderer);
+extern void SDL_UpdateMainViewDimensions(SDL_Renderer *renderer);
 
 // Setup colorspace conversion
 extern void SDL_SetupRendererColorspace(SDL_Renderer *renderer, SDL_PropertiesID props);
@@ -415,6 +439,7 @@ extern void SDL_SetupRendererColorspace(SDL_Renderer *renderer, SDL_PropertiesID
 extern void SDL_ConvertToLinear(SDL_Renderer *renderer, SDL_FColor *color);
 
 // Blend mode functions
+extern bool SDL_RendererSupportsBlendMode(SDL_Renderer *renderer, SDL_BlendMode blendMode);
 extern SDL_BlendFactor SDL_GetBlendModeSrcColorFactor(SDL_BlendMode blendMode);
 extern SDL_BlendFactor SDL_GetBlendModeDstColorFactor(SDL_BlendMode blendMode);
 extern SDL_BlendOperation SDL_GetBlendModeColorOperation(SDL_BlendMode blendMode);

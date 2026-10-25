@@ -2,6 +2,17 @@
  * Joystick test suite
  */
 
+#include "../src/dynapi/SDL_dynapi.h"
+#ifdef SDL_DYNAMIC_API
+#undef SDL_DYNAMIC_API
+#endif
+#define SDL_DYNAMIC_API 0
+#include "../src/SDL_internal.h"
+#define SDL_LoadVIDPIDListFromHints joystick_test_LoadVIDPIDListFromHints
+#define SDL_FreeVIDPIDList joystick_test_FreeVIDPIDList
+#include "../src/joystick/SDL_vidpid.c"
+#undef SDL_LoadVIDPIDListFromHints
+#undef SDL_FreeVIDPIDList
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_test.h>
 #include "../src/joystick/usb_ids.h"
@@ -26,6 +37,46 @@ static void SDLCALL joystickTearDown(void *arg)
     SDL_QuitSubSystem(SDL_INIT_GAMEPAD);
 }
 
+static SDL_realloc_func joystick_original_realloc;
+static bool joystick_fail_realloc;
+static bool joystick_realloc_failed;
+static size_t joystick_fail_realloc_size;
+static size_t joystick_realloc_failed_size;
+
+static SDL_malloc_func joystick_original_malloc;
+static bool joystick_fail_malloc;
+static bool joystick_malloc_failed;
+
+static void *SDLCALL joystick_test_realloc(void *ptr, size_t size)
+{
+    if (joystick_fail_realloc && size == joystick_fail_realloc_size) {
+        joystick_fail_realloc = false;
+        joystick_realloc_failed = true;
+        joystick_realloc_failed_size = size;
+        return NULL;
+    }
+    return joystick_original_realloc(ptr, size);
+}
+
+static void *SDLCALL joystick_test_malloc(size_t size)
+{
+    if (joystick_fail_malloc && size == joystick_fail_realloc_size) {
+        joystick_fail_malloc = false;
+        joystick_malloc_failed = true;
+        return NULL;
+    }
+    return joystick_original_malloc(size);
+}
+
+static SDL_free_func joystick_original_free;
+static int joystick_vidpid_free_count;
+
+static void SDLCALL joystick_test_free(void *ptr)
+{
+    ++joystick_vidpid_free_count;
+    joystick_original_free(ptr);
+}
+
 
 /* Test case functions */
 
@@ -37,6 +88,8 @@ static void SDLCALL joystickTearDown(void *arg)
 static int SDLCALL joystick_testVirtual(void *arg)
 {
     SDL_VirtualJoystickDesc desc;
+    SDL_VirtualJoystickTouchpadDesc touchpad_desc = { 2, { 0, 0, 0 } };
+    SDL_VirtualJoystickSensorDesc sensor_desc = { SDL_SENSOR_GYRO, 60.0f };
     SDL_Joystick *joystick = NULL;
     SDL_Gamepad *gamepad = NULL;
     SDL_JoystickID device_id;
@@ -48,6 +101,10 @@ static int SDLCALL joystick_testVirtual(void *arg)
     desc.vendor_id = USB_VENDOR_NVIDIA;
     desc.product_id = USB_PRODUCT_NVIDIA_SHIELD_CONTROLLER_V103;
     desc.name = "Virtual NVIDIA SHIELD Controller";
+    desc.ntouchpads = 1;
+    desc.touchpads = &touchpad_desc;
+    desc.nsensors = 1;
+    desc.sensors = &sensor_desc;
     device_id = SDL_AttachVirtualJoystick(&desc);
     SDLTest_AssertCheck(device_id > 0, "SDL_AttachVirtualJoystick() -> %" SDL_PRIs32 " (expected > 0)", device_id);
     SDLTest_AssertCheck(SDL_IsJoystickVirtual(device_id), "SDL_IsJoystickVirtual()");
@@ -111,6 +168,40 @@ static int SDLCALL joystick_testVirtual(void *arg)
             gamepad = SDL_OpenGamepad(SDL_GetJoystickID(joystick));
             SDLTest_AssertCheck(gamepad != NULL, "SDL_OpenGamepad() succeeded");
             if (gamepad) {
+                bool finger_down = false;
+                float finger_x = 0.0f, finger_y = 0.0f, finger_pressure = 0.0f;
+                const float sensor_values[3] = { 1.0f, 2.0f, 3.0f };
+                float gamepad_sensor_values[3] = { 0.0f, 0.0f, 0.0f };
+
+                SDLTest_AssertCheck(SDL_GetNumGamepadTouchpads(gamepad) == 1, "SDL_GetNumGamepadTouchpads() == 1");
+                SDLTest_AssertCheck(SDL_GetNumGamepadTouchpadFingers(gamepad, 0) == 2, "SDL_GetNumGamepadTouchpadFingers() == 2");
+                SDLTest_AssertCheck(SDL_SetJoystickVirtualTouchpad(joystick, 0, 1, true, 0.25f, 0.75f, 0.5f), "SDL_SetJoystickVirtualTouchpad()");
+                SDL_UpdateJoysticks();
+                SDLTest_AssertCheck(SDL_GetGamepadTouchpadFinger(gamepad, 0, 1, &finger_down, &finger_x, &finger_y, &finger_pressure), "SDL_GetGamepadTouchpadFinger()");
+                SDLTest_AssertCheck(finger_down && finger_x == 0.25f && finger_y == 0.75f && finger_pressure == 0.5f,
+                                    "Gamepad touchpad finger state is preserved");
+                SDLTest_AssertCheck(!SDL_GetGamepadTouchpadFinger(gamepad, 1, 0, NULL, NULL, NULL, NULL),
+                                    "SDL_GetGamepadTouchpadFinger() rejects an invalid touchpad");
+
+                SDLTest_AssertCheck(SDL_GamepadHasSensor(gamepad, SDL_SENSOR_GYRO), "SDL_GamepadHasSensor() reports the virtual gyroscope");
+                SDLTest_AssertCheck(!SDL_GamepadSensorEnabled(gamepad, SDL_SENSOR_GYRO), "SDL_GamepadSensorEnabled() starts disabled");
+                SDLTest_AssertCheck(SDL_GetGamepadSensorDataRate(gamepad, SDL_SENSOR_GYRO) == 60.0f, "SDL_GetGamepadSensorDataRate() -> 60 Hz");
+                SDLTest_AssertCheck(SDL_SetGamepadSensorEnabled(gamepad, SDL_SENSOR_GYRO, true), "SDL_SetGamepadSensorEnabled()");
+                SDLTest_AssertCheck(SDL_GamepadSensorEnabled(gamepad, SDL_SENSOR_GYRO), "SDL_GamepadSensorEnabled() reports enabled");
+                SDLTest_AssertCheck(SDL_SendJoystickVirtualSensorData(joystick, SDL_SENSOR_GYRO, 123, sensor_values, 3),
+                                    "SDL_SendJoystickVirtualSensorData()");
+                SDL_UpdateJoysticks();
+                SDLTest_AssertCheck(SDL_GetGamepadSensorData(gamepad, SDL_SENSOR_GYRO, gamepad_sensor_values, 3), "SDL_GetGamepadSensorData()");
+                SDLTest_AssertCheck(gamepad_sensor_values[0] == 1.0f && gamepad_sensor_values[1] == 2.0f && gamepad_sensor_values[2] == 3.0f,
+                                    "Gamepad sensor values are preserved");
+
+                SDL_Gamepad *again = SDL_OpenGamepad(device_id);
+                SDLTest_AssertCheck(again == gamepad, "Opening the same gamepad returns the existing instance");
+                if (again) {
+                    SDL_CloseGamepad(again);
+                }
+                SDLTest_AssertCheck(SDL_GetGamepadFromID(device_id) == gamepad,
+                                    "Closing the second reference keeps the first gamepad open");
                 {
                     const char *name = SDL_GetGamepadName(gamepad);
                     SDLTest_AssertCheck(name && SDL_strcmp(name, desc.name) == 0, "SDL_GetGamepadName() -> \"%s\" (expected \"%s\")", name, desc.name);
@@ -209,6 +300,143 @@ static int SDLCALL joystick_testVirtual(void *arg)
     return TEST_COMPLETED;
 }
 
+/** Check the initial values of a two-axis virtual joystick. */
+static int SDLCALL joystick_twoAxisInitialState(void *arg)
+{
+    SDL_VirtualJoystickDesc desc;
+    SDL_JoystickID device_id;
+    SDL_Joystick *joystick;
+    Sint16 value;
+
+    SDL_INIT_INTERFACE(&desc);
+    desc.type = SDL_JOYSTICK_TYPE_UNKNOWN;
+    desc.naxes = 2;
+    device_id = SDL_AttachVirtualJoystick(&desc);
+    if (!SDLTest_AssertCheck(device_id > 0, "Attach two-axis joystick: %s", SDL_GetError())) {
+        return TEST_ABORTED;
+    }
+
+    joystick = SDL_OpenJoystick(device_id);
+    SDLTest_AssertCheck(joystick != NULL, "Open two-axis joystick: %s", SDL_GetError());
+    if (joystick) {
+        for (int axis = 0; axis < 2; ++axis) {
+            value = 1;
+            SDLTest_AssertCheck(SDL_GetJoystickAxisInitialState(joystick, axis, &value),
+                                "Axis %d has an initial state", axis);
+            SDLTest_AssertCheck(value == 0, "Axis %d starts centered at zero, got %d", axis, value);
+        }
+        SDL_CloseJoystick(joystick);
+    }
+    SDLTest_AssertCheck(SDL_DetachVirtualJoystick(device_id), "Detach two-axis joystick");
+    return TEST_COMPLETED;
+}
+
+static int SDLCALL joystick_virtualGUIDFields(void *arg)
+{
+    SDL_VirtualJoystickDesc desc;
+    SDL_JoystickID id;
+    SDL_GUID guid;
+    Uint16 vendor = 0, product = 0, version = 0, crc = 0;
+
+    SDL_INIT_INTERFACE(&desc);
+    desc.type = SDL_JOYSTICK_TYPE_GAMEPAD;
+    desc.vendor_id = 0x1234;
+    desc.product_id = 0x5678;
+    desc.name = "Virtual GUID test";
+    id = SDL_AttachVirtualJoystick(&desc);
+    if (!SDLTest_AssertCheck(id > 0, "Attach virtual GUID joystick: %s", SDL_GetError())) {
+        return TEST_ABORTED;
+    }
+
+    guid = SDL_GetJoystickGUIDForID(id);
+    SDL_GetJoystickGUIDInfo(guid, &vendor, &product, &version, &crc);
+    SDLTest_AssertCheck(vendor == desc.vendor_id && product == desc.product_id && version == 0,
+                        "Virtual GUID preserves vendor, product and version fields");
+    SDLTest_AssertCheck(crc == SDL_crc16(0, desc.name, SDL_strlen(desc.name)),
+                        "Virtual GUID preserves the name CRC");
+    SDLTest_AssertCheck(guid.data[14] == 'v' && guid.data[15] == desc.type,
+                        "Virtual GUID preserves driver signature and joystick type");
+    SDLTest_AssertCheck(SDL_DetachVirtualJoystick(id), "Detach virtual GUID joystick");
+    return TEST_COMPLETED;
+}
+
+static int SDLCALL joystick_typeClassification(void *arg)
+{
+    SDL_VirtualJoystickDesc desc;
+    SDL_JoystickID id;
+    SDL_Joystick *joystick;
+    const char *old_hint = SDL_GetHint(SDL_HINT_JOYSTICK_WHEEL_DEVICES);
+    char *saved_hint = old_hint ? SDL_strdup(old_hint) : NULL;
+    const char *old_excluded_hint = SDL_GetHint(SDL_HINT_JOYSTICK_WHEEL_DEVICES_EXCLUDED);
+    char *saved_excluded_hint = old_excluded_hint ? SDL_strdup(old_excluded_hint) : NULL;
+
+    if ((old_hint && !saved_hint) || (old_excluded_hint && !saved_excluded_hint)) {
+        SDLTest_AssertCheck(false, "Save existing wheel hints");
+        SDL_free(saved_hint);
+        SDL_free(saved_excluded_hint);
+        return TEST_ABORTED;
+    }
+
+    SDL_INIT_INTERFACE(&desc);
+    desc.type = SDL_JOYSTICK_TYPE_GAMEPAD;
+    desc.vendor_id = 0x046d;
+    desc.product_id = 0xc29b; // Logitech G27, in the built-in wheel list
+    desc.name = "Virtual known wheel";
+    id = SDL_AttachVirtualJoystick(&desc);
+    if (!SDLTest_AssertCheck(id > 0, "Attach known wheel: %s", SDL_GetError())) {
+        SDL_free(saved_hint);
+        SDL_free(saved_excluded_hint);
+        return TEST_ABORTED;
+    }
+    SDLTest_AssertCheck(SDL_GetJoystickTypeForID(id) == SDL_JOYSTICK_TYPE_WHEEL,
+                        "Built-in VID/PID classifies a wheel by ID");
+    joystick = SDL_OpenJoystick(id);
+    if (SDLTest_AssertCheck(joystick != NULL, "Open known wheel: %s", SDL_GetError())) {
+        SDLTest_AssertCheck(SDL_GetJoystickType(joystick) == SDL_JOYSTICK_TYPE_WHEEL,
+                            "Built-in VID/PID classifies an open wheel");
+        SDL_CloseJoystick(joystick);
+    }
+    SDLTest_AssertCheck(SDL_SetHint(SDL_HINT_JOYSTICK_WHEEL_DEVICES_EXCLUDED, "0x046d/0xc29b"),
+                        "Exclude built-in wheel VID/PID");
+    SDLTest_AssertCheck(SDL_GetJoystickTypeForID(id) == SDL_JOYSTICK_TYPE_GAMEPAD,
+                        "Exclusion hint overrides built-in wheel classification");
+    if (saved_excluded_hint) {
+        SDL_SetHint(SDL_HINT_JOYSTICK_WHEEL_DEVICES_EXCLUDED, saved_excluded_hint);
+    } else {
+        SDL_ResetHint(SDL_HINT_JOYSTICK_WHEEL_DEVICES_EXCLUDED);
+    }
+    SDLTest_AssertCheck(SDL_GetJoystickTypeForID(id) == SDL_JOYSTICK_TYPE_WHEEL,
+                        "Restored exclusion hint restores built-in wheel classification");
+    SDLTest_AssertCheck(SDL_DetachVirtualJoystick(id), "Detach known wheel");
+
+    desc.vendor_id = 0x1234;
+    desc.product_id = 0xabcd;
+    desc.name = "Virtual hinted wheel";
+    id = SDL_AttachVirtualJoystick(&desc);
+    if (!SDLTest_AssertCheck(id > 0, "Attach hinted wheel: %s", SDL_GetError())) {
+        SDL_free(saved_hint);
+        SDL_free(saved_excluded_hint);
+        return TEST_ABORTED;
+    }
+    SDLTest_AssertCheck(SDL_GetJoystickTypeForID(id) == SDL_JOYSTICK_TYPE_GAMEPAD,
+                        "Unknown VID/PID initially keeps virtual type");
+    SDLTest_AssertCheck(SDL_SetHint(SDL_HINT_JOYSTICK_WHEEL_DEVICES, "0x1234/0xabcd"),
+                        "Add wheel VID/PID with hint");
+    SDLTest_AssertCheck(SDL_GetJoystickTypeForID(id) == SDL_JOYSTICK_TYPE_WHEEL,
+                        "Updated wheel hint changes classification");
+    if (saved_hint) {
+        SDL_SetHint(SDL_HINT_JOYSTICK_WHEEL_DEVICES, saved_hint);
+    } else {
+        SDL_ResetHint(SDL_HINT_JOYSTICK_WHEEL_DEVICES);
+    }
+    SDLTest_AssertCheck(SDL_GetJoystickTypeForID(id) == SDL_JOYSTICK_TYPE_GAMEPAD,
+                        "Restored wheel hint restores virtual type");
+    SDLTest_AssertCheck(SDL_DetachVirtualJoystick(id), "Detach hinted wheel");
+    SDL_free(saved_hint);
+    SDL_free(saved_excluded_hint);
+    return TEST_COMPLETED;
+}
+
 /**
  * Check gamepad mappings
  */
@@ -279,6 +507,407 @@ static int SDLCALL joystick_testMappings(void *arg)
     return TEST_COMPLETED;
 }
 
+static int SDLCALL joystick_gamepadButtonLabelsForType(void *arg)
+{
+    SDLTest_AssertCheck(SDL_GetGamepadButtonLabelForType(SDL_GAMEPAD_TYPE_UNKNOWN, SDL_GAMEPAD_BUTTON_SOUTH) == SDL_GAMEPAD_BUTTON_LABEL_A, "Unknown type uses ABXY south label");
+    SDLTest_AssertCheck(SDL_GetGamepadButtonLabelForType(SDL_GAMEPAD_TYPE_GAMECUBE, SDL_GAMEPAD_BUTTON_EAST) == SDL_GAMEPAD_BUTTON_LABEL_X, "GameCube uses AXBY east label");
+    SDLTest_AssertCheck(SDL_GetGamepadButtonLabelForType(SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_PRO, SDL_GAMEPAD_BUTTON_SOUTH) == SDL_GAMEPAD_BUTTON_LABEL_B, "Switch Pro uses BAYX south label");
+    SDLTest_AssertCheck(SDL_GetGamepadButtonLabelForType(SDL_GAMEPAD_TYPE_PS4, SDL_GAMEPAD_BUTTON_NORTH) == SDL_GAMEPAD_BUTTON_LABEL_TRIANGLE, "PS4 uses Sony north label");
+    SDLTest_AssertCheck(SDL_GetGamepadButtonLabelForType(SDL_GAMEPAD_TYPE_PS5, SDL_GAMEPAD_BUTTON_EAST) == SDL_GAMEPAD_BUTTON_LABEL_CIRCLE, "PS5 uses Sony east label");
+    return TEST_COMPLETED;
+}
+
+static int SDLCALL joystick_getGamepadsFiltersDevices(void *arg)
+{
+    SDL_VirtualJoystickDesc desc;
+    SDL_JoystickID gamepad_id = 0;
+    SDL_JoystickID joystick_id = 0;
+    SDL_JoystickID *gamepads = NULL;
+    char guid[33];
+    char mapping[128];
+    int count = 0;
+    bool found_gamepad = false;
+
+    SDL_INIT_INTERFACE(&desc);
+    desc.type = SDL_JOYSTICK_TYPE_GAMEPAD;
+    desc.nbuttons = 1;
+    desc.vendor_id = 0xF00D;
+    desc.product_id = 0xBEEF;
+    desc.name = "Virtual Gamepad List Entry";
+    gamepad_id = SDL_AttachVirtualJoystick(&desc);
+    if (!SDLTest_AssertCheck(gamepad_id > 0, "Attach mapped virtual gamepad: %s", SDL_GetError())) {
+        goto done;
+    }
+
+    SDL_GUIDToString(SDL_GetJoystickGUIDForID(gamepad_id), guid, sizeof(guid));
+    SDL_snprintf(mapping, sizeof(mapping), "%s,Virtual Gamepad List Entry,a:b0,", guid);
+    if (!SDLTest_AssertCheck(SDL_AddGamepadMapping(mapping) >= 0, "Add virtual gamepad mapping: %s", SDL_GetError())) {
+        goto done;
+    }
+
+    SDL_INIT_INTERFACE(&desc);
+    desc.type = SDL_JOYSTICK_TYPE_UNKNOWN;
+    desc.vendor_id = 0xF00D;
+    desc.product_id = 0xBEF0;
+    desc.name = "Virtual Unmapped Joystick";
+    joystick_id = SDL_AttachVirtualJoystick(&desc);
+    if (!SDLTest_AssertCheck(joystick_id > 0, "Attach unmapped virtual joystick: %s", SDL_GetError())) {
+        goto done;
+    }
+
+    gamepads = SDL_GetGamepads(&count);
+    if (!SDLTest_AssertCheck(gamepads != NULL, "Get gamepad list: %s", SDL_GetError())) {
+        goto done;
+    }
+    for (int i = 0; i < count; ++i) {
+        SDLTest_AssertCheck(gamepads[i] != joystick_id, "Gamepad list excludes unmapped joystick");
+        SDLTest_AssertCheck(SDL_IsGamepad(gamepads[i]), "Every listed device has a gamepad mapping");
+        if (gamepads[i] == gamepad_id) {
+            found_gamepad = true;
+        }
+    }
+    SDLTest_AssertCheck(found_gamepad, "Gamepad list includes mapped virtual gamepad");
+
+done:
+    SDL_free(gamepads);
+    if (joystick_id > 0) {
+        SDL_DetachVirtualJoystick(joystick_id);
+    }
+    if (gamepad_id > 0) {
+        SDL_DetachVirtualJoystick(gamepad_id);
+    }
+    return TEST_COMPLETED;
+}
+
+static int SDLCALL joystick_mappingElementParsing(void *arg)
+{
+    SDL_VirtualJoystickDesc desc;
+    SDL_JoystickID id;
+    SDL_Joystick *joystick = NULL;
+    SDL_Gamepad *gamepad = NULL;
+    SDL_GamepadBinding **bindings = NULL;
+    char guid[33];
+    char mapping[256];
+    int count = 0;
+    bool leftx = false, trigger = false, button = false, hat = false;
+
+    SDL_INIT_INTERFACE(&desc);
+    desc.type = SDL_JOYSTICK_TYPE_GAMEPAD;
+    desc.naxes = 2;
+    desc.nbuttons = 1;
+    desc.nhats = 1;
+    desc.vendor_id = 0xF00D;
+    desc.product_id = 0xBEEF;
+    desc.name = "Mapping Parser Virtual Gamepad";
+    id = SDL_AttachVirtualJoystick(&desc);
+    if (!SDLTest_AssertCheck(id > 0, "Attach mapping parser joystick: %s", SDL_GetError())) {
+        return TEST_ABORTED;
+    }
+
+    SDL_GUIDToString(SDL_GetJoystickGUIDForID(id), guid, sizeof(guid));
+    SDL_snprintf(mapping, sizeof(mapping), "%s,Mapping Parser,leftx:+a0~,righttrigger:-a1,a:b0,b:h0.1,", guid);
+    if (!SDLTest_AssertCheck(SDL_AddGamepadMapping(mapping) >= 0, "Add axis, button, and hat mapping: %s", SDL_GetError())) {
+        goto done;
+    }
+    gamepad = SDL_OpenGamepad(id);
+    if (!SDLTest_AssertCheck(gamepad != NULL, "Open mapping parser gamepad: %s", SDL_GetError())) {
+        goto done;
+    }
+    bindings = SDL_GetGamepadBindings(gamepad, &count);
+    if (!SDLTest_AssertCheck(bindings != NULL, "Read parsed gamepad bindings: %s", SDL_GetError())) {
+        goto done;
+    }
+    SDLTest_AssertCheck(SDL_GetGamepadAxis(gamepad, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) == 0,
+                        "Mapped trigger starts at its logical zero point");
+    for (int i = 0; i < count; ++i) {
+        const SDL_GamepadBinding *bind = bindings[i];
+        if (bind->output_type == SDL_GAMEPAD_BINDTYPE_AXIS && bind->output.axis.axis == SDL_GAMEPAD_AXIS_LEFTX) {
+            leftx = bind->input_type == SDL_GAMEPAD_BINDTYPE_AXIS && bind->input.axis.axis == 0 &&
+                    bind->input.axis.axis_min == SDL_JOYSTICK_AXIS_MAX && bind->input.axis.axis_max == 0;
+        } else if (bind->output_type == SDL_GAMEPAD_BINDTYPE_AXIS && bind->output.axis.axis == SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) {
+            trigger = bind->input_type == SDL_GAMEPAD_BINDTYPE_AXIS && bind->input.axis.axis == 1 &&
+                      bind->input.axis.axis_min == 0 && bind->input.axis.axis_max == SDL_JOYSTICK_AXIS_MIN;
+        } else if (bind->output_type == SDL_GAMEPAD_BINDTYPE_BUTTON && bind->output.button == SDL_GAMEPAD_BUTTON_SOUTH) {
+            button = bind->input_type == SDL_GAMEPAD_BINDTYPE_BUTTON && bind->input.button == 0;
+        } else if (bind->output_type == SDL_GAMEPAD_BINDTYPE_BUTTON && bind->output.button == SDL_GAMEPAD_BUTTON_EAST) {
+            hat = bind->input_type == SDL_GAMEPAD_BINDTYPE_HAT && bind->input.hat.hat == 0 && bind->input.hat.hat_mask == 1;
+        }
+    }
+    SDLTest_AssertCheck(leftx && trigger && button && hat,
+                        "Parser preserves half-axis inversion, negative half-axis, button, and hat bindings");
+    joystick = SDL_GetGamepadJoystick(gamepad);
+    if (SDLTest_AssertCheck(joystick != NULL, "Get virtual joystick for mapped-axis checks")) {
+        SDLTest_AssertCheck(SDL_SetJoystickVirtualAxis(joystick, 0, SDL_JOYSTICK_AXIS_MAX), "Set mapped axis at positive limit: %s", SDL_GetError());
+        SDL_UpdateJoysticks();
+        SDLTest_AssertCheck(SDL_GetGamepadAxis(gamepad, SDL_GAMEPAD_AXIS_LEFTX) == SDL_JOYSTICK_AXIS_MIN,
+                            "Inverted positive half-axis maps its upper endpoint");
+        SDLTest_AssertCheck(SDL_SetJoystickVirtualAxis(joystick, 0, 0), "Set mapped axis at zero: %s", SDL_GetError());
+        SDL_UpdateJoysticks();
+        SDLTest_AssertCheck(SDL_GetGamepadAxis(gamepad, SDL_GAMEPAD_AXIS_LEFTX) == SDL_JOYSTICK_AXIS_MAX,
+                            "Inverted positive half-axis maps its lower endpoint");
+        SDLTest_AssertCheck(SDL_SetJoystickVirtualAxis(joystick, 0, -1), "Move mapped axis outside its half range: %s", SDL_GetError());
+        SDL_UpdateJoysticks();
+        SDLTest_AssertCheck(SDL_GetGamepadAxis(gamepad, SDL_GAMEPAD_AXIS_LEFTX) == 0,
+                            "Leaving the mapped half range resets the gamepad axis");
+        SDLTest_AssertCheck(SDL_SetJoystickVirtualHat(joystick, 0, SDL_HAT_UP), "Set mapped hat direction: %s", SDL_GetError());
+        SDL_UpdateJoysticks();
+        SDLTest_AssertCheck(SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_EAST), "Mapped hat direction presses the gamepad button");
+        SDLTest_AssertCheck(SDL_SetJoystickVirtualHat(joystick, 0, SDL_HAT_CENTERED), "Center mapped hat: %s", SDL_GetError());
+        SDL_UpdateJoysticks();
+        SDLTest_AssertCheck(!SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_EAST), "Centering the mapped hat releases the gamepad button");
+    }
+
+done:
+    SDL_free(bindings);
+    SDL_CloseGamepad(gamepad);
+    SDLTest_AssertCheck(SDL_DetachVirtualJoystick(id), "Detach mapping parser joystick: %s", SDL_GetError());
+    return TEST_COMPLETED;
+}
+
+static int SDLCALL joystick_sinputMapping(void *arg)
+{
+    SDL_GUID guid;
+    char *mapping;
+    const Uint16 version = 8639; // Both sticks, two bumpers, dual-stage triggers, four paddles, three meta buttons, two touchpads, four misc buttons.
+
+    SDL_zero(guid);
+    guid.data[0] = 3; // USB bus
+    guid.data[4] = (Uint8)(USB_VENDOR_RASPBERRYPI & 0xff);
+    guid.data[5] = (Uint8)(USB_VENDOR_RASPBERRYPI >> 8);
+    guid.data[8] = (Uint8)(USB_PRODUCT_HANDHELDLEGEND_SINPUT_GENERIC & 0xff);
+    guid.data[9] = (Uint8)(USB_PRODUCT_HANDHELDLEGEND_SINPUT_GENERIC >> 8);
+    guid.data[12] = (Uint8)(version & 0xff);
+    guid.data[13] = (Uint8)(version >> 8);
+    guid.data[14] = 'h'; // HIDAPI
+    guid.data[15] = 4 << 5; // Sony face style
+
+    mapping = SDL_GetGamepadMappingForGUID(guid);
+    if (SDLTest_AssertCheck(mapping != NULL, "Generate SInput mapping: %s", SDL_GetError())) {
+        SDLTest_AssertCheck(SDL_strstr(mapping, "face:sony,") != NULL, "SInput face style is preserved");
+        SDLTest_AssertCheck(SDL_strstr(mapping, "leftx:a0,lefty:a1,rightx:a2,righty:a3,") != NULL,
+                            "SInput analog sticks retain axis order");
+        SDLTest_AssertCheck(SDL_strstr(mapping, "lefttrigger:a4,righttrigger:a5,") != NULL,
+                            "SInput dual-stage triggers retain analog axes");
+        SDLTest_AssertCheck(SDL_strstr(mapping, "paddle2:") && SDL_strstr(mapping, "paddle1:") &&
+                            SDL_strstr(mapping, "paddle4:") && SDL_strstr(mapping, "paddle3:") &&
+                            SDL_strstr(mapping, "touchpad:") && SDL_strstr(mapping, "guide:"),
+                            "SInput digital controls are present");
+    }
+    SDL_free(mapping);
+    return TEST_COMPLETED;
+}
+
+static int SDLCALL joystick_gamepadNameConversions(void *arg)
+{
+    for (int i = SDL_GAMEPAD_TYPE_STANDARD; i < SDL_GAMEPAD_TYPE_COUNT; ++i) {
+        const char *name = SDL_GetGamepadStringForType((SDL_GamepadType)i);
+        SDLTest_AssertCheck(name && SDL_GetGamepadTypeFromString(name) == (SDL_GamepadType)i,
+                            "Gamepad type %d round-trips through its name", i);
+    }
+    for (int i = 0; i < SDL_GAMEPAD_AXIS_COUNT; ++i) {
+        const char *name = SDL_GetGamepadStringForAxis((SDL_GamepadAxis)i);
+        SDLTest_AssertCheck(name && SDL_GetGamepadAxisFromString(name) == (SDL_GamepadAxis)i,
+                            "Gamepad axis %d round-trips through its name", i);
+    }
+    for (int i = 0; i < SDL_GAMEPAD_BUTTON_COUNT; ++i) {
+        const char *name = SDL_GetGamepadStringForButton((SDL_GamepadButton)i);
+        SDLTest_AssertCheck(name && SDL_GetGamepadButtonFromString(name) == (SDL_GamepadButton)i,
+                            "Gamepad button %d round-trips through its name", i);
+    }
+
+    SDLTest_AssertCheck(SDL_GetGamepadTypeFromString("+PS5") == SDL_GAMEPAD_TYPE_PS5, "Type parsing accepts a sign and ignores case");
+    SDLTest_AssertCheck(SDL_GetGamepadAxisFromString("-LEFTX") == SDL_GAMEPAD_AXIS_LEFTX, "Axis parsing accepts a sign and ignores case");
+    SDLTest_AssertCheck(SDL_GetGamepadButtonFromString("A") == SDL_GAMEPAD_BUTTON_SOUTH, "Button parsing ignores case");
+    SDLTest_AssertCheck(SDL_GetGamepadStringForType(SDL_GAMEPAD_TYPE_UNKNOWN) == NULL, "Unknown type has no public name");
+    SDLTest_AssertCheck(SDL_GetGamepadStringForAxis(SDL_GAMEPAD_AXIS_INVALID) == NULL, "Invalid axis has no name");
+    SDLTest_AssertCheck(SDL_GetGamepadStringForButton(SDL_GAMEPAD_BUTTON_INVALID) == NULL, "Invalid button has no name");
+    return TEST_COMPLETED;
+}
+
+static int SDLCALL joystick_mappingLabelHints(void *arg)
+{
+    const struct {
+        const char *guid;
+        const char *mapping;
+        const char *expected;
+    } cases[] = {
+        { "03000000adde00000100000000000000",
+          "03000000adde00000100000000000000,GameCube labels,a:b0,b:b1,x:b2,y:b3,hint:SDL_GAMECONTROLLER_USE_GAMECUBE_LABELS:=1,",
+          ",a:b0,x:b1,b:b2,y:b3,hint:!SDL_GAMECONTROLLER_USE_GAMECUBE_LABELS:=1," },
+        { "03000000adde00000200000000000000",
+          "03000000adde00000200000000000000,Nintendo labels,a:b0,b:b1,x:b2,y:b3,hint:SDL_GAMECONTROLLER_USE_BUTTON_LABELS:=1,",
+          ",b:b0,a:b1,y:b2,x:b3,hint:!SDL_GAMECONTROLLER_USE_BUTTON_LABELS:=1," }
+    };
+
+    for (int i = 0; i < SDL_arraysize(cases); ++i) {
+        char *mapping;
+        if (!SDLTest_AssertCheck(SDL_AddGamepadMapping(cases[i].mapping) >= 0,
+                                 "Add labeled mapping %d: %s", i, SDL_GetError())) {
+            return TEST_ABORTED;
+        }
+        mapping = SDL_GetGamepadMappingForGUID(SDL_StringToGUID(cases[i].guid));
+        if (!SDLTest_AssertCheck(mapping != NULL, "Read labeled mapping %d: %s", i, SDL_GetError())) {
+            return TEST_ABORTED;
+        }
+        SDLTest_AssertCheck(SDL_strstr(mapping, cases[i].expected) != NULL,
+                            "Mapping %d preserves positional buttons and negates the label hint: %s", i, mapping);
+        SDL_free(mapping);
+    }
+    return TEST_COMPLETED;
+}
+
+static int SDLCALL joystick_mappingLabelHintsOOM(void *arg)
+{
+    const char *mapping = "030000007e0500003703000000000001,GameCube OOM,a:b0,b:b1,x:b0,y:b1,";
+    SDL_malloc_func original_malloc;
+    SDL_calloc_func original_calloc;
+    SDL_realloc_func original_realloc;
+    SDL_free_func original_free;
+    char *stored_mapping;
+
+    SDL_GetOriginalMemoryFunctions(&original_malloc, &original_calloc, &original_realloc, &original_free);
+    joystick_original_realloc = original_realloc;
+    if (!SDL_SetMemoryFunctions(original_malloc, original_calloc, joystick_test_realloc, original_free)) {
+        return TEST_ABORTED;
+    }
+
+    joystick_fail_realloc = true;
+    joystick_realloc_failed = false;
+    joystick_fail_realloc_size = SDL_strlen(mapping) + SDL_strlen("hint:SDL_GAMECONTROLLER_USE_GAMECUBE_LABELS:=1,") + 1;
+    SDL_ClearError();
+    SDLTest_AssertCheck(SDL_AddGamepadMapping(mapping) < 0, "GameCube mapping fails when adding its label hint runs out of memory");
+    SDLTest_AssertCheck(joystick_realloc_failed, "GameCube label hint allocation reaches and fails SDL_asprintf realloc");
+    SDLTest_AssertCheck(SDL_GetError()[0] != '\0', "GameCube mapping OOM preserves an error");
+    stored_mapping = SDL_GetGamepadMappingForGUID(SDL_StringToGUID("030000007e0500003703000000000001"));
+    SDLTest_AssertCheck(stored_mapping == NULL, "GameCube mapping is not added after label hint OOM");
+    SDL_free(stored_mapping);
+
+    SDL_SetMemoryFunctions(original_malloc, original_calloc, original_realloc, original_free);
+    SDL_ClearError();
+    SDLTest_AssertCheck(SDL_AddGamepadMapping(mapping) >= 0, "GameCube mapping succeeds after OOM");
+    stored_mapping = SDL_GetGamepadMappingForGUID(SDL_StringToGUID("030000007e0500003703000000000001"));
+    SDLTest_AssertCheck(stored_mapping && SDL_strstr(stored_mapping, "hint:!SDL_GAMECONTROLLER_USE_GAMECUBE_LABELS:=1") != NULL,
+                        "Successful GameCube mapping preserves the GameCube label conversion: %s", stored_mapping ? stored_mapping : SDL_GetError());
+    SDL_free(stored_mapping);
+    return TEST_COMPLETED;
+}
+
+static int SDLCALL joystick_mappingStringOOM(void *arg)
+{
+    const char *mapping = "03003412341200007856000001000002,Mapping OOM,a:b0,b:b1,";
+    SDL_calloc_func original_calloc;
+    SDL_realloc_func original_realloc;
+    SDL_free_func original_free;
+
+    SDL_GetOriginalMemoryFunctions(&joystick_original_malloc, &original_calloc, &original_realloc, &original_free);
+    if (!SDL_SetMemoryFunctions(joystick_test_malloc, original_calloc, original_realloc, original_free)) {
+        return TEST_ABORTED;
+    }
+
+    joystick_fail_malloc = true;
+    joystick_malloc_failed = false;
+    joystick_fail_realloc_size = SDL_strlen(SDL_strchr(SDL_strchr(mapping, ',') + 1, ',') + 1) + 1;
+    SDL_ClearError();
+    SDLTest_AssertCheck(SDL_AddGamepadMapping(mapping) < 0, "Mapping fails when its mapping string allocation runs out of memory");
+    SDLTest_AssertCheck(joystick_malloc_failed, "Mapping string allocation failure is injected");
+    SDLTest_AssertCheck(SDL_strcmp(SDL_GetError(), "Out of memory") == 0, "Mapping string OOM error is preserved: %s", SDL_GetError());
+
+    SDL_SetMemoryFunctions(joystick_original_malloc, original_calloc, original_realloc, original_free);
+    return TEST_COMPLETED;
+}
+
+static int SDLCALL joystick_vidpidListRepeatedHints(void *arg)
+{
+    SDL_malloc_func original_malloc;
+    SDL_calloc_func original_calloc;
+    SDL_realloc_func original_realloc;
+    SDL_free_func original_free;
+    Uint32 initial_entries[] = { 0x12340056 };
+    SDL_vidpid_list list = { 0 };
+
+    SDL_GetOriginalMemoryFunctions(&original_malloc, &original_calloc, &original_realloc, &original_free);
+    joystick_original_free = original_free;
+    joystick_vidpid_free_count = 0;
+    SDLTest_AssertCheck(SDL_SetMemoryFunctions(original_malloc, original_calloc, original_realloc, joystick_test_free),
+                        "Install VID/PID free tracking");
+
+    list.initial_entries = initial_entries;
+    list.num_initial_entries = SDL_arraysize(initial_entries);
+    joystick_test_LoadVIDPIDListFromHints(&list, "0x1234:0x5678", NULL);
+    SDLTest_AssertCheck(list.num_included_entries == 2, "Initial and hinted VID/PID entries are loaded");
+    joystick_test_LoadVIDPIDListFromHints(&list, "0x1234:0x9abc", NULL);
+    SDLTest_AssertCheck(list.num_included_entries == 2, "Repeated hint reload preserves the expected entry count");
+    SDLTest_AssertCheck(joystick_vidpid_free_count == 1, "Repeated hint reload frees the previous included list");
+
+    joystick_test_FreeVIDPIDList(&list);
+    SDL_SetMemoryFunctions(original_malloc, original_calloc, original_realloc, original_free);
+    return TEST_COMPLETED;
+}
+
+static int SDLCALL joystick_mappingCRCOOM(void *arg)
+{
+    const char *existing_mapping = "03003412341200007856000001000001,CRC existing,crc:1234,a:b0,b:b1,x:b2,y:b3,leftx:a0,lefty:a1,rightx:a2,righty:a3,lefttrigger:a4,righttrigger:a5,back:b4,guide:b5,start:b6,leftshoulder:b7,rightshoulder:b8,";
+    const char *replacement_mapping = "03003412341200007856000001000001,CRC replacement,crc:1234,a:b9,b:b8,x:b7,y:b6,leftx:a5,lefty:a4,rightx:a3,righty:a2,lefttrigger:a1,righttrigger:a0,back:b10,guide:b11,start:b12,leftshoulder:b13,rightshoulder:b14,";
+    const char *missing_crc_mapping = "03007856341200007856000001000002,CRC missing,a:b0,b:b1,x:b2,y:b3,leftx:a0,lefty:a1,rightx:a2,righty:a3,lefttrigger:a4,righttrigger:a5,back:b4,guide:b5,start:b6,leftshoulder:b7,rightshoulder:b8,";
+    SDL_malloc_func original_malloc;
+    SDL_calloc_func original_calloc;
+    SDL_realloc_func original_realloc;
+    SDL_free_func original_free;
+    char *stored_mapping;
+
+    SDL_GetOriginalMemoryFunctions(&original_malloc, &original_calloc, &original_realloc, &original_free);
+    joystick_original_realloc = original_realloc;
+    if (!SDL_SetMemoryFunctions(original_malloc, original_calloc, joystick_test_realloc, original_free)) {
+        return TEST_ABORTED;
+    }
+
+    joystick_fail_realloc = false;
+    joystick_realloc_failed = false;
+    joystick_fail_realloc_size = SDL_strlen(SDL_strchr(SDL_strchr(replacement_mapping, ',') + 1, ',') + 1) + 1;
+    SDLTest_AssertCheck(SDL_AddGamepadMapping(existing_mapping) >= 0, "Add existing CRC mapping before testing failed replacement");
+    joystick_fail_realloc = true;
+    SDL_ClearError();
+    SDLTest_AssertCheck(SDL_AddGamepadMapping(replacement_mapping) < 0, "CRC mapping replacement fails when normalization runs out of memory");
+    SDLTest_AssertCheck(joystick_realloc_failed && joystick_realloc_failed_size == joystick_fail_realloc_size, "CRC normalization realloc fails at its expected formatted size");
+    SDLTest_AssertCheck(SDL_GetError()[0] != '\0', "CRC normalization OOM preserves an error");
+    stored_mapping = SDL_GetGamepadMappingForGUID(SDL_StringToGUID("03003412341200007856000001000001"));
+    SDLTest_AssertCheck(stored_mapping && SDL_strstr(stored_mapping, "CRC existing,") && SDL_strstr(stored_mapping, "a:b0,") && !SDL_strstr(stored_mapping, "a:b9,"),
+                        "OOM leaves the existing mapping and bindings untouched: %s", stored_mapping ? stored_mapping : SDL_GetError());
+    SDL_free(stored_mapping);
+
+    SDL_SetMemoryFunctions(original_malloc, original_calloc, original_realloc, original_free);
+    SDL_ClearError();
+    SDLTest_AssertCheck(SDL_AddGamepadMapping(replacement_mapping) >= 0, "CRC mapping replacement succeeds after OOM");
+    stored_mapping = SDL_GetGamepadMappingForGUID(SDL_StringToGUID("03003412341200007856000001000001"));
+    SDLTest_AssertCheck(stored_mapping && SDL_strstr(stored_mapping, "CRC replacement,") && SDL_strstr(stored_mapping, "crc:1234,") && SDL_strstr(stored_mapping, "a:b9,"),
+                        "Successful replacement preserves its CRC and bindings: %s", stored_mapping ? stored_mapping : SDL_GetError());
+    SDL_free(stored_mapping);
+
+    SDL_SetMemoryFunctions(original_malloc, original_calloc, original_realloc, original_free);
+    joystick_fail_realloc_size = SDL_strlen(SDL_strchr(SDL_strchr(missing_crc_mapping, ',') + 1, ',') + 1) + SDL_strlen("crc:5678,") + 1;
+    if (!SDL_SetMemoryFunctions(original_malloc, original_calloc, joystick_test_realloc, original_free)) {
+        return TEST_ABORTED;
+    }
+    joystick_fail_realloc = true;
+    joystick_realloc_failed = false;
+    SDL_ClearError();
+    SDLTest_AssertCheck(SDL_AddGamepadMapping(missing_crc_mapping) < 0, "Mapping without crc fails when CRC normalization runs out of memory");
+    SDLTest_AssertCheck(joystick_realloc_failed && joystick_realloc_failed_size == joystick_fail_realloc_size, "Missing CRC normalization fails at its expected formatted size");
+    SDLTest_AssertCheck(SDL_GetError()[0] != '\0', "Missing CRC OOM preserves an error");
+    stored_mapping = SDL_GetGamepadMappingForGUID(SDL_StringToGUID("03007856341200007856000001000002"));
+    SDLTest_AssertCheck(stored_mapping == NULL, "Mapping without crc is not added after normalization OOM");
+    SDL_free(stored_mapping);
+
+    SDL_SetMemoryFunctions(original_malloc, original_calloc, original_realloc, original_free);
+    SDL_ClearError();
+    SDLTest_AssertCheck(SDL_AddGamepadMapping(missing_crc_mapping) >= 0, "Mapping without crc succeeds after OOM");
+    stored_mapping = SDL_GetGamepadMappingForGUID(SDL_StringToGUID("03007856341200007856000001000002"));
+    SDLTest_AssertCheck(stored_mapping && SDL_strstr(stored_mapping, "crc:5678,") && SDL_strstr(stored_mapping, "a:b0,") && SDL_strstr(stored_mapping, "rightshoulder:b8,"),
+                        "Successful normalization adds the missing CRC and preserves bindings: %s", stored_mapping ? stored_mapping : SDL_GetError());
+    SDL_free(stored_mapping);
+    return TEST_COMPLETED;
+}
+
 /**
  * Missing joystick axes must not become half-pressed gamepad triggers.
  */
@@ -343,12 +972,168 @@ static int SDLCALL joystick_testMissingAxes(void *arg)
 
 /* ================= Test References ================== */
 
+static int SDLCALL joystick_openReuse(void *arg)
+{
+    SDL_VirtualJoystickDesc desc;
+    SDL_JoystickID id;
+    SDL_Joystick *first, *second;
+
+    SDL_INIT_INTERFACE(&desc);
+    desc.type = SDL_JOYSTICK_TYPE_UNKNOWN;
+    desc.naxes = 2;
+    desc.nbuttons = 1;
+    desc.nhats = 1;
+    id = SDL_AttachVirtualJoystick(&desc);
+    if (!SDLTest_AssertCheck(id > 0, "Attach virtual joystick for open reuse: %s", SDL_GetError())) {
+        return TEST_ABORTED;
+    }
+
+    first = SDL_OpenJoystick(id);
+    if (!SDLTest_AssertCheck(first != NULL, "Open virtual joystick: %s", SDL_GetError())) {
+        SDL_DetachVirtualJoystick(id);
+        return TEST_ABORTED;
+    }
+    second = SDL_OpenJoystick(id);
+    SDLTest_AssertCheck(second == first, "Opening an active joystick reuses the same object");
+    SDL_CloseJoystick(first);
+    if (second) {
+        SDLTest_AssertCheck(SDL_JoystickConnected(second), "Second reference remains connected");
+        SDLTest_AssertCheck(SDL_GetNumJoystickAxes(second) == 2, "Axis state remains available");
+        SDLTest_AssertCheck(SDL_GetNumJoystickButtons(second) == 1, "Button state remains available");
+        SDLTest_AssertCheck(SDL_GetNumJoystickHats(second) == 1, "Hat state remains available");
+        SDL_CloseJoystick(second);
+    }
+    SDLTest_AssertCheck(SDL_DetachVirtualJoystick(id), "Detach virtual joystick after closing both references: %s", SDL_GetError());
+    SDL_ClearError();
+    SDLTest_AssertCheck(SDL_OpenJoystick(id) == NULL, "Detached joystick cannot be reopened");
+    SDLTest_AssertCheck(SDL_GetError()[0] != '\0', "Opening detached joystick preserves an error");
+    return TEST_COMPLETED;
+}
+
+typedef struct JoystickRumbleCalls
+{
+    int body_count;
+    int trigger_count;
+    Uint16 body_low, body_high;
+    Uint16 trigger_left, trigger_right;
+} JoystickRumbleCalls;
+
+static bool SDLCALL joystick_onRumble(void *userdata, Uint16 low, Uint16 high)
+{
+    JoystickRumbleCalls *calls = (JoystickRumbleCalls *)userdata;
+    ++calls->body_count;
+    calls->body_low = low;
+    calls->body_high = high;
+    return true;
+}
+
+static bool SDLCALL joystick_onRumbleTriggers(void *userdata, Uint16 left, Uint16 right)
+{
+    JoystickRumbleCalls *calls = (JoystickRumbleCalls *)userdata;
+    ++calls->trigger_count;
+    calls->trigger_left = left;
+    calls->trigger_right = right;
+    return true;
+}
+
+static int SDLCALL joystick_rumbleExpiration(void *arg)
+{
+    SDL_VirtualJoystickDesc desc;
+    JoystickRumbleCalls calls = { 0 };
+    SDL_JoystickID id;
+    SDL_Joystick *joystick;
+
+    SDL_INIT_INTERFACE(&desc);
+    desc.type = SDL_JOYSTICK_TYPE_GAMEPAD;
+    desc.userdata = &calls;
+    desc.Rumble = joystick_onRumble;
+    desc.RumbleTriggers = joystick_onRumbleTriggers;
+    id = SDL_AttachVirtualJoystick(&desc);
+    if (!SDLTest_AssertCheck(id > 0, "Attach rumble joystick: %s", SDL_GetError())) {
+        return TEST_ABORTED;
+    }
+    joystick = SDL_OpenJoystick(id);
+    if (!SDLTest_AssertCheck(joystick != NULL, "Open rumble joystick: %s", SDL_GetError())) {
+        SDL_DetachVirtualJoystick(id);
+        return TEST_ABORTED;
+    }
+
+    SDLTest_AssertCheck(SDL_RumbleJoystick(joystick, 100, 200, 1), "Start body rumble: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_RumbleJoystickTriggers(joystick, 300, 400, 1), "Start trigger rumble: %s", SDL_GetError());
+    SDLTest_AssertCheck(calls.body_count == 1 && calls.body_low == 100 && calls.body_high == 200,
+                        "Body callback receives initial rumble values");
+    SDLTest_AssertCheck(calls.trigger_count == 1 && calls.trigger_left == 300 && calls.trigger_right == 400,
+                        "Trigger callback receives initial rumble values");
+
+    SDL_Delay(20);
+    SDL_UpdateJoysticks();
+    SDLTest_AssertCheck(calls.body_count == 2 && calls.body_low == 0 && calls.body_high == 0,
+                        "Expired body rumble sends one stop callback");
+    SDLTest_AssertCheck(calls.trigger_count == 2 && calls.trigger_left == 0 && calls.trigger_right == 0,
+                        "Expired trigger rumble sends one stop callback");
+    SDL_UpdateJoysticks();
+    SDLTest_AssertCheck(calls.body_count == 2 && calls.trigger_count == 2,
+                        "Stopped rumble is not sent again");
+
+    SDL_CloseJoystick(joystick);
+    SDLTest_AssertCheck(SDL_DetachVirtualJoystick(id), "Detach rumble joystick: %s", SDL_GetError());
+    return TEST_COMPLETED;
+}
+
+static const SDLTest_TestCaseReference joystickTestOpenReuse = {
+    joystick_openReuse, "joystick_openReuse", "Opening a joystick twice preserves its input state until both closes", TEST_ENABLED
+};
+
+static const SDLTest_TestCaseReference joystickTestRumbleExpiration = {
+    joystick_rumbleExpiration, "joystick_rumbleExpiration", "Virtual joystick rumble stops once after its duration expires", TEST_ENABLED
+};
+
 /* Joystick routine test cases */
 static const SDLTest_TestCaseReference joystickTest1 = {
     joystick_testVirtual, "joystick_testVirtual", "Test virtual joystick functionality", TEST_ENABLED
 };
+static const SDLTest_TestCaseReference joystickTestInitialState = {
+    joystick_twoAxisInitialState, "joystick_twoAxisInitialState", "Two-axis virtual joysticks start centered", TEST_ENABLED
+};
+static const SDLTest_TestCaseReference joystickTestVirtualGUIDFields = {
+    joystick_virtualGUIDFields, "joystick_virtualGUIDFields", "Virtual joystick GUID retains its encoded fields", TEST_ENABLED
+};
+static const SDLTest_TestCaseReference joystickTestTypeClassification = {
+    joystick_typeClassification, "joystick_typeClassification", "Known and hinted wheel VID/PID classification", TEST_ENABLED
+};
 static const SDLTest_TestCaseReference joystickTest2 = {
     joystick_testMappings, "joystick_testMappings", "Test gamepad mapping functionality", TEST_ENABLED
+};
+static const SDLTest_TestCaseReference joystickTestMappingElementParsing = {
+    joystick_mappingElementParsing, "joystick_mappingElementParsing", "Parse half axes, button, and hat bindings", TEST_ENABLED
+};
+static const SDLTest_TestCaseReference joystickTestSInputMapping = {
+    joystick_sinputMapping, "joystick_sinputMapping", "Decode SInput styles into a gamepad mapping", TEST_ENABLED
+};
+static const SDLTest_TestCaseReference joystickTestMappingLabelHints = {
+    joystick_mappingLabelHints, "joystick_mappingLabelHints", "Legacy label hints map buttons to positions", TEST_ENABLED
+};
+static const SDLTest_TestCaseReference joystickTestMappingLabelHintsOOM = {
+    joystick_mappingLabelHintsOOM, "joystick_mappingLabelHintsOOM", "GameCube mapping reports label hint allocation failure", TEST_ENABLED
+};
+static const SDLTest_TestCaseReference joystickTestMappingStringOOM = {
+    joystick_mappingStringOOM, "joystick_mappingStringOOM", "Gamepad mapping reports mapping string allocation failure", TEST_ENABLED
+};
+
+static const SDLTest_TestCaseReference joystickTestVIDPIDListRepeatedHints = {
+    joystick_vidpidListRepeatedHints, "joystick_vidpidListRepeatedHints", "Reloading VID/PID hints releases the previous included list", TEST_ENABLED
+};
+static const SDLTest_TestCaseReference joystickTestMappingCRCOOM = {
+    joystick_mappingCRCOOM, "joystick_mappingCRCOOM", "Gamepad mapping preserves CRC after normalization OOM", TEST_ENABLED
+};
+static const SDLTest_TestCaseReference joystickTestGamepadButtonLabelsForType = {
+    joystick_gamepadButtonLabelsForType, "joystick_gamepadButtonLabelsForType", "Button labels follow the gamepad face style", TEST_ENABLED
+};
+static const SDLTest_TestCaseReference joystickTestGetGamepadsFiltersDevices = {
+    joystick_getGamepadsFiltersDevices, "joystick_getGamepadsFiltersDevices", "Only mapped devices are returned by SDL_GetGamepads", TEST_ENABLED
+};
+static const SDLTest_TestCaseReference joystickTestGamepadNameConversions = {
+    joystick_gamepadNameConversions, "joystick_gamepadNameConversions", "Gamepad names and enums round-trip", TEST_ENABLED
 };
 static const SDLTest_TestCaseReference joystickTest3 = {
     joystick_testMissingAxes, "joystick_testMissingAxes", "Test mappings with missing joystick axes", TEST_ENABLED
@@ -357,7 +1142,22 @@ static const SDLTest_TestCaseReference joystickTest3 = {
 /* Sequence of Joystick routine test cases */
 static const SDLTest_TestCaseReference *joystickTests[] = {
     &joystickTest1,
+    &joystickTestOpenReuse,
+    &joystickTestRumbleExpiration,
+    &joystickTestInitialState,
+    &joystickTestVirtualGUIDFields,
+    &joystickTestTypeClassification,
     &joystickTest2,
+    &joystickTestMappingElementParsing,
+    &joystickTestSInputMapping,
+    &joystickTestGamepadNameConversions,
+    &joystickTestMappingLabelHints,
+    &joystickTestMappingLabelHintsOOM,
+    &joystickTestMappingStringOOM,
+    &joystickTestVIDPIDListRepeatedHints,
+    &joystickTestMappingCRCOOM,
+    &joystickTestGamepadButtonLabelsForType,
+    &joystickTestGetGamepadsFiltersDevices,
     &joystickTest3,
     NULL
 };

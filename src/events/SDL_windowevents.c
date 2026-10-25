@@ -32,13 +32,6 @@
 
 static SDL_EventWatchList SDL_window_event_watchers[NUM_WINDOW_EVENT_WATCH_PRIORITIES];
 
-void SDL_InitWindowEventWatch(void)
-{
-    for (int i = 0; i < SDL_arraysize(SDL_window_event_watchers); ++i) {
-        SDL_InitEventWatchList(&SDL_window_event_watchers[i]);
-    }
-}
-
 void SDL_QuitWindowEventWatch(void)
 {
     for (int i = 0; i < SDL_arraysize(SDL_window_event_watchers); ++i) {

@@ -34,6 +34,9 @@ bool SDL_SendNotificationAction(SDL_NotificationID notification_id, const char *
         nevent->timestamp = 0;
         nevent->which = notification_id;
         nevent->action_id = SDL_CreateTemporaryString(action_id);
+        if (!nevent->action_id) {
+            return false;
+        }
         return SDL_PushEvent(&event);
     }
 

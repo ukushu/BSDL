@@ -37,7 +37,6 @@ typedef struct SDL_EventWatchList
 } SDL_EventWatchList;
 
 
-extern bool SDL_InitEventWatchList(SDL_EventWatchList *list);
 extern void SDL_QuitEventWatchList(SDL_EventWatchList *list);
 extern bool SDL_DispatchEventWatchList(SDL_EventWatchList *list, SDL_Event *event);
 extern bool SDL_AddEventWatchList(SDL_EventWatchList *list, SDL_EventFilter filter, void *userdata);

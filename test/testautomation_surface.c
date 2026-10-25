@@ -560,6 +560,44 @@ static int SDLCALL surface_testBlitTiled(void *arg)
         SDLTest_AssertCheck(ret == true, "Expected SDL_BlitSurfaceTiledWithScale to succeed with very small scale: %f, got: %i", tiny_scale, ret);
     }
 
+    /* Tiled blit starts at the clipped destination origin and handles a partial tile */
+    {
+        SDL_Surface *src = SDL_CreateSurface(2, 2, SDL_PIXELFORMAT_RGBA32);
+        SDL_Surface *dst = SDL_CreateSurface(5, 4, SDL_PIXELFORMAT_RGBA32);
+        const SDL_Rect clip = { 1, 1, 3, 2 };
+        Uint8 r, g, b, a;
+
+        SDLTest_AssertCheck(src && dst, "Create surfaces for clipped tiled blit");
+        if (!src || !dst) {
+            SDL_DestroySurface(src);
+            SDL_DestroySurface(dst);
+            SDL_DestroySurface(face);
+            SDL_DestroySurface(testSurface2x);
+            SDL_DestroySurface(referenceSurface2x);
+            return TEST_ABORTED;
+        }
+        SDL_WriteSurfacePixel(src, 0, 0, 10, 0, 0, 255);
+        SDL_WriteSurfacePixel(src, 1, 0, 20, 0, 0, 255);
+        SDL_WriteSurfacePixel(src, 0, 1, 30, 0, 0, 255);
+        SDL_WriteSurfacePixel(src, 1, 1, 40, 0, 0, 255);
+        SDL_FillSurfaceRect(dst, NULL, SDL_MapSurfaceRGBA(dst, 0, 0, 0, 255));
+        SDL_SetSurfaceClipRect(dst, &clip);
+
+        ret = SDL_BlitSurfaceTiledWithScale(src, NULL, 1.0f, SDL_SCALEMODE_NEAREST, dst, NULL);
+        SDLTest_AssertCheck(ret, "Clipped tiled blit succeeds: %s", SDL_GetError());
+        SDL_ReadSurfacePixel(dst, 1, 1, &r, &g, &b, &a);
+        SDLTest_AssertCheck(r == 10, "Tile begins at clipped origin, got %u", r);
+        SDL_ReadSurfacePixel(dst, 3, 1, &r, &g, &b, &a);
+        SDLTest_AssertCheck(r == 10, "Partial tile repeats first column, got %u", r);
+        SDL_ReadSurfacePixel(dst, 2, 2, &r, &g, &b, &a);
+        SDLTest_AssertCheck(r == 40, "Second tile row preserves source pixels, got %u", r);
+        SDL_ReadSurfacePixel(dst, 0, 0, &r, &g, &b, &a);
+        SDLTest_AssertCheck(r == 0, "Pixels outside clip remain unchanged, got %u", r);
+
+        SDL_DestroySurface(src);
+        SDL_DestroySurface(dst);
+    }
+
     /* Clean up. */
     SDL_DestroySurface(face);
     SDL_DestroySurface(testSurface2x);
@@ -684,6 +722,31 @@ static int SDLCALL surface_testBlit9Grid(void *arg)
 
         ret = SDLTest_CompareSurfaces(testSurface, referenceSurface, 0);
         SDLTest_AssertCheck(ret == 0, "Validate result from SDLTest_CompareSurfaces, expected: 0, got: %i", ret);
+    }
+
+    /* 9-grid blit into a destination rectangle with a nonzero origin */
+    {
+        SDL_Surface *offset = SDL_CreateSurface(7, 7, SDL_PIXELFORMAT_RGBA32);
+        const SDL_Rect dstrect = { 1, 1, 5, 5 };
+        Uint8 r, g, b, a;
+
+        SDLTest_AssertCheck(offset != NULL, "Create destination for offset 9-grid blit");
+        if (!offset) {
+            SDL_DestroySurface(source);
+            return TEST_ABORTED;
+        }
+        SDL_FillSurfaceRect(offset, NULL, SDL_MapSurfaceRGBA(offset, 0, 0, 0, 255));
+        ret = SDL_BlitSurface9Grid(source, NULL, 1, 1, 1, 1, 0.0f, SDL_SCALEMODE_NEAREST, offset, &dstrect);
+        SDLTest_AssertCheck(ret, "Offset 9-grid blit succeeds: %s", SDL_GetError());
+        SDL_ReadSurfacePixel(offset, 1, 1, &r, &g, &b, &a);
+        SDLTest_AssertCheck(r == COLOR_SEPARATION && g == COLOR_SEPARATION, "Upper-left corner remains at destination origin");
+        SDL_ReadSurfacePixel(offset, 3, 3, &r, &g, &b, &a);
+        SDLTest_AssertCheck(r == 2 * COLOR_SEPARATION && g == 2 * COLOR_SEPARATION, "Center fills destination interior");
+        SDL_ReadSurfacePixel(offset, 5, 5, &r, &g, &b, &a);
+        SDLTest_AssertCheck(r == 3 * COLOR_SEPARATION && g == 3 * COLOR_SEPARATION, "Lower-right corner remains at destination edge");
+        SDL_ReadSurfacePixel(offset, 0, 0, &r, &g, &b, &a);
+        SDLTest_AssertCheck(r == 0 && g == 0, "Outside destination rectangle remains unchanged");
+        SDL_DestroySurface(offset);
     }
 
     /* Clean up. */
@@ -2132,6 +2195,52 @@ static int SDLCALL surface_test16BitTo32Bit(void *arg)
     return TEST_COMPLETED;
 }
 
+static int SDLCALL surface_testYUVPlaneOrder(void *arg)
+{
+    const Uint8 iyuv[17] = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 21, 22, 23, 24 };
+    const Uint8 expected_yv12[17] = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 21, 22, 23, 24, 11, 12, 13, 14 };
+    const Uint8 nv12[17] = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 21, 12, 22, 13, 23, 14, 24 };
+    const Uint8 expected_nv21[17] = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 21, 11, 22, 12, 23, 13, 24, 14 };
+    const Uint8 small_iyuv[6] = { 1, 2, 3, 4, 5, 6 };
+    const Uint8 expected_yuy2[8] = { 1, 5, 2, 6, 3, 5, 4, 6 };
+    const Uint8 expected_uyvy[8] = { 5, 1, 6, 2, 5, 3, 6, 4 };
+    Uint8 yv12[17] = { 0 };
+    Uint8 roundtrip[17] = { 0 };
+    Uint8 nv21[17] = { 0 };
+    Uint8 yuy2[8] = { 0 };
+    Uint8 uyvy[8] = { 0 };
+    Uint8 planar_roundtrip[6] = { 0 };
+    bool result;
+
+    result = SDL_ConvertPixels(3, 3, SDL_PIXELFORMAT_IYUV, iyuv, 3, SDL_PIXELFORMAT_YV12, yv12, 3);
+    if (!result && SDL_strcmp(SDL_GetError(), "SDL not built with YUV support") == 0) {
+        return TEST_SKIPPED;
+    }
+    SDLTest_AssertCheck(result, "Convert odd-sized IYUV to YV12: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_memcmp(yv12, expected_yv12, sizeof(yv12)) == 0, "YV12 swaps the chroma planes and preserves luma");
+
+    result = SDL_ConvertPixels(3, 3, SDL_PIXELFORMAT_YV12, yv12, 3, SDL_PIXELFORMAT_IYUV, roundtrip, 3);
+    SDLTest_AssertCheck(result, "Convert odd-sized YV12 to IYUV: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_memcmp(roundtrip, iyuv, sizeof(iyuv)) == 0, "Odd-sized YUV plane conversion round-trips exactly");
+
+    result = SDL_ConvertPixels(3, 3, SDL_PIXELFORMAT_NV12, nv12, 3, SDL_PIXELFORMAT_NV21, nv21, 3);
+    SDLTest_AssertCheck(result, "Convert odd-sized NV12 to NV21: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_memcmp(nv21, expected_nv21, sizeof(nv21)) == 0, "NV12 to NV21 swaps interleaved chroma");
+
+    result = SDL_ConvertPixels(2, 2, SDL_PIXELFORMAT_IYUV, small_iyuv, 2, SDL_PIXELFORMAT_YUY2, yuy2, 4);
+    SDLTest_AssertCheck(result, "Convert IYUV to YUY2: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_memcmp(yuy2, expected_yuy2, sizeof(yuy2)) == 0, "Planar to packed conversion preserves samples");
+
+    result = SDL_ConvertPixels(2, 2, SDL_PIXELFORMAT_YUY2, yuy2, 4, SDL_PIXELFORMAT_UYVY, uyvy, 4);
+    SDLTest_AssertCheck(result, "Convert YUY2 to UYVY: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_memcmp(uyvy, expected_uyvy, sizeof(uyvy)) == 0, "Packed conversion preserves samples");
+
+    result = SDL_ConvertPixels(2, 2, SDL_PIXELFORMAT_UYVY, uyvy, 4, SDL_PIXELFORMAT_IYUV, planar_roundtrip, 2);
+    SDLTest_AssertCheck(result, "Convert UYVY to IYUV: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_memcmp(planar_roundtrip, small_iyuv, sizeof(small_iyuv)) == 0, "Packed to planar conversion round-trips exactly");
+    return TEST_COMPLETED;
+}
+
 
 /* ================= Test References ================== */
 
@@ -2264,6 +2373,218 @@ static const SDLTest_TestCaseReference surfaceTest16BitTo32Bit = {
     surface_test16BitTo32Bit, "surface_test16BitTo32Bit", "Test conversion from 16-bit to 32-bit pixels.", TEST_ENABLED
 };
 
+static int SDLCALL surface_testConvertIndexedColorKey(void *arg)
+{
+    const SDL_Color colors[] = { { 255, 0, 0, 255 }, { 0, 255, 0, 255 } };
+    SDL_Surface *source = SDL_CreateSurface(2, 1, SDL_PIXELFORMAT_INDEX8);
+    SDL_Surface *converted = NULL;
+    SDL_Palette *palette;
+    Uint8 r, g, b, a;
+
+    if (!SDLTest_AssertCheck(source != NULL, "Create indexed source: %s", SDL_GetError())) {
+        return TEST_ABORTED;
+    }
+    palette = SDL_CreateSurfacePalette(source);
+    if (!SDLTest_AssertCheck(palette != NULL, "Create source palette: %s", SDL_GetError())) {
+        SDL_DestroySurface(source);
+        return TEST_ABORTED;
+    }
+    SDLTest_AssertCheck(SDL_SetPaletteColors(palette, colors, 0, SDL_arraysize(colors)),
+                        "Set source palette colors");
+    ((Uint8 *)source->pixels)[0] = 0;
+    ((Uint8 *)source->pixels)[1] = 1;
+    SDLTest_AssertCheck(SDL_SetSurfaceColorKey(source, true, 0), "Set source color key");
+
+    converted = SDL_ConvertSurface(source, SDL_PIXELFORMAT_RGBA32);
+    if (SDLTest_AssertCheck(converted != NULL, "Convert indexed color key: %s", SDL_GetError())) {
+        SDLTest_AssertCheck(SDL_ReadSurfacePixel(converted, 0, 0, &r, &g, &b, &a), "Read color key pixel");
+        SDLTest_AssertCheck(a == 0, "Color key pixel is transparent");
+        SDLTest_AssertCheck(SDL_ReadSurfacePixel(converted, 1, 0, &r, &g, &b, &a), "Read other pixel");
+        SDLTest_AssertCheck(r == 0 && g == 255 && b == 0 && a == 255, "Other palette pixel is unchanged");
+    }
+    SDLTest_AssertCheck(palette->colors[0].a == 255, "Source palette alpha is restored");
+    SDLTest_AssertCheck(((Uint8 *)source->pixels)[0] == 0 && ((Uint8 *)source->pixels)[1] == 1,
+                        "Source indices are unchanged");
+    SDL_DestroySurface(converted);
+    SDL_DestroySurface(source);
+    return TEST_COMPLETED;
+}
+
+static const SDLTest_TestCaseReference surfaceTestConvertIndexedColorKey = {
+    surface_testConvertIndexedColorKey, "surface_testConvertIndexedColorKey", "Convert indexed color key without changing source", TEST_ENABLED
+};
+
+static int SDLCALL surface_testConvertMetadata(void *arg)
+{
+    SDL_Surface *source = SDL_CreateSurface(2, 2, SDL_PIXELFORMAT_RGBA32);
+    SDL_Surface *alternate = SDL_CreateSurface(4, 4, SDL_PIXELFORMAT_RGBA32);
+    SDL_Surface *converted = NULL;
+    SDL_Surface **images = NULL;
+    SDL_Rect clip = { 0, 0, 1, 1 };
+    SDL_Rect converted_clip;
+    Uint8 r, g, b, a;
+    int count = 0;
+
+    if (!SDLTest_AssertCheck(source && alternate, "Create source and alternate surfaces: %s", SDL_GetError())) {
+        SDL_DestroySurface(source);
+        SDL_DestroySurface(alternate);
+        return TEST_ABORTED;
+    }
+    SDLTest_AssertCheck(SDL_SetSurfaceColorMod(source, 10, 20, 30), "Set source color modulation");
+    SDLTest_AssertCheck(SDL_SetSurfaceAlphaMod(source, 40), "Set source alpha modulation");
+    SDLTest_AssertCheck(SDL_SetSurfaceClipRect(source, &clip), "Set source clip rect");
+    SDLTest_AssertCheck(SDL_SetNumberProperty(SDL_GetSurfaceProperties(source), "surface-test-metadata", 123), "Set source property");
+    SDLTest_AssertCheck(SDL_AddSurfaceAlternateImage(source, alternate), "Add alternate image");
+
+    converted = SDL_ConvertSurface(source, SDL_PIXELFORMAT_BGRA32);
+    if (SDLTest_AssertCheck(converted != NULL, "Convert surface with metadata: %s", SDL_GetError())) {
+        SDL_GetSurfaceColorMod(converted, &r, &g, &b);
+        SDL_GetSurfaceAlphaMod(converted, &a);
+        SDLTest_AssertCheck(r == 10 && g == 20 && b == 30 && a == 40, "Converted color and alpha modulation");
+        SDL_GetSurfaceClipRect(converted, &converted_clip);
+        SDLTest_AssertCheck(SDL_RectsEqual(&clip, &converted_clip), "Converted clip rect");
+        SDLTest_AssertCheck(SDL_GetNumberProperty(SDL_GetSurfaceProperties(converted), "surface-test-metadata", 0) == 123,
+                            "Converted custom property");
+        images = SDL_GetSurfaceImages(converted, &count);
+        SDLTest_AssertCheck(images && count == 2 && images[1] == alternate, "Converted alternate image");
+        SDL_free(images);
+    }
+    SDL_GetSurfaceColorMod(source, &r, &g, &b);
+    SDL_GetSurfaceAlphaMod(source, &a);
+    SDLTest_AssertCheck(r == 10 && g == 20 && b == 30 && a == 40, "Source modulation is unchanged");
+    SDL_DestroySurface(converted);
+    SDL_DestroySurface(source);
+    SDL_DestroySurface(alternate);
+    return TEST_COMPLETED;
+}
+
+static const SDLTest_TestCaseReference surfaceTestConvertMetadata = {
+    surface_testConvertMetadata, "surface_testConvertMetadata", "Convert surface metadata without changing source", TEST_ENABLED
+};
+
+static int SDLCALL surface_testConvertEmptyPalettePreservesSource(void *arg)
+{
+    const SDL_Color white[] = { { 255, 255, 255, 255 }, { 255, 255, 255, 255 } };
+    SDL_Surface *source = SDL_CreateSurface(1, 1, SDL_PIXELFORMAT_RGBA32);
+    SDL_Palette *palette = SDL_CreatePalette(SDL_arraysize(white));
+    SDL_Surface *converted;
+    Uint8 r, g, b, a;
+
+    if (!SDLTest_AssertCheck(source && palette, "Create conversion inputs: %s", SDL_GetError())) {
+        SDL_DestroyPalette(palette);
+        SDL_DestroySurface(source);
+        return TEST_ABORTED;
+    }
+
+    SDLTest_AssertCheck(SDL_SetPaletteColors(palette, white, 0, SDL_arraysize(white)), "Set empty destination palette");
+    SDLTest_AssertCheck(SDL_WriteSurfacePixel(source, 0, 0, 10, 20, 30, 255), "Write source pixel");
+    SDLTest_AssertCheck(SDL_SetSurfaceColorMod(source, 40, 50, 60), "Set source color modulation");
+    SDLTest_AssertCheck(SDL_SetSurfaceAlphaMod(source, 70), "Set source alpha modulation");
+
+    converted = SDL_ConvertSurfaceAndColorspace(source, SDL_PIXELFORMAT_INDEX8, palette, SDL_COLORSPACE_UNKNOWN, 0);
+    SDLTest_AssertCheck(converted == NULL, "Empty destination palette rejects conversion");
+    SDLTest_AssertCheck(SDL_strcmp(SDL_GetError(), "Empty destination palette") == 0, "Conversion error remains observable");
+    SDL_GetSurfaceColorMod(source, &r, &g, &b);
+    SDL_GetSurfaceAlphaMod(source, &a);
+    SDLTest_AssertCheck(r == 40 && g == 50 && b == 60 && a == 70, "Failed conversion preserves source modulation");
+    SDLTest_AssertCheck(SDL_ReadSurfacePixel(source, 0, 0, &r, &g, &b, &a), "Read source pixel after failure");
+    SDLTest_AssertCheck(r == 10 && g == 20 && b == 30 && a == 255, "Failed conversion preserves source pixel");
+
+    SDL_DestroySurface(converted);
+    SDL_DestroyPalette(palette);
+    SDL_DestroySurface(source);
+    return TEST_COMPLETED;
+}
+
+static const SDLTest_TestCaseReference surfaceTestConvertEmptyPalettePreservesSource = {
+    surface_testConvertEmptyPalettePreservesSource, "surface_testConvertEmptyPalettePreservesSource", "Empty palette rejection preserves its error and source", TEST_ENABLED
+};
+
+static int SDLCALL surface_testConvertMJPGCopy(void *arg)
+{
+    Uint8 jpeg_data[] = {
+        0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01,
+        0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0xff, 0xdb, 0x00, 0x43,
+        0x00, 0x0d, 0x09, 0x0a, 0x0b, 0x0a, 0x08, 0x0d, 0x0b, 0x0a, 0x0b, 0x0e,
+        0x0e, 0x0d, 0x0f, 0x13, 0x20, 0x15, 0x13, 0x12, 0x12, 0x13, 0x27, 0x1c,
+        0x1e, 0x17, 0x20, 0x2e, 0x29, 0x31, 0x30, 0x2e, 0x29, 0x2d, 0x2c, 0x33,
+        0x3a, 0x4a, 0x3e, 0x33, 0x36, 0x46, 0x37, 0x2c, 0x2d, 0x40, 0x57, 0x41,
+        0x46, 0x4c, 0x4e, 0x52, 0x53, 0x52, 0x32, 0x3e, 0x5a, 0x61, 0x5a, 0x50,
+        0x60, 0x4a, 0x51, 0x52, 0x4f, 0xff, 0xdb, 0x00, 0x43, 0x01, 0x0e, 0x0e,
+        0x0e, 0x13, 0x11, 0x13, 0x26, 0x15, 0x15, 0x26, 0x4f, 0x35, 0x2d, 0x35,
+        0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f,
+        0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f,
+        0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f,
+        0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f,
+        0x4f, 0x4f, 0xff, 0xc0, 0x00, 0x11, 0x08, 0x00, 0x01, 0x00, 0x02, 0x03,
+        0x01, 0x22, 0x00, 0x02, 0x11, 0x01, 0x03, 0x11, 0x01, 0xff, 0xc4, 0x00,
+        0x15, 0x00, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x06, 0xff, 0xc4, 0x00, 0x14,
+        0x10, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xc4, 0x00, 0x14, 0x01, 0x01,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x04, 0xff, 0xc4, 0x00, 0x14, 0x11, 0x01, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0xff, 0xda, 0x00, 0x0c, 0x03, 0x01, 0x00, 0x02, 0x11, 0x03,
+        0x11, 0x00, 0x3f, 0x00, 0x9d, 0x00, 0xf0, 0x9f, 0xff, 0xd9
+    };
+    SDL_Surface *source = SDL_CreateSurfaceFrom(2, 1, SDL_PIXELFORMAT_MJPG, (void *)jpeg_data, sizeof(jpeg_data));
+    SDL_Surface *converted;
+
+    if (!SDLTest_AssertCheck(source != NULL, "Create MJPG source: %s", SDL_GetError())) {
+        return TEST_ABORTED;
+    }
+
+    converted = SDL_ConvertSurfaceAndColorspace(source, SDL_PIXELFORMAT_MJPG, NULL, SDL_COLORSPACE_UNKNOWN, 0);
+    SDLTest_AssertCheck(converted != NULL, "Copy MJPG surface: %s", SDL_GetError());
+    if (converted) {
+        SDLTest_AssertCheck(converted->pitch == source->pitch, "Copied MJPG pitch");
+        SDLTest_AssertCheck(SDL_memcmp(converted->pixels, jpeg_data, sizeof(jpeg_data)) == 0, "Copied MJPG data");
+        SDLTest_AssertCheck(SDL_memcmp(source->pixels, jpeg_data, sizeof(jpeg_data)) == 0, "Source JPEG data is unchanged");
+    }
+
+    SDL_DestroySurface(converted);
+    SDL_DestroySurface(source);
+    return TEST_COMPLETED;
+}
+
+static const SDLTest_TestCaseReference surfaceTestConvertMJPGCopy = {
+    surface_testConvertMJPGCopy, "surface_testConvertMJPGCopy", "Copy MJPG surface without decoding", TEST_ENABLED
+};
+
+static int SDLCALL surface_testPixelBoundsPreserveSource(void *arg)
+{
+    SDL_Surface *surface = SDL_CreateSurface(1, 1, SDL_PIXELFORMAT_RGBA32);
+    Uint8 r = 255, g = 255, b = 255, a = 255;
+
+    if (!SDLTest_AssertCheck(surface != NULL, "Create pixel bounds surface: %s", SDL_GetError())) {
+        return TEST_ABORTED;
+    }
+    SDLTest_AssertCheck(SDL_WriteSurfacePixel(surface, 0, 0, 10, 20, 30, 40), "Write initial pixel");
+
+    SDL_ClearError();
+    SDLTest_AssertCheck(!SDL_ReadSurfacePixel(surface, 1, 0, &r, &g, &b, &a), "Out-of-bounds read fails");
+    SDLTest_AssertCheck(SDL_GetError()[0] != '\0', "Out-of-bounds read preserves an error");
+    SDLTest_AssertCheck(r == 0 && g == 0 && b == 0 && a == 0, "Out-of-bounds read clears outputs");
+
+    SDL_ClearError();
+    SDLTest_AssertCheck(!SDL_WriteSurfacePixel(surface, -1, 0, 1, 2, 3, 4), "Out-of-bounds write fails");
+    SDLTest_AssertCheck(SDL_GetError()[0] != '\0', "Out-of-bounds write preserves an error");
+    SDLTest_AssertCheck(SDL_ReadSurfacePixel(surface, 0, 0, &r, &g, &b, &a), "Read initial pixel");
+    SDLTest_AssertCheck(r == 10 && g == 20 && b == 30 && a == 40, "Out-of-bounds write preserves pixel");
+
+    SDL_DestroySurface(surface);
+    return TEST_COMPLETED;
+}
+
+static const SDLTest_TestCaseReference surfaceTestPixelBoundsPreserveSource = {
+    surface_testPixelBoundsPreserveSource, "surface_testPixelBoundsPreserveSource", "Pixel bounds errors preserve source data", TEST_ENABLED
+};
+
+static const SDLTest_TestCaseReference surfaceTestYUVPlaneOrder = {
+    surface_testYUVPlaneOrder, "surface_testYUVPlaneOrder", "Test planar, semiplanar, and packed YUV conversions.", TEST_ENABLED
+};
+
 /* Sequence of Surface test cases */
 static const SDLTest_TestCaseReference *surfaceTests[] = {
     &surfaceTestInvalidFormat,
@@ -2298,6 +2619,12 @@ static const SDLTest_TestCaseReference *surfaceTests[] = {
     &surfaceTestPremultiplyAlpha,
     &surfaceTestScale,
     &surfaceTest16BitTo32Bit,
+    &surfaceTestConvertIndexedColorKey,
+    &surfaceTestConvertMetadata,
+    &surfaceTestConvertEmptyPalettePreservesSource,
+    &surfaceTestConvertMJPGCopy,
+    &surfaceTestPixelBoundsPreserveSource,
+    &surfaceTestYUVPlaneOrder,
     NULL
 };
 

@@ -24,19 +24,46 @@
 
 #include "SDL_internal.h"
 
+#define SDL_GAMEPAD_CRC_FIELD "crc:"
+#define SDL_GAMEPAD_CRC_FIELD_SIZE 4 // hard-coded for speed
+#define SDL_GAMEPAD_PLATFORM_FIELD "platform:"
+#define SDL_GAMEPAD_PLATFORM_FIELD_SIZE SDL_strlen(SDL_GAMEPAD_PLATFORM_FIELD)
+
+typedef enum
+{
+    SDL_GAMEPAD_FACE_STYLE_UNKNOWN,
+    SDL_GAMEPAD_FACE_STYLE_ABXY,
+    SDL_GAMEPAD_FACE_STYLE_AXBY,
+    SDL_GAMEPAD_FACE_STYLE_BAYX,
+    SDL_GAMEPAD_FACE_STYLE_SONY,
+} SDL_GamepadFaceStyle;
+
+extern SDL_GamepadFaceStyle SDL_GetGamepadFaceStyleFromString(const char *string);
+extern SDL_GamepadFaceStyle SDL_GetGamepadFaceStyleForGamepadType(SDL_GamepadType type);
+extern SDL_GamepadButtonLabel SDL_GetGamepadButtonLabelForFaceStyle(SDL_GamepadFaceStyle face_style, SDL_GamepadButton button);
+extern char *SDL_PrivateGetGamepadGUIDFromMappingString(const char *mapping);
+extern char *SDL_PrivateGetGamepadNameFromMappingString(const char *mapping);
+extern char *SDL_PrivateGetGamepadMappingFromMappingString(const char *mapping);
+extern bool SDL_NormalizeGamepadMappingCRC(SDL_GUID *guid, char **mapping, Uint16 *crc);
+extern char *SDL_CreateGamepadMappingString(const char *name, const char *mapping, SDL_GUID guid);
+
 // Useful functions and variables from SDL_gamepad.c
+
+extern SDL_GamepadButton SDL_PrivateGetGamepadButtonFromString(const char *str, bool axby, bool baxy);
+extern bool SDL_ParseGamepadMappingOutput(const char *mapping, const char *game_button, SDL_GamepadBinding *bind);
+extern bool SDL_ParseGamepadMappingInput(const char *joystick_button, SDL_GamepadBinding *bind);
+extern void SDL_CreateMappingStringForSInputGamepad(Uint16 version, Uint8 face_style, char *mapping_string, size_t mapping_string_len);
 
 // Initialization and shutdown functions
 extern bool SDL_InitGamepadMappings(void);
 extern void SDL_QuitGamepadMappings(void);
+extern void SDL_InitGamepadVIDPIDLists(void);
+extern void SDL_QuitGamepadVIDPIDLists(void);
 extern bool SDL_InitGamepads(void);
 extern void SDL_QuitGamepads(void);
 
 extern void SDL_PrivateGamepadAdded(SDL_JoystickID instance_id);
 extern void SDL_PrivateGamepadRemoved(SDL_JoystickID instance_id);
-
-// Function to return whether a joystick name and GUID is a gamepad
-extern bool SDL_IsGamepadNameAndGUID(const char *name, SDL_GUID guid);
 
 // Function to return whether a gamepad should be ignored
 extern bool SDL_ShouldIgnoreGamepad(Uint16 vendor_id, Uint16 product_id, Uint16 version, const char *name);

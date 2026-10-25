@@ -135,7 +135,6 @@ static void EMSCRIPTENAUDIO_CloseDevice(SDL_AudioDevice *device)
     SDL_free(device->hidden);
     device->hidden = NULL;
 
-    SDL_AudioThreadFinalize(device);
 }
 
 EM_JS_DEPS(sdlaudio, "$autoResumeAudioContext,$dynCall");

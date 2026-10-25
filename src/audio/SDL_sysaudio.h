@@ -112,7 +112,6 @@ extern void SDL_PlaybackAudioThreadShutdown(SDL_AudioDevice *device);
 extern void SDL_RecordingAudioThreadSetup(SDL_AudioDevice *device);
 extern bool SDL_RecordingAudioThreadIterate(SDL_AudioDevice *device);
 extern void SDL_RecordingAudioThreadShutdown(SDL_AudioDevice *device);
-extern void SDL_AudioThreadFinalize(SDL_AudioDevice *device);
 
 extern void ConvertAudioToFloat(float *dst, const void *src, int num_samples, SDL_AudioFormat src_fmt);
 extern void ConvertAudioFromFloat(void *dst, const float *src, int num_samples, SDL_AudioFormat dst_fmt);

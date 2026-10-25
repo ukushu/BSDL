@@ -1,5 +1,7 @@
 build/
 build-*/
+.build/
+.swiftpm/
 !build-scripts/
 buildbot/
 /VERSION.txt
@@ -29,6 +31,7 @@ __pycache__
 *.rej
 
 # for CMake
+.deus-build/
 .cmake
 CMakeFiles/
 CMakeCache.txt

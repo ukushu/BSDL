@@ -149,3 +149,7 @@ typedef struct WaveFile
     WaveTruncationHint trunchint;
     WaveFactChunkHint facthint;
 } WaveFile;
+
+extern bool SDL_WaveCheckFormat(WaveFile *file, size_t datalength);
+extern bool SDL_WaveDecodeSamples(WaveFile *file, Uint8 **audio_buf, Uint32 *audio_len);
+extern bool SDL_WaveSetAudioSpec(WaveFile *file, SDL_AudioSpec *spec);

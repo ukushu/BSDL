@@ -48,22 +48,6 @@ static void SDLCALL audioTearDown(void *arg)
     SDLTest_AssertPass("Cleanup of test files completed");
 }
 
-#if 0  /* !!! FIXME: maybe update this? */
-/* Global counter for callback invocation */
-static int g_audio_testCallbackCounter;
-
-/* Global accumulator for total callback length */
-static int g_audio_testCallbackLength;
-
-/* Test callback function */
-static void SDLCALL audio_testCallback(void *userdata, Uint8 *stream, int len)
-{
-    /* track that callback was called */
-    g_audio_testCallbackCounter++;
-    g_audio_testCallbackLength += len;
-}
-#endif
-
 static SDL_AudioDeviceID g_audio_id = 0;
 
 /* Test case functions */
@@ -240,15 +224,15 @@ static int SDLCALL audio_initOpenCloseQuitAudio(void *arg)
 }
 
 /**
- * Pause and unpause audio
+ * Open and close playback with different drivers and audio specs
  *
- * \sa SDL_PauseAudioDevice
- * \sa SDL_PlayAudioDevice
+ * \sa SDL_OpenAudioDevice
+ * \sa SDL_CloseAudioDevice
  */
-static int SDLCALL audio_pauseUnpauseAudio(void *arg)
+static int SDLCALL audio_openCloseAcrossDriversAndSpecs(void *arg)
 {
     int iMax;
-    int i, j /*, k, l*/;
+    int i, j;
     int result;
     const char *audioDriver;
     SDL_AudioSpec desired;
@@ -305,49 +289,6 @@ static int SDLCALL audio_pauseUnpauseAudio(void *arg)
             SDLTest_AssertPass("Call to SDL_OpenAudioDevice(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, desired_spec_%d)", j);
             SDLTest_AssertCheck(result > 0, "Verify return value; expected > 0 got: %d", result);
 
-#if 0  /* !!! FIXME: maybe update this? */
-            /* Start and stop audio multiple times */
-            for (l = 0; l < 3; l++) {
-                SDLTest_Log("Pause/Unpause iteration: %d", l + 1);
-
-                /* Reset callback counters */
-                g_audio_testCallbackCounter = 0;
-                g_audio_testCallbackLength = 0;
-
-                /* Un-pause audio to start playing (maybe multiple times) */
-                for (k = 0; k <= j; k++) {
-                    SDL_PlayAudioDevice(g_audio_id);
-                    SDLTest_AssertPass("Call to SDL_PlayAudioDevice(g_audio_id), call %d", k + 1);
-                }
-
-                /* Wait for callback */
-                int totalDelay = 0;
-                do {
-                    SDL_Delay(10);
-                    totalDelay += 10;
-                } while (g_audio_testCallbackCounter == 0 && totalDelay < 1000);
-                SDLTest_AssertCheck(g_audio_testCallbackCounter > 0, "Verify callback counter; expected: >0 got: %d", g_audio_testCallbackCounter);
-                SDLTest_AssertCheck(g_audio_testCallbackLength > 0, "Verify callback length; expected: >0 got: %d", g_audio_testCallbackLength);
-
-                /* Pause audio to stop playing (maybe multiple times) */
-                for (k = 0; k <= j; k++) {
-                    const int pause_on = (k == 0) ? 1 : SDLTest_RandomIntegerInRange(99, 9999);
-                    if (pause_on) {
-                        SDL_PauseAudioDevice(g_audio_id);
-                        SDLTest_AssertPass("Call to SDL_PauseAudioDevice(g_audio_id), call %d", k + 1);
-                    } else {
-                        SDL_PlayAudioDevice(g_audio_id);
-                        SDLTest_AssertPass("Call to SDL_PlayAudioDevice(g_audio_id), call %d", k + 1);
-                    }
-                }
-
-                /* Ensure callback is not called again */
-                const int originalCounter = g_audio_testCallbackCounter;
-                SDL_Delay(totalDelay + 10);
-                SDLTest_AssertCheck(originalCounter == g_audio_testCallbackCounter, "Verify callback counter; expected: %d, got: %d", originalCounter, g_audio_testCallbackCounter);
-            }
-#endif
-
             /* Call Close */
             SDL_CloseAudioDevice(g_audio_id);
             SDLTest_AssertPass("Call to SDL_CloseAudioDevice()");
@@ -402,17 +343,6 @@ static int SDLCALL audio_enumerateAndNameAudioDevices(void *arg)
     }
 
     return TEST_COMPLETED;
-}
-
-/**
- * Negative tests around enumeration and naming of audio devices.
- *
- * \sa SDL_GetNumAudioDevices
- * \sa SDL_GetAudioDeviceName
- */
-static int SDLCALL audio_enumerateAndNameAudioDevicesNegativeTests(void *arg)
-{
-    return TEST_COMPLETED;  /* nothing in here atm since these interfaces changed in SDL3. */
 }
 
 /**
@@ -549,6 +479,19 @@ static int SDLCALL audio_getAudioFormatName(void *arg)
         SDLTest_AssertCheck(error == NULL || error[0] == '\0', "Validate that error message is empty");
     }
 
+    return TEST_COMPLETED;
+}
+
+static int SDLCALL audio_getSilenceValueForFormat(void *arg)
+{
+    for (int i = 0; i < g_numAudioFormats; ++i) {
+        const SDL_AudioFormat format = g_audioFormats[i];
+        const int expected = (format == SDL_AUDIO_U8) ? 0x80 : 0;
+        SDLTest_AssertCheck(SDL_GetSilenceValueForFormat(format) == expected,
+                            "Silence value for %s is 0x%02x", SDL_GetAudioFormatName(format), expected);
+    }
+    SDLTest_AssertCheck(SDL_GetSilenceValueForFormat(SDL_AUDIO_UNKNOWN) == 0,
+                        "Unknown audio format has zero silence value");
     return TEST_COMPLETED;
 }
 
@@ -708,37 +651,6 @@ static int SDLCALL audio_buildAudioStreamNegative(void *arg)
 }
 
 /**
- * Checks current audio status.
- *
- * \sa SDL_GetAudioDeviceStatus
- */
-static int SDLCALL audio_getAudioStatus(void *arg)
-{
-    return TEST_COMPLETED;  /* no longer a thing in SDL3. */
-}
-
-/**
- * Opens, checks current audio status, and closes a device.
- *
- * \sa SDL_GetAudioStatus
- */
-static int SDLCALL audio_openCloseAndGetAudioStatus(void *arg)
-{
-    return TEST_COMPLETED;  /* not a thing in SDL3. */
-}
-
-/**
- * Locks and unlocks open audio device.
- *
- * \sa SDL_LockAudioDevice
- * \sa SDL_UnlockAudioDevice
- */
-static int SDLCALL audio_lockUnlockOpenAudioDevice(void *arg)
-{
-    return TEST_COMPLETED;  /* not a thing in SDL3 */
-}
-
-/**
  * Convert audio using various conversion structures
  *
  * \sa SDL_CreateAudioStream
@@ -885,16 +797,6 @@ static int SDLCALL audio_convertAudio(void *arg)
     }
 
     return TEST_COMPLETED;
-}
-
-/**
- * Opens, checks current connected status, and closes a device.
- *
- * \sa SDL_AudioDeviceConnected
- */
-static int SDLCALL audio_openCloseAudioDeviceConnected(void *arg)
-{
-    return TEST_COMPLETED;  /* not a thing in SDL3. */
 }
 
 static double sine_wave_sample(const Sint64 idx, const Sint64 rate, const Sint64 freq, const double phase)
@@ -1470,19 +1372,560 @@ cleanup:
 
     return status;
 }
+
+static int SDLCALL audio_bindStreamsAtomically(void *arg)
+{
+    SDL_AudioDeviceID device = SDL_OpenAudioDevice(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, NULL);
+    SDL_AudioStream *streams[2] = { NULL, NULL };
+
+    if (!SDLTest_AssertCheck(device != 0, "Open playback device: %s", SDL_GetError())) {
+        return TEST_COMPLETED;
+    }
+
+    streams[0] = SDL_CreateAudioStream(NULL, NULL);
+    streams[1] = SDL_CreateAudioStream(NULL, NULL);
+    if (!SDLTest_AssertCheck(streams[0] && streams[1], "Create streams: %s", SDL_GetError())) {
+        goto cleanup;
+    }
+
+    SDL_AudioStream *duplicate_streams[2] = { streams[0], streams[0] };
+    SDLTest_AssertCheck(!SDL_BindAudioStreams(device, duplicate_streams, 2), "Binding a repeated stream fails");
+    SDLTest_AssertCheck(SDL_GetAudioStreamDevice(streams[0]) == 0, "Repeated stream remains unbound");
+    if (!SDLTest_AssertCheck(SDL_BindAudioStream(device, streams[0]), "Bind one stream after rejected duplicate: %s", SDL_GetError())) {
+        goto cleanup;
+    }
+    SDL_UnbindAudioStream(streams[0]);
+
+    if (!SDLTest_AssertCheck(SDL_BindAudioStreams(device, streams, 2), "Bind two streams: %s", SDL_GetError())) {
+        goto cleanup;
+    }
+    SDLTest_AssertCheck(SDL_GetAudioStreamDevice(streams[0]) == device, "First stream is bound");
+    SDLTest_AssertCheck(SDL_GetAudioStreamDevice(streams[1]) == device, "Second stream is bound");
+
+    SDL_UnbindAudioStreams(streams, 2);
+    if (!SDLTest_AssertCheck(SDL_BindAudioStream(device, streams[0]), "Rebind first stream: %s", SDL_GetError())) {
+        goto cleanup;
+    }
+    SDLTest_AssertCheck(!SDL_BindAudioStreams(device, streams, 2), "Binding an already-bound stream fails");
+    SDLTest_AssertCheck(SDL_GetAudioStreamDevice(streams[0]) == device, "Failed batch leaves first stream bound");
+    SDLTest_AssertCheck(SDL_GetAudioStreamDevice(streams[1]) == 0, "Failed batch leaves second stream unbound");
+
+    SDL_UnbindAudioStreams(streams, 2);
+    SDLTest_AssertCheck(SDL_GetAudioStreamDevice(streams[0]) == 0, "Mixed batch unbind releases first stream");
+    SDLTest_AssertCheck(SDL_GetAudioStreamDevice(streams[1]) == 0, "Mixed batch unbind leaves second stream unbound");
+    SDL_UnbindAudioStreams(streams, 2);
+    SDLTest_AssertCheck(SDL_GetAudioStreamDevice(streams[0]) == 0, "Repeated batch unbind remains safe");
+
+cleanup:
+    SDL_UnbindAudioStreams(streams, 2);
+    SDL_DestroyAudioStream(streams[0]);
+    SDL_DestroyAudioStream(streams[1]);
+    SDL_CloseAudioDevice(device);
+    return TEST_COMPLETED;
+}
+
+typedef struct AudioPostmixCallbackState
+{
+    SDL_AtomicInt calls;
+    SDL_AtomicInt valid_format;
+} AudioPostmixCallbackState;
+
+static void SDLCALL audio_postmixCallback(void *userdata, const SDL_AudioSpec *spec, float *buffer, int buflen)
+{
+    AudioPostmixCallbackState *state = (AudioPostmixCallbackState *)userdata;
+    (void)buffer;
+    if (spec && spec->format == SDL_AUDIO_F32 && buflen > 0) {
+        SDL_SetAtomicInt(&state->valid_format, 1);
+    }
+    SDL_AddAtomicInt(&state->calls, 1);
+}
+
+static void SDLCALL audio_recordingPatternPostmixCallback(void *userdata, const SDL_AudioSpec *spec, float *buffer, int buflen)
+{
+    audio_postmixCallback(userdata, spec, buffer, buflen);
+    if (spec && spec->format == SDL_AUDIO_F32 && spec->channels == 2) {
+        for (int i = 0; i < buflen / (int)sizeof(float); i += 2) {
+            buffer[i] = 0.25f;
+            buffer[i + 1] = -0.5f;
+        }
+    }
+}
+
+static int SDLCALL audio_playbackPostmixCallback(void *arg)
+{
+    AudioPostmixCallbackState state;
+    SDL_AudioDeviceID device;
+    SDL_AudioStream *stream = NULL;
+
+    SDL_zero(state);
+    if (!SDL_GetCurrentAudioDriver() || SDL_strcmp(SDL_GetCurrentAudioDriver(), "dummy") != 0) {
+        return TEST_SKIPPED;
+    }
+
+    device = SDL_OpenAudioDevice(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, NULL);
+    if (!SDLTest_AssertCheck(device != 0, "Open dummy playback device: %s", SDL_GetError())) {
+        return TEST_ABORTED;
+    }
+    stream = SDL_CreateAudioStream(NULL, NULL);
+    if (!SDLTest_AssertCheck(stream != NULL, "Create playback stream: %s", SDL_GetError())) {
+        SDL_CloseAudioDevice(device);
+        return TEST_ABORTED;
+    }
+    if (!SDLTest_AssertCheck(SDL_BindAudioStream(device, stream), "Bind playback stream: %s", SDL_GetError()) ||
+        !SDLTest_AssertCheck(SDL_SetAudioPostmixCallback(device, audio_postmixCallback, &state), "Set postmix callback: %s", SDL_GetError())) {
+        SDL_UnbindAudioStream(stream);
+        SDL_DestroyAudioStream(stream);
+        SDL_CloseAudioDevice(device);
+        return TEST_ABORTED;
+    }
+
+    for (int i = 0; i < 100 && SDL_GetAtomicInt(&state.calls) == 0; ++i) {
+        SDL_Delay(10);
+    }
+    SDLTest_AssertCheck(SDL_GetAtomicInt(&state.calls) > 0, "Playback mixing invokes postmix callback");
+    SDLTest_AssertCheck(SDL_GetAtomicInt(&state.valid_format) == 1, "Postmix receives float samples and a non-empty buffer");
+
+    SDL_SetAudioPostmixCallback(device, NULL, NULL);
+    SDL_UnbindAudioStream(stream);
+    SDL_DestroyAudioStream(stream);
+    SDL_CloseAudioDevice(device);
+    return TEST_COMPLETED;
+}
+
+static int SDLCALL audio_recordingPostmixCallback(void *arg)
+{
+    AudioPostmixCallbackState state;
+    SDL_AudioDeviceID device;
+    SDL_AudioStream *stream = NULL;
+
+    SDL_zero(state);
+    if (!SDL_GetCurrentAudioDriver() || SDL_strcmp(SDL_GetCurrentAudioDriver(), "dummy") != 0) {
+        return TEST_SKIPPED;
+    }
+
+    device = SDL_OpenAudioDevice(SDL_AUDIO_DEVICE_DEFAULT_RECORDING, NULL);
+    if (!SDLTest_AssertCheck(device != 0, "Open dummy recording device: %s", SDL_GetError())) {
+        return TEST_ABORTED;
+    }
+    stream = SDL_CreateAudioStream(NULL, NULL);
+    if (!SDLTest_AssertCheck(stream != NULL, "Create recording stream: %s", SDL_GetError())) {
+        SDL_CloseAudioDevice(device);
+        return TEST_ABORTED;
+    }
+    if (!SDLTest_AssertCheck(SDL_BindAudioStream(device, stream), "Bind recording stream: %s", SDL_GetError()) ||
+        !SDLTest_AssertCheck(SDL_SetAudioPostmixCallback(device, audio_postmixCallback, &state), "Set recording postmix callback: %s", SDL_GetError())) {
+        SDL_UnbindAudioStream(stream);
+        SDL_DestroyAudioStream(stream);
+        SDL_CloseAudioDevice(device);
+        return TEST_ABORTED;
+    }
+
+    for (int i = 0; i < 100 && SDL_GetAtomicInt(&state.calls) == 0; ++i) {
+        SDL_Delay(10);
+    }
+    SDLTest_AssertCheck(SDL_GetAtomicInt(&state.calls) > 0, "Recording iteration invokes postmix callback");
+    SDLTest_AssertCheck(SDL_GetAtomicInt(&state.valid_format) == 1, "Recording postmix receives float samples and a non-empty buffer");
+
+    SDL_SetAudioPostmixCallback(device, NULL, NULL);
+    SDL_UnbindAudioStream(stream);
+    SDL_DestroyAudioStream(stream);
+    SDL_CloseAudioDevice(device);
+    return TEST_COMPLETED;
+}
+
+static int SDLCALL audio_recordingF32ChannelMap(void *arg)
+{
+    const SDL_AudioSpec desired = { SDL_AUDIO_F32, 2, 48000 };
+    const int reversed_stereo_map[] = { 1, 0 };
+    SDL_AudioDeviceID device = 0;
+    SDL_AudioStream *stream = NULL;
+    SDL_AudioSpec actual;
+
+    (void)arg;
+    if (!SDL_GetCurrentAudioDriver() || SDL_strcmp(SDL_GetCurrentAudioDriver(), "dummy") != 0) {
+        return TEST_SKIPPED;
+    }
+
+    device = SDL_OpenAudioDevice(SDL_AUDIO_DEVICE_DEFAULT_RECORDING, &desired);
+    if (!SDLTest_AssertCheck(device != 0, "Open F32 dummy recording device: %s", SDL_GetError())) {
+        return TEST_ABORTED;
+    }
+    if (!SDLTest_AssertCheck(SDL_GetAudioDeviceFormat(device, &actual, NULL), "Get recording device format: %s", SDL_GetError()) ||
+        !SDLTest_AssertCheck(actual.format == SDL_AUDIO_F32, "Recording device uses F32 format")) {
+        goto cleanup;
+    }
+
+    SDL_PauseAudioDevice(device);
+    stream = SDL_CreateAudioStream(NULL, NULL);
+    if (!SDLTest_AssertCheck(stream != NULL, "Create recording stream: %s", SDL_GetError()) ||
+        !SDLTest_AssertCheck(SDL_BindAudioStream(device, stream), "Bind recording stream: %s", SDL_GetError()) ||
+        !SDLTest_AssertCheck(SDL_SetAudioStreamInputChannelMap(stream, reversed_stereo_map, SDL_arraysize(reversed_stereo_map)),
+                             "Set reversed recording channel map: %s", SDL_GetError())) {
+        goto cleanup;
+    }
+    SDL_ResumeAudioDevice(device);
+
+    for (int i = 0; i < 100 && SDL_GetAudioStreamAvailable(stream) == 0; ++i) {
+        SDL_Delay(10);
+    }
+    SDLTest_AssertCheck(SDL_GetAudioStreamAvailable(stream) > 0, "Mapped F32 recording delivers captured samples");
+
+cleanup:
+    if (stream) {
+        SDL_UnbindAudioStream(stream);
+        SDL_DestroyAudioStream(stream);
+    }
+    SDL_CloseAudioDevice(device);
+    return TEST_COMPLETED;
+}
+
+static int SDLCALL audio_recordingLogicalDeviceByteCount(void *arg)
+{
+    const SDL_AudioSpec desired = { SDL_AUDIO_S16, 2, 48000 };
+    const int reversed_stereo_map[] = { 1, 0 };
+    SDL_AudioDeviceID with_postmix = 0;
+    SDL_AudioDeviceID without_postmix = 0;
+    SDL_AudioStream *with_postmix_stream = NULL;
+    SDL_AudioStream *without_postmix_stream = NULL;
+    AudioPostmixCallbackState state;
+    int with_postmix_bytes = 0;
+    int without_postmix_bytes = 0;
+    int calls_before_pause;
+    int allowed_byte_difference;
+    Sint16 first_frame[2];
+    SDL_AudioSpec actual;
+    int sample_frames = 0;
+    int capture_bytes;
+
+    (void)arg;
+    SDL_zero(state);
+    if (!SDL_GetCurrentAudioDriver() || SDL_strcmp(SDL_GetCurrentAudioDriver(), "dummy") != 0) {
+        return TEST_SKIPPED;
+    }
+
+    // Logical devices are prepended to the physical device list, so open the plain device first.
+    without_postmix = SDL_OpenAudioDevice(SDL_AUDIO_DEVICE_DEFAULT_RECORDING, &desired);
+    with_postmix = SDL_OpenAudioDevice(SDL_AUDIO_DEVICE_DEFAULT_RECORDING, &desired);
+    if (!SDLTest_AssertCheck(with_postmix != 0 && without_postmix != 0, "Open two dummy recording logical devices: %s", SDL_GetError())) {
+        goto cleanup;
+    }
+    if (!SDLTest_AssertCheck(SDL_GetAudioDeviceFormat(with_postmix, &actual, &sample_frames), "Get recording device format: %s", SDL_GetError())) {
+        goto cleanup;
+    }
+    capture_bytes = sample_frames * SDL_AUDIO_FRAMESIZE(actual);
+    SDL_PauseAudioDevice(with_postmix);
+    SDL_PauseAudioDevice(without_postmix);
+    with_postmix_stream = SDL_CreateAudioStream(NULL, &desired);
+    without_postmix_stream = SDL_CreateAudioStream(NULL, &desired);
+    if (!SDLTest_AssertCheck(with_postmix_stream && without_postmix_stream, "Create recording streams: %s", SDL_GetError())) {
+        goto cleanup;
+    }
+    if (!SDLTest_AssertCheck(SDL_BindAudioStream(with_postmix, with_postmix_stream), "Bind postmix recording stream: %s", SDL_GetError()) ||
+        !SDLTest_AssertCheck(SDL_BindAudioStream(without_postmix, without_postmix_stream), "Bind plain recording stream: %s", SDL_GetError()) ||
+        !SDLTest_AssertCheck(SDL_SetAudioDeviceGain(without_postmix, 0.5f), "Set gain on recording device without postmix: %s", SDL_GetError()) ||
+        !SDLTest_AssertCheck(SDL_SetAudioPostmixCallback(with_postmix, audio_recordingPatternPostmixCallback, &state), "Set recording postmix callback: %s", SDL_GetError()) ||
+        !SDLTest_AssertCheck(SDL_SetAudioStreamInputChannelMap(with_postmix_stream, reversed_stereo_map, SDL_arraysize(reversed_stereo_map)), "Set postmix stream channel map: %s", SDL_GetError())) {
+        goto cleanup;
+    }
+    SDL_ResumeAudioDevice(with_postmix);
+    SDL_ResumeAudioDevice(without_postmix);
+
+    for (int i = 0; i < 100 && SDL_GetAtomicInt(&state.calls) < 5; ++i) {
+        SDL_Delay(10);
+    }
+    calls_before_pause = SDL_GetAtomicInt(&state.calls);
+    SDL_PauseAudioDevice(without_postmix);
+    SDL_PauseAudioDevice(with_postmix);
+    // Captures between the two pauses reach only the postmix stream.
+    allowed_byte_difference = (SDL_GetAtomicInt(&state.calls) - calls_before_pause + 1) * capture_bytes;
+    with_postmix_bytes = SDL_GetAudioStreamAvailable(with_postmix_stream);
+    without_postmix_bytes = SDL_GetAudioStreamAvailable(without_postmix_stream);
+    SDLTest_AssertCheck(with_postmix_bytes > 0 && without_postmix_bytes > 0, "Both recording streams receive data");
+    SDLTest_AssertCheck(SDL_GetAtomicInt(&state.calls) >= 5 && SDL_GetAtomicInt(&state.valid_format) == 1,
+                        "Postmix ran with F32 data before the plain logical device");
+    SDLTest_AssertCheck(SDL_abs(with_postmix_bytes - without_postmix_bytes) <= allowed_byte_difference,
+                        "Logical recording byte counts match within the pause gap: %d vs %d (allowed %d)",
+                        with_postmix_bytes, without_postmix_bytes, allowed_byte_difference);
+    if (with_postmix_bytes >= (int)sizeof(first_frame)) {
+        if (SDLTest_AssertCheck(SDL_GetAudioStreamData(with_postmix_stream, first_frame, sizeof(first_frame)) == (int)sizeof(first_frame),
+                                "Read mapped recording frame")) {
+            SDLTest_AssertCheck(first_frame[0] == 8192 && first_frame[1] == -16384,
+                                "Mapped F32 capture preserves channel samples: %d, %d", first_frame[0], first_frame[1]);
+        }
+    }
+
+cleanup:
+    if (with_postmix) {
+        SDL_SetAudioPostmixCallback(with_postmix, NULL, NULL);
+        SDL_PauseAudioDevice(with_postmix);
+    }
+    if (without_postmix) {
+        SDL_PauseAudioDevice(without_postmix);
+    }
+    if (with_postmix_stream) {
+        SDL_UnbindAudioStream(with_postmix_stream);
+        SDL_DestroyAudioStream(with_postmix_stream);
+    }
+    if (without_postmix_stream) {
+        SDL_UnbindAudioStream(without_postmix_stream);
+        SDL_DestroyAudioStream(without_postmix_stream);
+    }
+    if (with_postmix) {
+        SDL_CloseAudioDevice(with_postmix);
+    }
+    if (without_postmix) {
+        SDL_CloseAudioDevice(without_postmix);
+    }
+    return TEST_COMPLETED;
+}
+
+static int SDLCALL audio_reopenPhysicalDeviceWithHigherSpec(void *arg)
+{
+    const SDL_AudioSpec low = { SDL_AUDIO_S16, 1, 22050 };
+    SDL_AudioSpec high;
+    SDL_AudioSpec actual;
+    SDL_Event events[64];
+    SDL_AudioDeviceID *physical_devices;
+    SDL_AudioDeviceID first;
+    SDL_AudioDeviceID second;
+    int physical_count = 0;
+    int event_count;
+    bool found_first = false;
+    const char *driver = SDL_GetCurrentAudioDriver();
+
+    if (!driver || SDL_strcmp(driver, "dummy") != 0) {
+        SDLTest_AssertPass("Reopen test requires the dummy audio driver");
+        return TEST_COMPLETED;
+    }
+
+    first = SDL_OpenAudioDevice(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &low);
+    if (!SDLTest_AssertCheck(first != 0, "Open low-spec logical device: %s", SDL_GetError())) {
+        return TEST_ABORTED;
+    }
+    if (!SDLTest_AssertCheck(SDL_GetAudioDeviceFormat(first, &actual, NULL), "Get initial physical device format")) {
+        SDL_CloseAudioDevice(first);
+        return TEST_ABORTED;
+    }
+    SDL_PumpEvents();
+    SDL_FlushEvent(SDL_EVENT_AUDIO_DEVICE_FORMAT_CHANGED);
+    high = actual;
+    high.freq += 1000;
+
+    second = SDL_OpenAudioDevice(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &high);
+    if (!SDLTest_AssertCheck(second != 0, "Open high-spec logical device: %s", SDL_GetError())) {
+        SDL_CloseAudioDevice(first);
+        return TEST_ABORTED;
+    }
+    SDLTest_AssertCheck(SDL_PeepEvents(events, SDL_arraysize(events), SDL_PEEKEVENT,
+                                       SDL_EVENT_AUDIO_DEVICE_FORMAT_CHANGED, SDL_EVENT_AUDIO_DEVICE_FORMAT_CHANGED) == 0,
+                        "Format change events wait for event pump");
+    SDL_PumpEvents();
+    event_count = SDL_PeepEvents(events, SDL_arraysize(events), SDL_GETEVENT,
+                                 SDL_EVENT_AUDIO_DEVICE_FORMAT_CHANGED, SDL_EVENT_AUDIO_DEVICE_FORMAT_CHANGED);
+    physical_devices = SDL_GetAudioPlaybackDevices(&physical_count);
+    if (SDLTest_AssertCheck(physical_devices != NULL && physical_count == 1, "Dummy driver has one physical playback device")) {
+        if (SDLTest_AssertCheck(event_count >= 2 && event_count < SDL_arraysize(events),
+                                "Format change notifies the physical and existing logical devices: %d", event_count)) {
+            SDLTest_AssertCheck(events[0].adevice.which == physical_devices[0], "Physical format event arrives first");
+            for (int i = 1; i < event_count; ++i) {
+                found_first |= (events[i].adevice.which == first);
+                SDLTest_AssertCheck(events[i].adevice.which != second, "New logical device has no earlier format event");
+            }
+            SDLTest_AssertCheck(found_first, "Existing logical device receives a format event after the physical device");
+        }
+    }
+    SDL_free(physical_devices);
+    SDLTest_AssertCheck(second != first, "Each open receives a distinct logical device ID");
+    if (SDLTest_AssertCheck(SDL_GetAudioDeviceFormat(first, &actual, NULL), "Get reopened physical device format")) {
+        SDLTest_AssertCheck(actual.format == high.format && actual.channels == high.channels && actual.freq == high.freq,
+                            "Both logical devices use the higher physical spec");
+    }
+    if (SDLTest_AssertCheck(SDL_GetAudioDeviceFormat(second, &actual, NULL), "Get second logical device format")) {
+        SDLTest_AssertCheck(actual.format == high.format && actual.channels == high.channels && actual.freq == high.freq,
+                            "Second logical device uses the higher physical spec");
+    }
+
+    SDL_CloseAudioDevice(second);
+    SDL_CloseAudioDevice(first);
+    return TEST_COMPLETED;
+}
+
 /* ================= Test Case References ================== */
 
+static int SDLCALL audio_loadWAVStructure(void *arg)
+{
+    static const Uint8 wav[] = {
+        'R', 'I', 'F', 'F', 38, 0, 0, 0, 'W', 'A', 'V', 'E',
+        'f', 'm', 't', ' ', 16, 0, 0, 0,
+        1, 0, 1, 0, 0x40, 0x1f, 0, 0, 0x40, 0x1f, 0, 0,
+        1, 0, 8, 0, 'd', 'a', 't', 'a', 2, 0, 0, 0, 0x80, 0xff
+    };
+    Uint8 invalid[sizeof(wav)];
+    SDL_AudioSpec spec;
+    Uint8 *audio = NULL;
+    Uint32 length = 0;
+    bool result;
+
+    result = SDL_LoadWAV_IO(SDL_IOFromConstMem(wav, sizeof(wav)), true, &spec, &audio, &length);
+    SDLTest_AssertCheck(result, "Load in-memory PCM WAVE: %s", SDL_GetError());
+    SDLTest_AssertCheck(spec.freq == 8000 && spec.channels == 1 && spec.format == SDL_AUDIO_U8,
+                        "WAVE format matches 8-bit mono PCM at 8000 Hz");
+    SDLTest_AssertCheck(length == 2 && audio && audio[0] == 0x80 && audio[1] == 0xff,
+                        "WAVE samples are preserved");
+    SDL_free(audio);
+
+    SDL_memcpy(invalid, wav, sizeof(wav));
+    SDL_memcpy(invalid + 8, "NOPE", 4);
+    result = SDL_LoadWAV_IO(SDL_IOFromConstMem(invalid, sizeof(invalid)), true, &spec, &audio, &length);
+    SDLTest_AssertCheck(!result && audio == NULL && length == 0, "Invalid RIFF form fails without audio output");
+    SDLTest_AssertCheck(SDL_strcmp(SDL_GetError(), "RIFF form type is not WAVE (not a Waveform file)") == 0,
+                        "Invalid RIFF form preserves its error");
+    return TEST_COMPLETED;
+}
+
+static int SDLCALL audio_loadWAVChunkOrder(void *arg)
+{
+    static const Uint8 wav_with_chunks[] = {
+        'R', 'I', 'F', 'F', 62, 0, 0, 0, 'W', 'A', 'V', 'E',
+        'J', 'U', 'N', 'K', 3, 0, 0, 0, 1, 2, 3, 0,
+        'f', 'm', 't', ' ', 16, 0, 0, 0,
+        1, 0, 1, 0, 0x40, 0x1f, 0, 0, 0x40, 0x1f, 0, 0,
+        1, 0, 8, 0,
+        'f', 'a', 'c', 't', 4, 0, 0, 0, 2, 0, 0, 0,
+        'd', 'a', 't', 'a', 2, 0, 0, 0, 0x80, 0xff
+    };
+    static const Uint8 wav_data_first[] = {
+        'R', 'I', 'F', 'F', 38, 0, 0, 0, 'W', 'A', 'V', 'E',
+        'd', 'a', 't', 'a', 2, 0, 0, 0, 0x80, 0xff,
+        'f', 'm', 't', ' ', 16, 0, 0, 0,
+        1, 0, 1, 0, 0x40, 0x1f, 0, 0, 0x40, 0x1f, 0, 0,
+        1, 0, 8, 0
+    };
+    SDL_AudioSpec spec;
+    Uint8 *audio = NULL;
+    Uint32 length = 0;
+    bool result;
+
+    result = SDL_LoadWAV_IO(SDL_IOFromConstMem(wav_with_chunks, sizeof(wav_with_chunks)), true, &spec, &audio, &length);
+    SDLTest_AssertCheck(result, "Load WAVE with unknown and fact chunks: %s", SDL_GetError());
+    SDLTest_AssertCheck(length == 2 && audio && audio[0] == 0x80 && audio[1] == 0xff,
+                        "Chunk scan preserves PCM samples");
+    SDL_free(audio);
+
+    result = SDL_LoadWAV_IO(SDL_IOFromConstMem(wav_data_first, sizeof(wav_data_first)), true, &spec, &audio, &length);
+    SDLTest_AssertCheck(!result && audio == NULL && length == 0, "Data before fmt fails without audio output");
+    SDLTest_AssertCheck(SDL_strcmp(SDL_GetError(), "fmt chunk after data chunk in WAVE file") == 0,
+                        "Data before fmt preserves its error");
+    return TEST_COMPLETED;
+}
+
+static int SDLCALL audio_loadWAVCodecs(void *arg)
+{
+    static const Uint8 ima[] = {
+        'R', 'I', 'F', 'F', 48, 0, 0, 0, 'W', 'A', 'V', 'E',
+        'f', 'm', 't', ' ', 20, 0, 0, 0,
+        0x11, 0, 1, 0, 0x40, 0x1f, 0, 0, 0xc7, 0x1b, 0, 0,
+        8, 0, 4, 0, 2, 0, 9, 0,
+        'd', 'a', 't', 'a', 8, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0
+    };
+    static const Uint8 ms[] = {
+        'R', 'I', 'F', 'F', 78, 0, 0, 0, 'W', 'A', 'V', 'E',
+        'f', 'm', 't', ' ', 50, 0, 0, 0,
+        2, 0, 1, 0, 0x40, 0x1f, 0, 0, 0x80, 0x3e, 0, 0,
+        8, 0, 4, 0, 32, 0, 4, 0, 7, 0,
+        0, 1, 0, 0, 0, 2, 0, 0xff, 0, 0, 0, 0,
+        0xc0, 0, 0x40, 0, 0xf0, 0, 0, 0,
+        0xcc, 1, 0x30, 0xff, 0x88, 1, 0x18, 0xff,
+        'd', 'a', 't', 'a', 8, 0, 0, 0,
+        0, 0x10, 0, 0, 0, 0, 0, 0
+    };
+    static const Uint8 alaw[] = {
+        'R', 'I', 'F', 'F', 38, 0, 0, 0, 'W', 'A', 'V', 'E',
+        'f', 'm', 't', ' ', 16, 0, 0, 0,
+        6, 0, 1, 0, 0x40, 0x1f, 0, 0, 0x40, 0x1f, 0, 0,
+        1, 0, 8, 0, 'd', 'a', 't', 'a', 1, 0, 0, 0, 0xd5, 0
+    };
+    static const Uint8 mulaw[] = {
+        'R', 'I', 'F', 'F', 38, 0, 0, 0, 'W', 'A', 'V', 'E',
+        'f', 'm', 't', ' ', 16, 0, 0, 0,
+        7, 0, 1, 0, 0x40, 0x1f, 0, 0, 0x40, 0x1f, 0, 0,
+        1, 0, 8, 0, 'd', 'a', 't', 'a', 1, 0, 0, 0, 0xff, 0
+    };
+    static const Uint8 wav_float[] = {
+        'R', 'I', 'F', 'F', 40, 0, 0, 0, 'W', 'A', 'V', 'E',
+        'f', 'm', 't', ' ', 16, 0, 0, 0,
+        3, 0, 1, 0, 0x40, 0x1f, 0, 0, 0, 0x7d, 0, 0,
+        4, 0, 32, 0, 'd', 'a', 't', 'a', 4, 0, 0, 0, 0, 0, 0x80, 0x3f
+    };
+    const struct {
+        const Uint8 *wav;
+        size_t size;
+        Uint32 length;
+        Sint16 first_sample;
+        const char *name;
+    } cases[] = {
+        { ima, sizeof(ima), 18, 0, "IMA ADPCM" },
+        { ms, sizeof(ms), 8, 0, "MS ADPCM" },
+        { alaw, sizeof(alaw), 2, 8, "A-law" },
+        { mulaw, sizeof(mulaw), 2, 0, "mu-law" }
+    };
+    SDL_AudioSpec spec;
+    Uint8 *audio = NULL;
+    Uint32 length = 0;
+    bool result;
+
+    for (size_t i = 0; i < SDL_arraysize(cases); ++i) {
+        Sint16 sample = -1;
+        result = SDL_LoadWAV_IO(SDL_IOFromConstMem(cases[i].wav, cases[i].size), true, &spec, &audio, &length);
+        if (SDLTest_AssertCheck(result, "Load %s WAVE: %s", cases[i].name, SDL_GetError())) {
+            SDLTest_AssertCheck(spec.freq == 8000 && spec.channels == 1 && spec.format == SDL_AUDIO_S16,
+                                "%s output format is 8 kHz mono S16", cases[i].name);
+            SDLTest_AssertCheck(length == cases[i].length && audio != NULL,
+                                "%s output length is %u", cases[i].name, cases[i].length);
+            if (audio && length >= sizeof(sample)) {
+                SDL_memcpy(&sample, audio, sizeof(sample));
+                SDLTest_AssertCheck(sample == cases[i].first_sample, "%s first decoded sample is preserved", cases[i].name);
+            }
+        }
+        SDL_free(audio);
+        audio = NULL;
+    }
+
+    result = SDL_LoadWAV_IO(SDL_IOFromConstMem(wav_float, sizeof(wav_float)), true, &spec, &audio, &length);
+    if (SDLTest_AssertCheck(result, "Load IEEE float WAVE: %s", SDL_GetError())) {
+        SDLTest_AssertCheck(spec.freq == 8000 && spec.channels == 1 && spec.format == SDL_AUDIO_F32LE,
+                            "Float output format is 8 kHz mono F32LE");
+        SDLTest_AssertCheck(length == 4 && audio && SDL_memcmp(audio, wav_float + sizeof(wav_float) - 4, 4) == 0,
+                            "Float sample bits are preserved");
+    }
+    SDL_free(audio);
+    return TEST_COMPLETED;
+}
+
 /* Audio test cases */
+static const SDLTest_TestCaseReference audioTestLoadWAVStructure = {
+    audio_loadWAVStructure, "audio_loadWAVStructure", "Check PCM WAVE parsing and invalid RIFF form.", TEST_ENABLED
+};
+
+static const SDLTest_TestCaseReference audioTestLoadWAVChunkOrder = {
+    audio_loadWAVChunkOrder, "audio_loadWAVChunkOrder", "Check WAVE chunk scan and fmt/data order.", TEST_ENABLED
+};
+
+static const SDLTest_TestCaseReference audioTestLoadWAVCodecs = {
+    audio_loadWAVCodecs, "audio_loadWAVCodecs", "Check float, companded, and ADPCM WAVE decoders.", TEST_ENABLED
+};
+
 static const SDLTest_TestCaseReference audioTestGetAudioFormatName = {
     audio_getAudioFormatName, "audio_getAudioFormatName", "Call to SDL_GetAudioFormatName", TEST_ENABLED
 };
 
-static const SDLTest_TestCaseReference audioTest1 = {
-    audio_enumerateAndNameAudioDevices, "audio_enumerateAndNameAudioDevices", "Enumerate and name available audio devices (playback and recording)", TEST_ENABLED
+static const SDLTest_TestCaseReference audioTestGetSilenceValueForFormat = {
+    audio_getSilenceValueForFormat, "audio_getSilenceValueForFormat", "Call to SDL_GetSilenceValueForFormat", TEST_ENABLED
 };
 
-static const SDLTest_TestCaseReference audioTest2 = {
-    audio_enumerateAndNameAudioDevicesNegativeTests, "audio_enumerateAndNameAudioDevicesNegativeTests", "Negative tests around enumeration and naming of audio devices.", TEST_ENABLED
+static const SDLTest_TestCaseReference audioTest1 = {
+    audio_enumerateAndNameAudioDevices, "audio_enumerateAndNameAudioDevices", "Enumerate and name available audio devices (playback and recording)", TEST_ENABLED
 };
 
 static const SDLTest_TestCaseReference audioTest3 = {
@@ -1501,26 +1944,8 @@ static const SDLTest_TestCaseReference audioTest6 = {
     audio_buildAudioStreamNegative, "audio_buildAudioStreamNegative", "Checks calls with invalid input to SDL_CreateAudioStream", TEST_ENABLED
 };
 
-static const SDLTest_TestCaseReference audioTest7 = {
-    audio_getAudioStatus, "audio_getAudioStatus", "Checks current audio status.", TEST_ENABLED
-};
-
-static const SDLTest_TestCaseReference audioTest8 = {
-    audio_openCloseAndGetAudioStatus, "audio_openCloseAndGetAudioStatus", "Opens and closes audio device and get audio status.", TEST_ENABLED
-};
-
-static const SDLTest_TestCaseReference audioTest9 = {
-    audio_lockUnlockOpenAudioDevice, "audio_lockUnlockOpenAudioDevice", "Locks and unlocks an open audio device.", TEST_ENABLED
-};
-
 static const SDLTest_TestCaseReference audioTest10 = {
     audio_convertAudio, "audio_convertAudio", "Convert audio using available formats.", TEST_ENABLED
-};
-
-/* TODO: enable test when SDL_AudioDeviceConnected has been implemented.           */
-
-static const SDLTest_TestCaseReference audioTest11 = {
-    audio_openCloseAudioDeviceConnected, "audio_openCloseAudioDeviceConnected", "Opens and closes audio device and get connected status.", TEST_DISABLED
 };
 
 static const SDLTest_TestCaseReference audioTest12 = {
@@ -1536,7 +1961,7 @@ static const SDLTest_TestCaseReference audioTest14 = {
 };
 
 static const SDLTest_TestCaseReference audioTest15 = {
-    audio_pauseUnpauseAudio, "audio_pauseUnpauseAudio", "Pause and Unpause audio for various audio specs while testing callback.", TEST_ENABLED
+    audio_openCloseAcrossDriversAndSpecs, "audio_openCloseAcrossDriversAndSpecs", "Open and close playback with different drivers and audio specs.", TEST_ENABLED
 };
 
 static const SDLTest_TestCaseReference audioTest16 = {
@@ -1551,13 +1976,42 @@ static const SDLTest_TestCaseReference audioTest18 = {
     audio_formatChange, "audio_formatChange", "Check handling of format changes.", TEST_ENABLED
 };
 
+static const SDLTest_TestCaseReference audioTestBindStreams = {
+    audio_bindStreamsAtomically, "audio_bindStreamsAtomically", "Check batch audio stream binding and failure atomicity.", TEST_ENABLED
+};
+
+static const SDLTest_TestCaseReference audioTestReopenHigherSpec = {
+    audio_reopenPhysicalDeviceWithHigherSpec, "audio_reopenPhysicalDeviceWithHigherSpec", "Check physical device reopen for a higher logical spec.", TEST_ENABLED
+};
+
+static const SDLTest_TestCaseReference audioTestPlaybackPostmix = {
+    audio_playbackPostmixCallback, "audio_playbackPostmixCallback", "Checks the playback mixing and postmix path.", TEST_ENABLED
+};
+
+static const SDLTest_TestCaseReference audioTestRecordingPostmix = {
+    audio_recordingPostmixCallback, "audio_recordingPostmixCallback", "Checks the recording conversion and postmix path.", TEST_ENABLED
+};
+
+static const SDLTest_TestCaseReference audioTestRecordingF32ChannelMap = {
+    audio_recordingF32ChannelMap, "audio_recordingF32ChannelMap", "Checks channel mapping on F32 recording devices.", TEST_ENABLED
+};
+
+static const SDLTest_TestCaseReference audioTestRecordingLogicalDeviceByteCount = {
+    audio_recordingLogicalDeviceByteCount, "audio_recordingLogicalDeviceByteCount", "Checks recording byte counts are independent between logical devices.", TEST_ENABLED
+};
+
 /* Sequence of Audio test cases */
 static const SDLTest_TestCaseReference *audioTests[] = {
+    &audioTestLoadWAVStructure,
+    &audioTestLoadWAVChunkOrder,
+    &audioTestLoadWAVCodecs,
     &audioTestGetAudioFormatName,
-    &audioTest1, &audioTest2, &audioTest3, &audioTest4, &audioTest5, &audioTest6,
-    &audioTest7, &audioTest8, &audioTest9, &audioTest10, &audioTest11,
+    &audioTestGetSilenceValueForFormat,
+    &audioTest1, &audioTest3, &audioTest4, &audioTest5, &audioTest6,
+    &audioTest10,
     &audioTest12, &audioTest13, &audioTest14, &audioTest15, &audioTest16,
-    &audioTest17, &audioTest18, NULL
+    &audioTest17, &audioTest18, &audioTestBindStreams, &audioTestReopenHigherSpec,
+    &audioTestPlaybackPostmix, &audioTestRecordingPostmix, &audioTestRecordingF32ChannelMap, &audioTestRecordingLogicalDeviceByteCount, NULL
 };
 
 /* Audio test suite (global) */
