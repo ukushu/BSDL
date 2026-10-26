@@ -5,10 +5,48 @@
 #include <SDL3/SDL_test.h>
 #include <SDL3/SDL_vulkan.h>
 #include "testautomation_suites.h"
+#ifdef __APPLE__
+#include "../src/video/cocoa/SDL_cocoagesture.h"
+#endif
 
 int SDLCALL video_gpuBlitPipelineCacheOOM(void *arg);
 
 /* Private helpers */
+
+#ifdef __APPLE__
+static int SDLCALL video_cocoaTrackpadGestureSession(void *arg)
+{
+    SDL_CocoaTrackpadGestureSession session = { false, false };
+
+    SDLTest_AssertCheck(SDL_CocoaTrackpadGestureBegin(&session, SDL_COCOA_TRACKPAD_GESTURE_MAGNIFICATION),
+                        "Magnification starts a native session");
+    SDLTest_AssertCheck(!SDL_CocoaTrackpadGestureBegin(&session, SDL_COCOA_TRACKPAD_GESTURE_MAGNIFICATION),
+                        "Duplicate magnification begin is ignored");
+    SDLTest_AssertCheck(!SDL_CocoaTrackpadGestureBegin(&session, SDL_COCOA_TRACKPAD_GESTURE_ROTATION),
+                        "Rotation joins the active magnification session");
+    SDLTest_AssertCheck(!SDL_CocoaTrackpadGestureEnd(&session, SDL_COCOA_TRACKPAD_GESTURE_MAGNIFICATION),
+                        "Magnification ending keeps the overlapping rotation session open");
+    SDLTest_AssertCheck(SDL_CocoaTrackpadGestureEnd(&session, SDL_COCOA_TRACKPAD_GESTURE_ROTATION),
+                        "The final source ends the native session");
+    SDLTest_AssertCheck(!SDL_CocoaTrackpadGestureEnd(&session, SDL_COCOA_TRACKPAD_GESTURE_ROTATION),
+                        "Duplicate end is ignored");
+
+    SDLTest_AssertCheck(SDL_CocoaTrackpadGestureBegin(&session, SDL_COCOA_TRACKPAD_GESTURE_ROTATION),
+                        "Rotation can start the next native session");
+    SDLTest_AssertCheck(!SDL_CocoaTrackpadGestureBegin(&session, SDL_COCOA_TRACKPAD_GESTURE_MAGNIFICATION),
+                        "Magnification can join a rotation-first session");
+    SDLTest_AssertCheck(!SDL_CocoaTrackpadGestureEnd(&session, SDL_COCOA_TRACKPAD_GESTURE_ROTATION),
+                        "Rotation ending keeps the overlapping magnification session open");
+    SDLTest_AssertCheck(SDL_CocoaTrackpadGestureEnd(&session, SDL_COCOA_TRACKPAD_GESTURE_MAGNIFICATION),
+                        "Magnification ends the rotation-first native session");
+    return TEST_COMPLETED;
+}
+
+static const SDLTest_TestCaseReference videoTestCocoaTrackpadGestureSession = {
+    video_cocoaTrackpadGestureSession, "video_cocoaTrackpadGestureSession",
+    "Keep overlapping Cocoa magnification and rotation in one gesture session", TEST_ENABLED
+};
+#endif
 
 static bool VideoSupportsWindowPositioning(void)
 {
@@ -3473,6 +3511,9 @@ static const SDLTest_TestCaseReference videoTestDestroyWindowUnlinksList = {
 
 /* Sequence of Video test cases */
 static const SDLTest_TestCaseReference *videoTests[] = {
+#ifdef __APPLE__
+    &videoTestCocoaTrackpadGestureSession,
+#endif
     &videoTestEnableDisableScreensaver,
     &videoTestCreateWindowVariousSizes,
     &videoTestCreateWindowVariousFlags,

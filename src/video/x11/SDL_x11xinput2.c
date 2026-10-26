@@ -90,6 +90,10 @@ typedef struct SDL_XInput2DeviceInfo
 {
     int device_id;
     SDL_XInput2RelativeDevice relative;
+#ifdef SDL_VIDEO_DRIVER_X11_XINPUT2_SUPPORTS_GESTURE
+    double pinch_scale;
+    bool pinch_active;
+#endif
 #ifdef SDL_VIDEO_DRIVER_X11_XINPUT2_SUPPORTS_SCROLLINFO
     SDL_XInput2ScrollableDevice scroll;
 #endif
@@ -832,10 +836,29 @@ void X11_HandleXinput2Event(SDL_VideoDevice *_this, XGenericEventCookie *cookie)
         xinput2_normalize_touch_coordinates(window, xev->event_x, xev->event_y, &x, &y);
 
         if (cookie->evtype == XI_GesturePinchBegin) {
+            SDL_XInput2DeviceInfo *devinfo = xinput2_get_cached_device_info(xev->deviceid);
+            if (devinfo) {
+                devinfo->pinch_scale = 1.0;
+                devinfo->pinch_active = true;
+            }
             SDL_SendPinch(SDL_EVENT_PINCH_BEGIN, 0, window, 0, -1.0f, -1.0f, -1.0f, -1.0f);
         } else if (cookie->evtype == XI_GesturePinchUpdate) {
-            SDL_SendPinch(SDL_EVENT_PINCH_UPDATE, 0, window, (float)xev->scale, -1.0f, -1.0f, -1.0f, -1.0f);
+            SDL_XInput2DeviceInfo *devinfo = xinput2_get_cached_device_info(xev->deviceid);
+            if (devinfo && devinfo->pinch_active && xev->scale > 0.0 &&
+                !SDL_isinf(xev->scale) && !SDL_isnan(xev->scale)) {
+                const double delta = xev->scale / devinfo->pinch_scale;
+                devinfo->pinch_scale = xev->scale;
+                if (delta > 0.0 && !SDL_isinf(delta) && !SDL_isnan(delta)) {
+                    SDL_SendPinch(SDL_EVENT_PINCH_UPDATE, 0, window, (float)delta,
+                                  -1.0f, -1.0f, -1.0f, -1.0f);
+                }
+            }
         } else {
+            SDL_XInput2DeviceInfo *devinfo = xinput2_get_cached_device_info(xev->deviceid);
+            if (devinfo) {
+                devinfo->pinch_active = false;
+                devinfo->pinch_scale = 0.0;
+            }
             SDL_SendPinch(SDL_EVENT_PINCH_END, 0, window, 0, -1.0f, -1.0f, -1.0f, -1.0f);
         }
     } break;

@@ -192,6 +192,7 @@ typedef struct SDL_WaylandSeat
 
         // According to the spec, a seat can only have one active gesture of any type at a time.
         SDL_WindowData *gesture_focus;
+        float gesture_pinch_scale;
 
         Uint64 highres_timestamp_ns;
         Uint32 enter_serial;

@@ -881,6 +881,7 @@ typedef struct SDL_PinchFingerEvent
     Uint32 reserved;
     Uint64 timestamp;   /**< In nanoseconds, populated using SDL_GetTicksNS() */
     float scale;        /**< The scale change since the last SDL_EVENT_PINCH_UPDATE. Scale < 1 is "zoom out". Scale > 1 is "zoom in". */
+    float rotation;     /**< Rotation delta in radians since the last SDL_EVENT_PINCH_UPDATE. */
     SDL_WindowID windowID; /**< The window underneath the finger, if any */
     float span_x;        /**< On mobile devices for BEGIN and UPDATE events, the average X distance between each of the pointers forming the pinch in window coordinates.  Otherwise, -1. */
     float span_y;        /**< On mobile devices for BEGIN and UPDATE events, the average Y distance between each of the pointers forming the pinch in window coordinates.  Otherwise, -1. */

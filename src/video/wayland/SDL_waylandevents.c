@@ -326,6 +326,7 @@ static void handle_pinch_begin(void *data, struct zwp_pointer_gesture_pinch_v1 *
     if (wind) {
         SDL_WaylandSeat *seat = (SDL_WaylandSeat *)data;
         seat->pointer.gesture_focus = wind;
+        seat->pointer.gesture_pinch_scale = 1.0f;
 
         const Uint64 timestamp = Wayland_GetPointerTimestamp(seat, time);
         SDL_SendPinch(SDL_EVENT_PINCH_BEGIN, timestamp, wind->sdlwindow, 0.0f, -1.0f, -1.0f, -1.0f, -1.0f);
@@ -340,7 +341,14 @@ static void handle_pinch_update(void *data, struct zwp_pointer_gesture_pinch_v1 
     if (seat->pointer.gesture_focus) {
         const Uint64 timestamp = Wayland_GetPointerTimestamp(seat, time);
         const float s = (float)wl_fixed_to_double(scale);
-        SDL_SendPinch(SDL_EVENT_PINCH_UPDATE, timestamp, seat->pointer.gesture_focus->sdlwindow, s, -1.0f, -1.0f, -1.0f, -1.0f);
+        if (s > 0.0f && !SDL_isinff(s) && !SDL_isnanf(s)) {
+            const float delta = seat->pointer.gesture_pinch_scale > 0.0f ? s / seat->pointer.gesture_pinch_scale : 1.0f;
+            seat->pointer.gesture_pinch_scale = s;
+            if (delta > 0.0f && !SDL_isinff(delta) && !SDL_isnanf(delta)) {
+                SDL_SendPinch(SDL_EVENT_PINCH_UPDATE, timestamp, seat->pointer.gesture_focus->sdlwindow,
+                              delta, -1.0f, -1.0f, -1.0f, -1.0f);
+            }
+        }
     }
 }
 
@@ -353,6 +361,7 @@ static void handle_pinch_end(void *data, struct zwp_pointer_gesture_pinch_v1 *zw
         SDL_SendPinch(SDL_EVENT_PINCH_END, timestamp, seat->pointer.gesture_focus->sdlwindow, 0.0f, -1.0f, -1.0f, -1.0f, -1.0f);
 
         seat->pointer.gesture_focus = NULL;
+        seat->pointer.gesture_pinch_scale = 0.0f;
     }
 }
 
@@ -2436,6 +2445,7 @@ static void Wayland_SeatDestroyPointer(SDL_WaylandSeat *seat)
     // End any active gestures.
     if (seat->pointer.gesture_focus) {
         SDL_SendPinch(SDL_EVENT_PINCH_END, 0, seat->pointer.gesture_focus->sdlwindow, 0.0f, -1.0f, -1.0f, -1.0f, -1.0f);
+        seat->pointer.gesture_pinch_scale = 0.0f;
     }
 
     // Make sure focus is removed from a surface before the pointer is destroyed.

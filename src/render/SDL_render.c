@@ -152,7 +152,6 @@ static bool FlushRenderCommands(SDL_Renderer *renderer)
         goto discard_commands;
     }
 
-    DebugLogRenderCommands(renderer->render_commands);
 #if DONT_DRAW_WHILE_HIDDEN
     // Don't send commands to the GPU while we're hidden
     if (renderer->hidden) {

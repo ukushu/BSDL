@@ -395,6 +395,9 @@ function(configure_sdl3_pc)
     set(LIBDIR_FOR_PKG_CONFIG "\${prefix}/${CMAKE_INSTALL_LIBDIR}")
   endif()
 
+  set(SDL_PC_NAME BSDL)
+  configure_file("${SDL3_SOURCE_DIR}/cmake/sdl3.pc.in" "${SDL3_BINARY_DIR}/bsdl.pc" @ONLY)
+  set(SDL_PC_NAME sdl3)
   configure_file("${SDL3_SOURCE_DIR}/cmake/sdl3.pc.in" "${SDL3_BINARY_DIR}/sdl3.pc" @ONLY)
 endfunction()
 

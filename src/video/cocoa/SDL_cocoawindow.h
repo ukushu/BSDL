@@ -24,6 +24,7 @@
 #define SDL_cocoawindow_h_
 
 #import <Cocoa/Cocoa.h>
+#include "SDL_cocoagesture.h"
 
 #ifdef SDL_VIDEO_OPENGL_EGL
 #include "../SDL_egl_c.h"
@@ -57,6 +58,10 @@ typedef enum
     BOOL isMoving;
     BOOL isMiniaturizing;
     NSInteger focusClickPending;
+    NSRect preFullscreenFrame;
+    BOOL hasPreFullscreenFrame;
+    NSAutoresizingMaskOptions fullscreenMetalAutoresizingMask;
+    BOOL fullscreenMetalViewIsFixed;
     float pendingWindowWarpX, pendingWindowWarpY;
     BOOL isDragAreaRunning;
     NSTimer *liveResizeTimer;
@@ -155,6 +160,8 @@ typedef enum
 @property(nonatomic) bool pending_position;
 @property(nonatomic) bool border_toggled;
 @property(nonatomic) bool has_modal_dialog;
+@property(nonatomic) CGFloat gestureMagnification;
+@property(nonatomic) SDL_CocoaTrackpadGestureSession trackpadGestureSession;
 
 #ifdef SDL_VIDEO_OPENGL_EGL
 @property(nonatomic) EGLSurface egl_surface;

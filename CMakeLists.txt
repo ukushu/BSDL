@@ -4536,6 +4536,7 @@ if(SDL_INSTALL)
   ##### sdl3.pc #####
   configure_sdl3_pc()
   if(NOT SDL_FRAMEWORK)
+    install(FILES ${SDL3_BINARY_DIR}/bsdl.pc DESTINATION "${SDL_PKGCONFIG_INSTALLDIR}")
     install(FILES ${SDL3_BINARY_DIR}/sdl3.pc DESTINATION "${SDL_PKGCONFIG_INSTALLDIR}")
   endif()
 

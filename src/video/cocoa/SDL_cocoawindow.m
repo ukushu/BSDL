@@ -23,6 +23,7 @@
 #ifdef SDL_VIDEO_DRIVER_COCOA
 
 #include <float.h> // For FLT_MAX
+#include <math.h>
 
 #include "../../events/SDL_dropevents_c.h"
 #include "../../events/SDL_keyboard_c.h"
@@ -61,6 +62,31 @@
 @implementation SDL_CocoaWindowData
 
 @end
+
+// AppKit reports magnification and rotation as separate streams in one trackpad gesture.
+static void Cocoa_BeginTrackpadGesture(SDL_CocoaWindowData *data, SDL_CocoaTrackpadGestureSource source,
+                                      Uint64 timestamp)
+{
+    SDL_CocoaTrackpadGestureSession session = data.trackpadGestureSession;
+    const BOOL startsSession = SDL_CocoaTrackpadGestureBegin(&session, source);
+    data.trackpadGestureSession = session;
+    if (startsSession) {
+        data.gestureMagnification = 0;
+        SDL_SendPinch(SDL_EVENT_PINCH_BEGIN, timestamp, data.window, 0, -1.0f, -1.0f, -1.0f, -1.0f);
+    }
+}
+
+static void Cocoa_EndTrackpadGesture(SDL_CocoaWindowData *data, SDL_CocoaTrackpadGestureSource source,
+                                    Uint64 timestamp)
+{
+    SDL_CocoaTrackpadGestureSession session = data.trackpadGestureSession;
+    const BOOL endsSession = SDL_CocoaTrackpadGestureEnd(&session, source);
+    data.trackpadGestureSession = session;
+    if (endsSession) {
+        data.gestureMagnification = 0;
+        SDL_SendPinch(SDL_EVENT_PINCH_END, timestamp, data.window, 0, -1.0f, -1.0f, -1.0f, -1.0f);
+    }
+}
 
 @interface NSScreen (SDL)
 #if MAC_OS_X_VERSION_MAX_ALLOWED < 120000 // Added in the 12.0 SDK
@@ -137,6 +163,20 @@
 - (void)sendEvent:(NSEvent *)event
 {
     id delegate;
+
+    if ([event type] == NSEventTypeMagnify || [event type] == NSEventTypeRotate) {
+        SDL_Window *window = [self findSDLWindow];
+        if (window) {
+            SDL_CocoaWindowData *data = (__bridge SDL_CocoaWindowData *)window->internal;
+            if ([event type] == NSEventTypeMagnify) {
+                [data.listener magnifyWithEvent:event];
+            } else {
+                [data.listener rotateWithEvent:event];
+            }
+            return;
+        }
+    }
+
     [super sendEvent:event];
 
     if ([event type] != NSEventTypeLeftMouseUp) {
@@ -871,6 +911,42 @@ static NSCursor *Cocoa_GetDesiredCursor(void)
     [view setAcceptsTouchEvents:YES];
 }
 
+- (NSArray<NSWindow *> *)customWindowsToEnterFullScreenForWindow:(NSWindow *)window onScreen:(NSScreen *)screen
+{
+    typedef void *(*PrepareBackground)(void *, void *);
+    SDL_PropertiesID properties = SDL_GetWindowProperties(_data.window);
+    PrepareBackground prepare = (PrepareBackground)SDL_GetPointerProperty(properties, "MySwiftUI.fullscreen.prepare_background", NULL);
+    if (prepare) {
+        void *context = SDL_GetPointerProperty(properties, "MySwiftUI.fullscreen.background_context", NULL);
+        prepare(context, (__bridge void *)screen);
+    }
+    return @[window];
+}
+
+- (NSArray<NSWindow *> *)customWindowsToExitFullScreenForWindow:(NSWindow *)window
+{
+    return @[window];
+}
+
+- (void)window:(NSWindow *)window startCustomAnimationToEnterFullScreenOnScreen:(NSScreen *)screen withDuration:(NSTimeInterval)duration
+{
+    [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+        context.duration = duration;
+        [(id)window.animator setFrame:screen.frame display:YES];
+    } completionHandler:nil];
+}
+
+- (void)window:(NSWindow *)window startCustomAnimationToExitFullScreenWithDuration:(NSTimeInterval)duration
+{
+    if (!hasPreFullscreenFrame) {
+        return;
+    }
+    [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+        context.duration = duration;
+        [(id)window.animator setFrame:preFullscreenFrame display:YES];
+    } completionHandler:nil];
+}
+
 - (void)observeValueForKeyPath:(NSString *)keyPath
                       ofObject:(id)object
                         change:(NSDictionary *)change
@@ -1417,6 +1493,18 @@ static NSCursor *Cocoa_GetDesiredCursor(void)
     SDL_Window *window = _data.window;
     const NSUInteger flags = NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable | NSWindowStyleMaskTitled;
 
+    preFullscreenFrame = _data.nswindow.frame;
+    hasPreFullscreenFrame = YES;
+    SDL_ClearProperty(SDL_GetWindowProperties(window), "MySwiftUI.fullscreen.source_x");
+    SDL_ClearProperty(SDL_GetWindowProperties(window), "MySwiftUI.fullscreen.source_y");
+    NSView *metalView = [_data.sdlContentView viewWithTag:SDL_METALVIEW_TAG];
+    if (metalView) {
+        fullscreenMetalAutoresizingMask = metalView.autoresizingMask;
+        fullscreenMetalViewIsFixed = YES;
+        // Flexible margins center the existing drawable without stretching it.
+        metalView.autoresizingMask = NSViewMinXMargin | NSViewMaxXMargin | NSViewMinYMargin | NSViewMaxYMargin;
+    }
+
     /* For some reason, the fullscreen window won't get any mouse button events
      * without the NSWindowStyleMaskTitled flag being set when entering fullscreen,
      * so it's needed even if the window is borderless.
@@ -1440,6 +1528,12 @@ static NSCursor *Cocoa_GetDesiredCursor(void)
  */
 - (void)windowDidFailToEnterFullScreen:(NSNotification *)aNotification
 {
+    if (fullscreenMetalViewIsFixed) {
+        NSView *metalView = [_data.sdlContentView viewWithTag:SDL_METALVIEW_TAG];
+        metalView.autoresizingMask = fullscreenMetalAutoresizingMask;
+        metalView.frame = _data.sdlContentView.bounds;
+        fullscreenMetalViewIsFixed = NO;
+    }
     inFullscreenTransition = NO;
     isFullscreenSpace = NO;
     [self clearAllPendingWindowOperations];
@@ -1448,6 +1542,17 @@ static NSCursor *Cocoa_GetDesiredCursor(void)
 - (void)windowDidEnterFullScreen:(NSNotification *)aNotification
 {
     SDL_Window *window = _data.window;
+
+    if (fullscreenMetalViewIsFixed) {
+        NSView *metalView = [_data.sdlContentView viewWithTag:SDL_METALVIEW_TAG];
+        NSRect source = [_data.nswindow convertRectToScreen:[metalView convertRect:metalView.bounds toView:nil]];
+        NSRect screen = _data.nswindow.screen.frame;
+        SDL_SetFloatProperty(SDL_GetWindowProperties(window), "MySwiftUI.fullscreen.source_x", source.origin.x - screen.origin.x);
+        SDL_SetFloatProperty(SDL_GetWindowProperties(window), "MySwiftUI.fullscreen.source_y", NSMaxY(screen) - NSMaxY(source));
+        metalView.autoresizingMask = fullscreenMetalAutoresizingMask;
+        metalView.frame = _data.sdlContentView.bounds;
+        fullscreenMetalViewIsFixed = NO;
+    }
 
     inFullscreenTransition = NO;
     isFullscreenSpace = YES;
@@ -2051,21 +2156,66 @@ static void Cocoa_SendMouseButtonClicks(SDL_Mouse *mouse, NSEvent *theEvent, SDL
     [self handleTouches:NSTouchPhaseCancelled withEvent:theEvent];
 }
 
+static void Cocoa_GetPinchFocus(NSView *view, NSEvent *event, float *focus_x, float *focus_y)
+{
+    const NSRect bounds = [view bounds];
+    const NSPoint location = [view convertPoint:[event locationInWindow] fromView:nil];
+    *focus_x = bounds.size.width > 0.0 ? (float)((location.x - NSMinX(bounds)) / bounds.size.width) : -1.0f;
+    *focus_y = bounds.size.height > 0.0 ? (float)(1.0 - (location.y - NSMinY(bounds)) / bounds.size.height) : -1.0f;
+}
+
 - (void)magnifyWithEvent:(NSEvent *)theEvent
 {
     switch ([theEvent phase]) {
     case NSEventPhaseBegan:
-        SDL_SendPinch(SDL_EVENT_PINCH_BEGIN, Cocoa_GetEventTimestamp([theEvent timestamp]), NULL, 0, -1.0f, -1.0f, -1.0f, -1.0f);
+        Cocoa_BeginTrackpadGesture(_data, SDL_COCOA_TRACKPAD_GESTURE_MAGNIFICATION,
+                                   Cocoa_GetEventTimestamp([theEvent timestamp]));
         break;
     case NSEventPhaseChanged:
         {
-            CGFloat scale = 1.0f + [theEvent magnification];
-            SDL_SendPinch(SDL_EVENT_PINCH_UPDATE, Cocoa_GetEventTimestamp([theEvent timestamp]), NULL, scale, -1.0f, -1.0f, -1.0f, -1.0f);
+            const CGFloat change = [theEvent magnification];
+            const CGFloat previousScale = 1.0f + _data.gestureMagnification;
+            const CGFloat nextMagnification = _data.gestureMagnification + change;
+            const CGFloat nextScale = 1.0f + nextMagnification;
+            if (isfinite(change) && isfinite(nextScale) && previousScale > 0.0 && nextScale > 0.0) {
+                float focusX, focusY;
+                Cocoa_GetPinchFocus(_data.sdlContentView, theEvent, &focusX, &focusY);
+                _data.gestureMagnification = nextMagnification;
+                SDL_SendPinch(SDL_EVENT_PINCH_UPDATE, Cocoa_GetEventTimestamp([theEvent timestamp]), _data.window,
+                              nextScale / previousScale, -1.0f, -1.0f, focusX, focusY);
+            }
         }
         break;
     case NSEventPhaseEnded:
     case NSEventPhaseCancelled:
-        SDL_SendPinch(SDL_EVENT_PINCH_END, Cocoa_GetEventTimestamp([theEvent timestamp]), NULL, 0, -1.0f, -1.0f, -1.0f, -1.0f);
+        Cocoa_EndTrackpadGesture(_data, SDL_COCOA_TRACKPAD_GESTURE_MAGNIFICATION,
+                                 Cocoa_GetEventTimestamp([theEvent timestamp]));
+        break;
+    default:
+        break;
+    }
+}
+
+- (void)rotateWithEvent:(NSEvent *)theEvent
+{
+    switch ([theEvent phase]) {
+    case NSEventPhaseBegan:
+        Cocoa_BeginTrackpadGesture(_data, SDL_COCOA_TRACKPAD_GESTURE_ROTATION,
+                                   Cocoa_GetEventTimestamp([theEvent timestamp]));
+        break;
+    case NSEventPhaseChanged:
+        {
+            float focusX, focusY;
+            Cocoa_GetPinchFocus(_data.sdlContentView, theEvent, &focusX, &focusY);
+            SDL_SendPinchWithRotation(SDL_EVENT_PINCH_UPDATE, Cocoa_GetEventTimestamp([theEvent timestamp]), _data.window,
+                                  1.0f, -(float)([theEvent rotation] * M_PI / 180.0),
+                                      -1.0f, -1.0f, focusX, focusY);
+        }
+        break;
+    case NSEventPhaseEnded:
+    case NSEventPhaseCancelled:
+        Cocoa_EndTrackpadGesture(_data, SDL_COCOA_TRACKPAD_GESTURE_ROTATION,
+                                 Cocoa_GetEventTimestamp([theEvent timestamp]));
         break;
     default:
         break;
