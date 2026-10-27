@@ -11,6 +11,8 @@
 
 int SDLCALL video_gpuBlitPipelineCacheOOM(void *arg);
 
+int SDLCALL video_gpuBlitPipelineCacheOOM(void *arg);
+
 /* Private helpers */
 
 #ifdef __APPLE__
