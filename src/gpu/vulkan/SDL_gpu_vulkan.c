@@ -4742,23 +4742,34 @@ static Uint32 VULKAN_INTERNAL_CreateSwapchain(
         requestedImageCount = SDL_max(requestedImageCount, 3);
     }
 
-    // Default to opaque, if available, followed by inherit, and overwrite with a value that supports transparency, if necessary.
-    if (swapchainSupportDetails.capabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR) {
+    if (windowData->window->flags & SDL_WINDOW_TRANSPARENT) {
+        if (swapchainSupportDetails.capabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR) {
+            compositeAlphaFlag = VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR;
+        } else {
+            if (swapchainSupportDetails.formatsLength > 0) {
+                SDL_free(swapchainSupportDetails.formats);
+            }
+            if (swapchainSupportDetails.presentModesLength > 0) {
+                SDL_free(swapchainSupportDetails.presentModes);
+            }
+            return SDL_SetError("Transparent Vulkan windows require premultiplied composite alpha");
+        }
+    } else if (swapchainSupportDetails.capabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR) {
         compositeAlphaFlag = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
     } else if (swapchainSupportDetails.capabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR) {
         compositeAlphaFlag = VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR;
-    }
-
-    if ((windowData->window->flags & SDL_WINDOW_TRANSPARENT) || !compositeAlphaFlag) {
-        if (swapchainSupportDetails.capabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR) {
-            compositeAlphaFlag = VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR;
-        } else if (swapchainSupportDetails.capabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR) {
-            compositeAlphaFlag = VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR;
-        } else if (swapchainSupportDetails.capabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR) {
-            compositeAlphaFlag = VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR;
-        } else {
-            SDL_LogWarn(SDL_LOG_CATEGORY_GPU, "SDL_WINDOW_TRANSPARENT flag set, but no suitable swapchain composite alpha value supported!");
+    } else if (swapchainSupportDetails.capabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR) {
+        compositeAlphaFlag = VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR;
+    } else if (swapchainSupportDetails.capabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR) {
+        compositeAlphaFlag = VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR;
+    } else {
+        if (swapchainSupportDetails.formatsLength > 0) {
+            SDL_free(swapchainSupportDetails.formats);
         }
+        if (swapchainSupportDetails.presentModesLength > 0) {
+            SDL_free(swapchainSupportDetails.presentModes);
+        }
+        return SDL_SetError("Vulkan surface does not support any composite alpha mode");
     }
 
     swapchainCreateInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
