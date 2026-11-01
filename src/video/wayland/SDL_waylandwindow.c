@@ -33,6 +33,7 @@
 #include "SDL_waylandevents_c.h"
 #include "SDL_waylandmouse.h"
 #include "SDL_waylandwindow.h"
+#include "wlr-layer-shell-unstable-v1-client-protocol.h"
 #include "SDL_waylandvideo.h"
 #include "../../SDL_hints_c.h"
 #include "SDL_waylandcolor.h"
@@ -989,6 +990,11 @@ static void handle_xdg_surface_configure(void *data, struct xdg_surface *xdg, ui
         wind->pending_config_ack = false;
         ConfigureWindowGeometry(window);
         xdg_surface_ack_configure(xdg, serial);
+        if (wind->shell_surface_type == WAYLAND_SHELL_SURFACE_TYPE_XDG_POPUP) {
+            // Position-only configure state takes effect on the next surface
+            // commit. Event-driven clients may otherwise never submit it.
+            SDL_SendWindowEvent(window, SDL_EVENT_WINDOW_EXPOSED, 0, 0);
+        }
     } else if (!wind->pending_config_ack) {
         wind->pending_config_ack = true;
 
@@ -2344,6 +2350,20 @@ static void Wayland_CreatePopupShellSurface(SDL_VideoDevice *_this, SDL_Window *
                                                                         data->shell_surface.xdg.popup.xdg_positioner);
     xdg_popup_add_listener(data->shell_surface.xdg.popup.xdg_popup, &_xdg_popup_listener, data);
 
+    // Custom layer-shell parents have no xdg_surface. Associate the popup
+    // with their actual role before the first commit, as required by layer-shell.
+    struct zwlr_layer_surface_v1 *layer_parent = SDL_GetPointerProperty(
+        SDL_GetWindowProperties(parent), "SDL.window.wayland.layer_surface", NULL);
+    if (layer_parent) {
+        zwlr_layer_surface_v1_get_popup(layer_parent, data->shell_surface.xdg.popup.xdg_popup);
+        SDL_WaylandSeat *seat = c->last_implicit_grab_seat;
+        if ((window->flags & SDL_WINDOW_POPUP_MENU) && seat && seat->last_implicit_grab_serial) {
+            xdg_popup_grab(data->shell_surface.xdg.popup.xdg_popup,
+                           seat->wl_seat, seat->last_implicit_grab_serial);
+        }
+    }
+
+
     if (window->flags & SDL_WINDOW_TOOLTIP) {
         struct wl_region *region;
 
@@ -3488,6 +3508,9 @@ void Wayland_SetWindowSize(SDL_VideoDevice *_this, SDL_Window *window)
 
     // Always recalculate the geometry, as this may be in response to a min/max limit change.
     ConfigureWindowGeometry(window);
+    if (wind->shell_surface_type == WAYLAND_SHELL_SURFACE_TYPE_XDG_POPUP) {
+        RepositionPopup(window, true);
+    }
     CommitLibdecorFrame(window);
 }
 
