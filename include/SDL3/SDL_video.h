@@ -1665,6 +1665,10 @@ extern SDL_DECLSPEC SDL_Window * SDLCALL SDL_GetWindowParent(SDL_Window *window)
  *   the window
  * - `SDL_PROP_WINDOW_WAYLAND_SURFACE_POINTER`: the wl_surface associated with
  *   the window
+ * - `SDL_PROP_WINDOW_WAYLAND_LAYER_SURFACE_POINTER`: the borrowed
+ *   zwlr_layer_surface_v1 role associated with a custom layer-shell window.
+ *   Applications must clear this property before destroying the role; SDL
+ *   reads it when creating a popup whose parent is that window.
  * - `SDL_PROP_WINDOW_WAYLAND_VIEWPORT_POINTER`: the wp_viewport associated
  *   with the window
  * - `SDL_PROP_WINDOW_WAYLAND_EGL_WINDOW_POINTER`: the wl_egl_window
@@ -1756,6 +1760,7 @@ extern SDL_DECLSPEC SDL_PropertiesID SDLCALL SDL_GetWindowProperties(SDL_Window 
 #define SDL_PROP_WINDOW_WIN32_INSTANCE_POINTER                      "SDL.window.win32.instance"
 #define SDL_PROP_WINDOW_WAYLAND_DISPLAY_POINTER                     "SDL.window.wayland.display"
 #define SDL_PROP_WINDOW_WAYLAND_SURFACE_POINTER                     "SDL.window.wayland.surface"
+#define SDL_PROP_WINDOW_WAYLAND_LAYER_SURFACE_POINTER               "SDL.window.wayland.layer_surface"
 #define SDL_PROP_WINDOW_WAYLAND_VIEWPORT_POINTER                    "SDL.window.wayland.viewport"
 #define SDL_PROP_WINDOW_WAYLAND_EGL_WINDOW_POINTER                  "SDL.window.wayland.egl_window"
 #define SDL_PROP_WINDOW_WAYLAND_WINDOW_ID_STRING                    "SDL.window.wayland.window_id"

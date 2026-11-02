@@ -2353,7 +2353,7 @@ static void Wayland_CreatePopupShellSurface(SDL_VideoDevice *_this, SDL_Window *
     // Custom layer-shell parents have no xdg_surface. Associate the popup
     // with their actual role before the first commit, as required by layer-shell.
     struct zwlr_layer_surface_v1 *layer_parent = SDL_GetPointerProperty(
-        SDL_GetWindowProperties(parent), "SDL.window.wayland.layer_surface", NULL);
+        SDL_GetWindowProperties(parent), SDL_PROP_WINDOW_WAYLAND_LAYER_SURFACE_POINTER, NULL);
     if (layer_parent) {
         zwlr_layer_surface_v1_get_popup(layer_parent, data->shell_surface.xdg.popup.xdg_popup);
         SDL_WaylandSeat *seat = c->last_implicit_grab_seat;
