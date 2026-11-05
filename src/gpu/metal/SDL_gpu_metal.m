@@ -4094,11 +4094,16 @@ static bool METAL_INTERNAL_Submit(
             *fence = (SDL_GPUFence *)metalCommandBuffer->fence;
         }
 
-        // Enqueue present requests, if applicable
+        // Enqueue normal presents; transaction-bound drawables are presented after scheduling.
+        bool transactionPresent = false;
         for (Uint32 i = 0; i < metalCommandBuffer->windowDataCount; i += 1) {
             MetalWindowData *windowData = metalCommandBuffer->windowDatas[i];
-            [metalCommandBuffer->handle presentDrawable:windowData->drawable];
-            windowData->drawable = nil;
+            if (windowData->layer.presentsWithTransaction) {
+                transactionPresent = true;
+            } else {
+                [metalCommandBuffer->handle presentDrawable:windowData->drawable];
+                windowData->drawable = nil;
+            }
 
             windowData->inFlightFences[windowData->frameCounter] = (SDL_GPUFence *)metalCommandBuffer->fence;
 
@@ -4108,7 +4113,19 @@ static bool METAL_INTERNAL_Submit(
         }
 
         // Submit the command buffer
+        if (transactionPresent) [CATransaction begin];
         [metalCommandBuffer->handle commit];
+        if (transactionPresent) {
+            [metalCommandBuffer->handle waitUntilScheduled];
+            for (Uint32 i = 0; i < metalCommandBuffer->windowDataCount; i += 1) {
+                MetalWindowData *windowData = metalCommandBuffer->windowDatas[i];
+                if (windowData->drawable) {
+                    [windowData->drawable present];
+                    windowData->drawable = nil;
+                }
+            }
+            [CATransaction commit];
+        }
         metalCommandBuffer->handle = nil;
 
         // Mark the command buffer as submitted
