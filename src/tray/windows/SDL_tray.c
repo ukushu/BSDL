@@ -144,6 +144,7 @@ LRESULT CALLBACK TrayWindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
         case WM_TRAYICON:
             {
                 SDL_Point position;
+                bool has_click_position = tray->version4;
                 if (tray->version4) {
                     position.x = GET_X_LPARAM(wParam);
                     position.y = GET_Y_LPARAM(wParam);
@@ -152,11 +153,12 @@ LRESULT CALLBACK TrayWindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
                     if (GetCursorPos(&cursor)) {
                         position.x = cursor.x;
                         position.y = cursor.y;
+                        has_click_position = true;
                     } else {
                         position.x = position.y = -1;
                     }
                 }
-                const SDL_Point *click_position = (position.x == -1 && position.y == -1) ? NULL : &position;
+                const SDL_Point *click_position = has_click_position ? &position : NULL;
                 bool show_menu = false;
 
                 switch (LOWORD(lParam)) {
