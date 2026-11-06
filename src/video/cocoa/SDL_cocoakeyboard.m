@@ -30,6 +30,110 @@
 
 #include <Carbon/Carbon.h>
 
+typedef struct CocoaGlobalHotKey {
+    SDL_GlobalHotKeyID id;
+    EventHotKeyRef reference;
+    EventHandlerRef handler;
+    SDL_GlobalHotKeyCallback callback;
+    void *userdata;
+    struct CocoaGlobalHotKey *next;
+} CocoaGlobalHotKey;
+
+static OSStatus Cocoa_GlobalHotKeyPressed(EventHandlerCallRef nextHandler, EventRef event, void *userdata)
+{
+    CocoaGlobalHotKey *hotkey = userdata;
+    EventHotKeyID identifier;
+    if (!hotkey || !hotkey->callback ||
+        GetEventParameter(event, kEventParamDirectObject, typeEventHotKeyID, NULL,
+                          sizeof(identifier), NULL, &identifier) != noErr || identifier.id != hotkey->id) {
+        return eventNotHandledErr;
+    }
+    hotkey->callback(hotkey->userdata, hotkey->id);
+    return noErr;
+}
+
+SDL_GlobalHotKeyID Cocoa_RegisterGlobalHotKey(SDL_VideoDevice *_this, SDL_Scancode scancode, SDL_Keymod modifiers,
+                                               SDL_GlobalHotKeyCallback callback, void *userdata)
+{
+    SDL_CocoaVideoData *data = (__bridge SDL_CocoaVideoData *)_this->internal;
+    static const FourCharCode signature = 'SDLH';
+    UInt32 carbon_modifiers = 0;
+    if (![NSThread isMainThread]) {
+        SDL_SetError("Global hotkeys must be registered on the main thread");
+        return 0;
+    }
+    if (modifiers & SDL_KMOD_SHIFT) carbon_modifiers |= shiftKey;
+    if (modifiers & SDL_KMOD_CTRL) carbon_modifiers |= controlKey;
+    if (modifiers & SDL_KMOD_ALT) carbon_modifiers |= optionKey;
+    if (modifiers & SDL_KMOD_GUI) carbon_modifiers |= cmdKey;
+    if (modifiers & ~(SDL_KMOD_SHIFT | SDL_KMOD_CTRL | SDL_KMOD_ALT | SDL_KMOD_GUI)) {
+        SDL_SetError("Unsupported global hotkey modifiers");
+        return 0;
+    }
+    for (unsigned int keycode = 0; keycode < SDL_arraysize(darwin_scancode_table); ++keycode) {
+        if (darwin_scancode_table[keycode] == scancode) {
+            CocoaGlobalHotKey *hotkey = SDL_calloc(1, sizeof(*hotkey));
+            if (!hotkey) return 0;
+            hotkey->id = ++data.next_global_hotkey_id;
+            if (!hotkey->id) hotkey->id = ++data.next_global_hotkey_id;
+            hotkey->callback = callback;
+            hotkey->userdata = userdata;
+            EventTypeSpec type = { kEventClassKeyboard, kEventHotKeyPressed };
+            OSStatus status = InstallEventHandler(GetApplicationEventTarget(), Cocoa_GlobalHotKeyPressed, 1, &type, hotkey, &hotkey->handler);
+            EventHotKeyID identifier = { signature, hotkey->id };
+            if (status == noErr) status = RegisterEventHotKey(keycode, carbon_modifiers, identifier, GetApplicationEventTarget(), 0, &hotkey->reference);
+            if (status != noErr) {
+                if (hotkey->handler) RemoveEventHandler(hotkey->handler);
+                SDL_free(hotkey);
+                SDL_SetError("Couldn't register global hotkey (OSStatus %d)", (int)status);
+                return 0;
+            }
+            hotkey->next = data.global_hotkeys;
+            data.global_hotkeys = hotkey;
+            return hotkey->id;
+        }
+    }
+    SDL_SetError("Scancode is not supported by the Cocoa keyboard mapping");
+    return 0;
+}
+
+bool Cocoa_UnregisterGlobalHotKey(SDL_VideoDevice *_this, SDL_GlobalHotKeyID id)
+{
+    SDL_CocoaVideoData *data = (__bridge SDL_CocoaVideoData *)_this->internal;
+    if (![NSThread isMainThread]) {
+        return SDL_SetError("Global hotkeys must be unregistered on the main thread");
+    }
+    CocoaGlobalHotKey *previous = NULL;
+    CocoaGlobalHotKey *hotkey = data.global_hotkeys;
+    while (hotkey) {
+        if (hotkey->id == id) {
+            if (previous) previous->next = hotkey->next;
+            else data.global_hotkeys = hotkey->next;
+            UnregisterEventHotKey(hotkey->reference);
+            RemoveEventHandler(hotkey->handler);
+            SDL_free(hotkey);
+            return true;
+        }
+        previous = hotkey;
+        hotkey = hotkey->next;
+    }
+    return SDL_SetError("Invalid global hotkey");
+}
+
+void Cocoa_ClearGlobalHotKeys(SDL_VideoDevice *_this)
+{
+    SDL_CocoaVideoData *data = (__bridge SDL_CocoaVideoData *)_this->internal;
+    CocoaGlobalHotKey *hotkey = data.global_hotkeys;
+    data.global_hotkeys = NULL;
+    while (hotkey) {
+        CocoaGlobalHotKey *next = hotkey->next;
+        UnregisterEventHotKey(hotkey->reference);
+        RemoveEventHandler(hotkey->handler);
+        SDL_free(hotkey);
+        hotkey = next;
+    }
+}
+
 #if 0
 #define DEBUG_IME NSLog
 #else

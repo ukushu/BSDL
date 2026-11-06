@@ -399,6 +399,31 @@ SDL_VideoDevice *SDL_GetVideoDevice(void)
     return _this;
 }
 
+SDL_GlobalHotKeyID SDL_RegisterGlobalHotKey(SDL_Scancode scancode, SDL_Keymod modifiers,
+                                            SDL_GlobalHotKeyCallback callback, void *userdata)
+{
+    if (!_this || !_this->RegisterGlobalHotKey) {
+        SDL_SetError("Global hotkeys are not supported by the video driver");
+        return 0;
+    }
+    if (scancode <= SDL_SCANCODE_UNKNOWN || scancode >= SDL_SCANCODE_COUNT || !callback) {
+        SDL_InvalidParamError(!callback ? "callback" : "scancode");
+        return 0;
+    }
+    return _this->RegisterGlobalHotKey(_this, scancode, modifiers, callback, userdata);
+}
+
+bool SDL_UnregisterGlobalHotKey(SDL_GlobalHotKeyID hotkey)
+{
+    if (!_this || !_this->UnregisterGlobalHotKey) {
+        return SDL_SetError("Global hotkeys are not supported by the video driver");
+    }
+    if (!hotkey) {
+        return SDL_InvalidParamError("hotkey");
+    }
+    return _this->UnregisterGlobalHotKey(_this, hotkey);
+}
+
 bool SDL_OnVideoThread(void)
 {
     return (_this && SDL_GetCurrentThreadID() == _this->thread);

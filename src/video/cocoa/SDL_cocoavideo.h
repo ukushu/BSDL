@@ -63,10 +63,15 @@ typedef enum
 @property(nonatomic) SDL_Mutex *swaplock;
 @property(nonatomic) OptionAsAlt option_as_alt;
 @property(nonatomic) CGFloat mainDisplayHeight;
+@property(nonatomic) void *global_hotkeys;
+@property(nonatomic) Uint32 next_global_hotkey_id;
 @end
 
 // Utility functions
 extern SDL_SystemTheme Cocoa_GetSystemTheme(void);
 extern NSImage *Cocoa_CreateImage(SDL_Surface *surface);
+extern SDL_GlobalHotKeyID Cocoa_RegisterGlobalHotKey(SDL_VideoDevice *_this, SDL_Scancode scancode, SDL_Keymod modifiers, SDL_GlobalHotKeyCallback callback, void *userdata);
+extern bool Cocoa_UnregisterGlobalHotKey(SDL_VideoDevice *_this, SDL_GlobalHotKeyID hotkey);
+extern void Cocoa_ClearGlobalHotKeys(SDL_VideoDevice *_this);
 
 #endif // SDL_cocoavideo_h_

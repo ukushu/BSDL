@@ -566,6 +566,8 @@ _SDL_HasEvents
 _SDL_HasGamepad
 _SDL_HasJoystick
 _SDL_HasKeyboard
+_SDL_RegisterGlobalHotKey
+_SDL_UnregisterGlobalHotKey
 _SDL_HasLASX
 _SDL_HasLSX
 _SDL_HasMMX

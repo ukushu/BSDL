@@ -83,6 +83,8 @@ static SDL_VideoDevice *Cocoa_CreateDevice(void)
         // Set the function pointers
         device->VideoInit = Cocoa_VideoInit;
         device->VideoQuit = Cocoa_VideoQuit;
+        device->RegisterGlobalHotKey = Cocoa_RegisterGlobalHotKey;
+        device->UnregisterGlobalHotKey = Cocoa_UnregisterGlobalHotKey;
         device->GetDisplayBounds = Cocoa_GetDisplayBounds;
         device->GetDisplayUsableBounds = Cocoa_GetDisplayUsableBounds;
         device->GetDisplayModes = Cocoa_GetDisplayModes;
@@ -235,6 +237,8 @@ void Cocoa_VideoQuit(SDL_VideoDevice *_this)
 {
     @autoreleasepool {
         SDL_CocoaVideoData *data = (__bridge SDL_CocoaVideoData *)_this->internal;
+
+        Cocoa_ClearGlobalHotKeys(_this);
 
         // Run the CFRunLoop a little, so last-minute window animations can run, etc, but we hopefully don't change any significant state.
         // This needs to run multiple times over a time period, it's not enough to give it a longer timeout and use "false" for returnAfterSourceHandled.

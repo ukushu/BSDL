@@ -592,6 +592,8 @@
 #define SDL_HasGamepad SDL_HasGamepad_REAL
 #define SDL_HasJoystick SDL_HasJoystick_REAL
 #define SDL_HasKeyboard SDL_HasKeyboard_REAL
+#define SDL_RegisterGlobalHotKey SDL_RegisterGlobalHotKey_REAL
+#define SDL_UnregisterGlobalHotKey SDL_UnregisterGlobalHotKey_REAL
 #define SDL_HasLASX SDL_HasLASX_REAL
 #define SDL_HasLSX SDL_HasLSX_REAL
 #define SDL_HasMMX SDL_HasMMX_REAL

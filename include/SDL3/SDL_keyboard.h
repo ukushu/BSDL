@@ -59,6 +59,10 @@ extern "C" {
  */
 typedef Uint32 SDL_KeyboardID;
 
+/** A registered system-wide keyboard shortcut. */
+typedef Uint32 SDL_GlobalHotKeyID;
+typedef void (SDLCALL *SDL_GlobalHotKeyCallback)(void *userdata, SDL_GlobalHotKeyID hotkey);
+
 /* Function prototypes */
 
 /**
@@ -73,6 +77,26 @@ typedef Uint32 SDL_KeyboardID;
  * \sa SDL_GetKeyboards
  */
 extern SDL_DECLSPEC bool SDLCALL SDL_HasKeyboard(void);
+
+/** Register a system-wide shortcut using a physical key and SDL modifier flags.
+ *
+ * The callback is delivered on the video thread while the shortcut remains
+ * registered. The caller must unregister the returned ID before releasing
+ * `userdata`. Registration fails if the platform cannot reserve the shortcut.
+ *
+ * 	hreadsafety This function should only be called on the main thread.
+ *
+ * \returns an ID that can be used with SDL_UnregisterGlobalHotKey(), or 0 on failure.
+ */
+extern SDL_DECLSPEC SDL_GlobalHotKeyID SDLCALL SDL_RegisterGlobalHotKey(SDL_Scancode scancode, SDL_Keymod modifiers, SDL_GlobalHotKeyCallback callback, void *userdata);
+
+/** Unregister a system-wide shortcut.
+ *
+ * \threadsafety This function should only be called on the main thread.
+ *
+ * \returns true on success or false on failure; call SDL_GetError() for more information.
+ */
+extern SDL_DECLSPEC bool SDLCALL SDL_UnregisterGlobalHotKey(SDL_GlobalHotKeyID hotkey);
 
 /**
  * Get a list of currently connected keyboards.

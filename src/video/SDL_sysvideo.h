@@ -232,6 +232,9 @@ struct SDL_VideoDevice
      */
     void (*VideoQuit)(SDL_VideoDevice *_this);
 
+    SDL_GlobalHotKeyID (*RegisterGlobalHotKey)(SDL_VideoDevice *_this, SDL_Scancode scancode, SDL_Keymod modifiers, SDL_GlobalHotKeyCallback callback, void *userdata);
+    bool (*UnregisterGlobalHotKey)(SDL_VideoDevice *_this, SDL_GlobalHotKeyID hotkey);
+
     /*
      * Reinitialize the touch devices -- called if an unknown touch ID occurs.
      */
