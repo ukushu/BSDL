@@ -577,6 +577,8 @@ void DestroyMenu(SDL_TrayMenu *menu)
                 DestroyMenu(entry_dbus->sub_menu);
                 entry_dbus->sub_menu = NULL;
             }
+            SDL_free((char *)item->utf8);
+            SDL_free(entry_dbus);
             SDL_free(item);
             SDL_free(entry);
 
@@ -871,7 +873,19 @@ SDL_TrayEntry *InsertTrayEntryAt(SDL_TrayMenu *menu, int pos, const char *label,
     entry->parent = menu;
     entry->internal = entry_dbus;
     entry_dbus->item = SDL_DBus_CreateMenuItem();
-    entry_dbus->item->utf8 = label;
+    if (!entry_dbus->item) {
+        SDL_free(entry);
+        SDL_free(entry_dbus);
+        return NULL;
+    }
+    entry_dbus->item->utf8 = label ? SDL_strdup(label) : NULL;
+    if (label && !entry_dbus->item->utf8) {
+        SDL_OutOfMemory();
+        SDL_free(entry_dbus->item);
+        SDL_free(entry);
+        SDL_free(entry_dbus);
+        return NULL;
+    }
     if (!label) {
         entry_dbus->item->type = SDL_MENU_ITEM_TYPE_SEPERATOR;
     } else if (flags & SDL_TRAYENTRY_CHECKBOX) {
@@ -996,6 +1010,7 @@ void RemoveTrayEntry(SDL_TrayEntry *entry)
     driver->dbus->connection_flush(tray_dbus->connection);
     DestroyMenu(entry_dbus->sub_menu);
     SDL_ListRemove(&menu_dbus->menu, entry_dbus->item);
+    SDL_free((char *)entry_dbus->item->utf8);
     SDL_free(entry_dbus->item);
     SDL_free(entry_dbus);
     SDL_free(entry);
@@ -1051,7 +1066,12 @@ void SetTrayEntryLabel(SDL_TrayEntry *entry, const char *label)
     entry_dbus = (SDL_TrayEntryDBus *)entry->internal;
     main_menu_dbus = (SDL_TrayMenuDBus *)tray->menu->internal;
 
-    entry_dbus->item->utf8 = label;
+    char *copy = label ? SDL_strdup(label) : NULL;
+    if (label && !copy) {
+        return;
+    }
+    SDL_free((char *)entry_dbus->item->utf8);
+    entry_dbus->item->utf8 = copy;
 
     SDL_DBus_UpdateMenu(driver->dbus, tray_dbus->connection, main_menu_dbus->menu, main_menu_dbus->menu_path, TrayNewMenuOnMenuUpdateCallback, tray, SDL_DBUS_UPDATE_MENU_FLAGS_NONE);
 }

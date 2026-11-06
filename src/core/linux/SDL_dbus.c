@@ -1765,6 +1765,10 @@ SDL_MenuItem *SDL_DBus_CreateMenuItem(void)
 {
     SDL_DBusMenuItem *item;
     item = SDL_malloc(sizeof(SDL_DBusMenuItem));
+    if (!item) {
+        SDL_OutOfMemory();
+        return NULL;
+    }
     item->id = 0;
     item->revision = 0;
     item->cb = NULL;
