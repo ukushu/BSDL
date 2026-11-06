@@ -575,15 +575,18 @@ void SDL_SetTrayIcon(SDL_Tray *tray, SDL_Surface *icon)
         return;
     }
 
-    if (tray->icon) {
-        DestroyIcon(tray->icon);
+    HICON old_icon = tray->icon;
+    tray->nid.hIcon = new_icon;
+    if (!Shell_NotifyIconW(NIM_MODIFY, &tray->nid)) {
+        tray->nid.hIcon = old_icon;
+        DestroyIcon(new_icon);
+        SDL_SetError("Couldn't update tray icon");
+        return;
     }
 
-    tray->nid.hIcon = new_icon;
     tray->icon = new_icon;
-
-    if (!Shell_NotifyIconW(NIM_MODIFY, &tray->nid)) {
-        SDL_SetError("Couldn't update tray icon");
+    if (old_icon) {
+        DestroyIcon(old_icon);
     }
 }
 
