@@ -406,7 +406,10 @@ SDL_Tray *SDL_CreateTrayWithProperties(SDL_PropertiesID props)
         tray->nid.hIcon = WIN_CreateIconFromSurface(icon);
 
         if (!tray->nid.hIcon) {
-            tray->nid.hIcon = load_default_icon();
+            DestroyWindow(tray->hwnd);
+            SDL_free(tray);
+            SDL_SetError("Failed to create tray icon");
+            return NULL;
         }
 
         tray->icon = tray->nid.hIcon;
