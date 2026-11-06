@@ -1146,10 +1146,6 @@ static void MenuAppendShortcutProperty(SDL_DBusContext *ctx, SDL_MenuItem *item,
     DBusMessageIter entry_iter, variant_iter;
     const char *key = "shortcut";
 
-    if (item->shortcut_scancode == SDL_SCANCODE_UNKNOWN) {
-        return;
-    }
-
     ctx->message_iter_open_container(dict_iter, DBUS_TYPE_DICT_ENTRY, NULL, &entry_iter);
     ctx->message_iter_append_basic(&entry_iter, DBUS_TYPE_STRING, &key);
     ctx->message_iter_open_container(&entry_iter, DBUS_TYPE_VARIANT, "aas", &variant_iter);

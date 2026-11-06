@@ -327,6 +327,7 @@ static void test_shortcut_property(SDL_DBusContext *ctx, SDL_Scancode scancode, 
     DBusMessageIter array, entry, pair, value, sequence, keypress;
     const char *name;
     const char *expected[] = { "Control", "Shift", key_name };
+    bool found_shortcut = false;
     int index = 0;
     assert(dbus_message_iter_init(msg, &array));
     dbus_message_iter_recurse(&array, &entry);
@@ -334,21 +335,27 @@ static void test_shortcut_property(SDL_DBusContext *ctx, SDL_Scancode scancode, 
         dbus_message_iter_recurse(&entry, &pair);
         dbus_message_iter_get_basic(&pair, &name);
         if (SDL_strcmp(name, "shortcut") == 0) {
+            found_shortcut = true;
             assert(dbus_message_iter_next(&pair));
             dbus_message_iter_recurse(&pair, &value);
             dbus_message_iter_recurse(&value, &sequence);
-            dbus_message_iter_recurse(&sequence, &keypress);
-            while (dbus_message_iter_get_arg_type(&keypress) == DBUS_TYPE_STRING) {
-                dbus_message_iter_get_basic(&keypress, &name);
-                assert(index < SDL_arraysize(expected));
-                assert(SDL_strcmp(name, expected[index++]) == 0);
-                dbus_message_iter_next(&keypress);
+            if (scancode == SDL_SCANCODE_UNKNOWN) {
+                assert(dbus_message_iter_get_arg_type(&sequence) == DBUS_TYPE_INVALID);
+            } else {
+                dbus_message_iter_recurse(&sequence, &keypress);
+                while (dbus_message_iter_get_arg_type(&keypress) == DBUS_TYPE_STRING) {
+                    dbus_message_iter_get_basic(&keypress, &name);
+                    assert(index < SDL_arraysize(expected));
+                    assert(SDL_strcmp(name, expected[index++]) == 0);
+                    dbus_message_iter_next(&keypress);
+                }
             }
             break;
         }
         dbus_message_iter_next(&entry);
     }
-    assert(index == SDL_arraysize(expected));
+    assert(found_shortcut);
+    assert(index == (scancode == SDL_SCANCODE_UNKNOWN ? 0 : SDL_arraysize(expected)));
     dbus_message_unref(msg);
 }
 
@@ -481,6 +488,7 @@ int main(int argc, char **argv)
     test_tray_watcher_restart_filter(&ctx);
     test_shortcut_property(&ctx, SDL_SCANCODE_5, "5");
     test_shortcut_property(&ctx, SDL_SCANCODE_KP_1, "KP_1");
+    test_shortcut_property(&ctx, SDL_SCANCODE_UNKNOWN, NULL);
     assert(SDL_Init(0));
     test_tray_click_method_routing(&ctx);
     for (int fields = 0; fields <= 5; ++fields) {
