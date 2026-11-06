@@ -108,6 +108,39 @@ static SDL_TrayEntry *find_entry_with_id(SDL_Tray *tray, UINT_PTR id)
     return find_entry_in_menu(tray->menu, id);
 }
 
+static SDL_Tray *get_tray_for_menu(SDL_TrayMenu *menu)
+{
+    while (menu) {
+        if (menu->parent_tray) {
+            return menu->parent_tray;
+        }
+        menu = menu->parent_entry ? menu->parent_entry->parent : NULL;
+    }
+    return NULL;
+}
+
+static UINT_PTR get_next_menu_item_id(SDL_Tray *tray)
+{
+    static UINT_PTR next_id = 0;
+
+    if (!tray) {
+        return 0;
+    }
+
+    // shortcut: allocation can be O(n^2) near 65,534 live entries; use a free-ID bitmap if huge menus become practical.
+    for (int i = 0; i < 0xFFFE; ++i) {
+        if (++next_id > 0xFFFE) {
+            next_id = 1;
+        }
+        if (!find_entry_with_id(tray, next_id)) {
+            return next_id;
+        }
+    }
+
+    SDL_SetError("No tray menu command IDs are available");
+    return 0;
+}
+
 static int get_tray_entry_position(SDL_TrayEntry *entry)
 {
     SDL_TrayMenu *menu = entry->parent;
@@ -745,7 +778,13 @@ SDL_TrayEntry *SDL_InsertTrayEntryAt(SDL_TrayMenu *menu, int pos, const char *la
 
         entry->id = (UINT_PTR) entry->submenu->hMenu;
     } else {
-        entry->id = get_next_id();
+        entry->id = label ? get_next_menu_item_id(get_tray_for_menu(menu)) : 0;
+        if (label && !entry->id) {
+            SDL_free(entry->label_cache);
+            SDL_free(entry);
+            SDL_free(label_w);
+            return NULL;
+        }
     }
 
     SDL_TrayEntry **new_entries = (SDL_TrayEntry **)SDL_realloc(menu->entries, (menu->nEntries + 2) * sizeof(*new_entries));
