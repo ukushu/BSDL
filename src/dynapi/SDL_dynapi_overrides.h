@@ -1347,3 +1347,4 @@
 #define SDL_EncodeURL SDL_EncodeURL_REAL
 #define SDL_GetTrayClickPosition SDL_GetTrayClickPosition_REAL
 #define SDL_GetTrayClickActivationToken SDL_GetTrayClickActivationToken_REAL
+#define SDL_SetTrayEntryShortcut SDL_SetTrayEntryShortcut_REAL

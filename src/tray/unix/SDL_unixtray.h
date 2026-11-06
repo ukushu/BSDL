@@ -45,6 +45,7 @@ typedef struct SDL_TrayDriver
     SDL_TrayEntry **(*GetTrayEntries)(SDL_TrayMenu *, int *);
     void (*RemoveTrayEntry)(SDL_TrayEntry *);
     void (*SetTrayEntryLabel)(SDL_TrayEntry *, const char *);
+    void (*SetTrayEntryShortcut)(SDL_TrayEntry *, SDL_Scancode, SDL_Keymod);
     const char *(*GetTrayEntryLabel)(SDL_TrayEntry *);
     void (*SetTrayEntryChecked)(SDL_TrayEntry *, bool);
     void (*ClickTrayEntry)(SDL_TrayEntry *);

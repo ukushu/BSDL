@@ -1080,6 +1080,57 @@ static SDL_DBusMenuItem *MenuGetItemById(SDL_ListNode *menu, dbus_int32_t id)
     return NULL;
 }
 
+static void MenuAppendShortcutValue(SDL_DBusContext *ctx, SDL_MenuItem *item, DBusMessageIter *variant_iter)
+{
+    DBusMessageIter shortcut_iter;
+
+    ctx->message_iter_open_container(variant_iter, DBUS_TYPE_ARRAY, "as", &shortcut_iter);
+    if (item->shortcut_scancode != SDL_SCANCODE_UNKNOWN) {
+        DBusMessageIter keypress_iter;
+        const char *modifier;
+        const char *key_name;
+
+        ctx->message_iter_open_container(&shortcut_iter, DBUS_TYPE_ARRAY, "s", &keypress_iter);
+        if (item->shortcut_modifiers & SDL_KMOD_CTRL) {
+            modifier = "Control";
+            ctx->message_iter_append_basic(&keypress_iter, DBUS_TYPE_STRING, &modifier);
+        }
+        if (item->shortcut_modifiers & SDL_KMOD_ALT) {
+            modifier = "Alt";
+            ctx->message_iter_append_basic(&keypress_iter, DBUS_TYPE_STRING, &modifier);
+        }
+        if (item->shortcut_modifiers & SDL_KMOD_SHIFT) {
+            modifier = "Shift";
+            ctx->message_iter_append_basic(&keypress_iter, DBUS_TYPE_STRING, &modifier);
+        }
+        if (item->shortcut_modifiers & SDL_KMOD_GUI) {
+            modifier = "Super";
+            ctx->message_iter_append_basic(&keypress_iter, DBUS_TYPE_STRING, &modifier);
+        }
+        key_name = SDL_GetScancodeName(item->shortcut_scancode);
+        ctx->message_iter_append_basic(&keypress_iter, DBUS_TYPE_STRING, &key_name);
+        ctx->message_iter_close_container(&shortcut_iter, &keypress_iter);
+    }
+    ctx->message_iter_close_container(variant_iter, &shortcut_iter);
+}
+
+static void MenuAppendShortcutProperty(SDL_DBusContext *ctx, SDL_MenuItem *item, DBusMessageIter *dict_iter)
+{
+    DBusMessageIter entry_iter, variant_iter;
+    const char *key = "shortcut";
+
+    if (item->shortcut_scancode == SDL_SCANCODE_UNKNOWN) {
+        return;
+    }
+
+    ctx->message_iter_open_container(dict_iter, DBUS_TYPE_DICT_ENTRY, NULL, &entry_iter);
+    ctx->message_iter_append_basic(&entry_iter, DBUS_TYPE_STRING, &key);
+    ctx->message_iter_open_container(&entry_iter, DBUS_TYPE_VARIANT, "aas", &variant_iter);
+    MenuAppendShortcutValue(ctx, item, &variant_iter);
+    ctx->message_iter_close_container(&entry_iter, &variant_iter);
+    ctx->message_iter_close_container(dict_iter, &entry_iter);
+}
+
 static void MenuAppendItemProperties(SDL_DBusContext *ctx, SDL_DBusMenuItem *dbus_item, DBusMessageIter *dict_iter)
 {
     SDL_MenuItem *item;
@@ -1149,6 +1200,8 @@ static void MenuAppendItemProperties(SDL_DBusContext *ctx, SDL_DBusMenuItem *dbu
     ctx->message_iter_append_basic(&variant_iter, DBUS_TYPE_INT32, &value_int);
     ctx->message_iter_close_container(&entry_iter, &variant_iter);
     ctx->message_iter_close_container(dict_iter, &entry_iter);
+
+    MenuAppendShortcutProperty(ctx, item, dict_iter);
 
     key = "children-display";
     value = item->sub_menu ? "submenu" : "";
@@ -1549,6 +1602,10 @@ static DBusHandlerResult MenuHandleGetProperty(SDL_DBusContext *ctx, SDL_ListNod
         ctx->message_iter_open_container(&iter, DBUS_TYPE_VARIANT, "i", &variant_iter);
         ctx->message_iter_append_basic(&variant_iter, DBUS_TYPE_INT32, &int_val);
         ctx->message_iter_close_container(&iter, &variant_iter);
+    } else if (!SDL_strcmp(property, "shortcut")) {
+        ctx->message_iter_open_container(&iter, DBUS_TYPE_VARIANT, "aas", &variant_iter);
+        MenuAppendShortcutValue(ctx, item, &variant_iter);
+        ctx->message_iter_close_container(&iter, &variant_iter);
     } else if (!SDL_strcmp(property, "children-display")) {
         val = item->sub_menu ? "submenu" : "";
         ctx->message_iter_open_container(&iter, DBUS_TYPE_VARIANT, "s", &variant_iter);
@@ -1682,6 +1739,8 @@ static DBusHandlerResult MenuHandleGetGroupProperties(SDL_DBusContext *ctx, SDL_
                         ctx->message_iter_append_basic(&variant_iter, DBUS_TYPE_INT32, &int_val);
                         ctx->message_iter_close_container(&entry_iter, &variant_iter);
                         ctx->message_iter_close_container(&dict_iter, &entry_iter);
+                    } else if (!SDL_strcmp(prop, "shortcut")) {
+                        MenuAppendShortcutProperty(ctx, item, &dict_iter);
                     } else if (!SDL_strcmp(prop, "children-display")) {
                         val = (item->sub_menu) ? "submenu" : "";
                         ctx->message_iter_open_container(&dict_iter, DBUS_TYPE_DICT_ENTRY, NULL, &entry_iter);
@@ -1773,6 +1832,8 @@ SDL_MenuItem *SDL_DBus_CreateMenuItem(void)
     item->revision = 0;
     item->cb = NULL;
     item->cbdata = NULL;
+    item->_parent.shortcut_scancode = SDL_SCANCODE_UNKNOWN;
+    item->_parent.shortcut_modifiers = SDL_KMOD_NONE;
     return (SDL_MenuItem *)item;
 }
 

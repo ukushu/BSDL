@@ -669,6 +669,10 @@ void SDL_SetTrayEntryLabel(SDL_TrayEntry *entry, const char *label)
     SDL_free(label_w);
 }
 
+void SDL_SetTrayEntryShortcut(SDL_TrayEntry *entry, SDL_Scancode scancode, SDL_Keymod mod)
+{
+}
+
 const char *SDL_GetTrayEntryLabel(SDL_TrayEntry *entry)
 {
     CHECK_PARAM(!entry) {

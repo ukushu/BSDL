@@ -213,6 +213,16 @@ void SDL_SetTrayEntryLabel(SDL_TrayEntry *entry, const char *label)
     entry->parent->parent_tray->driver->SetTrayEntryLabel(entry, label);
 }
 
+void SDL_SetTrayEntryShortcut(SDL_TrayEntry *entry, SDL_Scancode scancode, SDL_Keymod mod)
+{
+    CHECK_PARAM (!entry) {
+        SDL_InvalidParamError("entry");
+        return;
+    }
+
+    entry->parent->parent_tray->driver->SetTrayEntryShortcut(entry, scancode, mod);
+}
+
 const char *SDL_GetTrayEntryLabel(SDL_TrayEntry *entry)
 {
     CHECK_PARAM (!entry) {

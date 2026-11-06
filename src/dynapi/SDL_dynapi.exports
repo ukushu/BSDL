@@ -1320,3 +1320,4 @@ _SDL_SetSoftwareRendererSurface
 _SDL_EncodeURL
 _SDL_GetTrayClickPosition
 _SDL_GetTrayClickActivationToken
+_SDL_SetTrayEntryShortcut

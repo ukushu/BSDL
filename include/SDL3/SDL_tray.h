@@ -37,6 +37,7 @@
 #include <SDL3/SDL_properties.h>
 #include <SDL3/SDL_surface.h>
 #include <SDL3/SDL_video.h>
+#include <SDL3/SDL_keycode.h>
 
 #include <SDL3/SDL_begin_code.h>
 /* Set up for C function definitions, even when using C++ */
@@ -479,6 +480,28 @@ extern SDL_DECLSPEC void SDLCALL SDL_SetTrayEntryLabel(SDL_TrayEntry *entry, con
  * \sa SDL_SetTrayEntryLabel
  */
 extern SDL_DECLSPEC const char * SDLCALL SDL_GetTrayEntryLabel(SDL_TrayEntry *entry);
+
+/**
+ * Sets the physical keyboard shortcut displayed for a tray menu entry.
+ *
+ * This only displays the shortcut; it does not register or activate it.
+ * The shortcut is displayed by Linux tray hosts using the D-Bus menu
+ * protocol. Other platforms ignore it. The scancode is a physical key
+ * identifier and is independent of the active keyboard layout.
+ *
+ * Pass SDL_SCANCODE_UNKNOWN and SDL_KMOD_NONE to clear the shortcut. Only
+ * Control, Alt, Shift, and GUI modifiers are supported.
+ *
+ * \param entry the tray entry to update.
+ * \param scancode the physical key to display.
+ * \param mod the modifiers to display.
+ *
+ * \threadsafety This function should only be called on the main thread.
+ * \since This function is available since SDL 3.6.0.
+ *
+ * \sa SDL_InsertTrayEntryAt
+ */
+extern SDL_DECLSPEC void SDLCALL SDL_SetTrayEntryShortcut(SDL_TrayEntry *entry, SDL_Scancode scancode, SDL_Keymod mod);
 
 /**
  * Sets whether or not an entry is checked.

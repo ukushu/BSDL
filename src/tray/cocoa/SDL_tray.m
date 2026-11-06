@@ -522,6 +522,10 @@ void SDL_SetTrayEntryLabel(SDL_TrayEntry *entry, const char *label)
     [entry->nsitem setTitle:[NSString stringWithUTF8String:label]];
 }
 
+void SDL_SetTrayEntryShortcut(SDL_TrayEntry *entry, SDL_Scancode scancode, SDL_Keymod mod)
+{
+}
+
 const char *SDL_GetTrayEntryLabel(SDL_TrayEntry *entry)
 {
     CHECK_PARAM(!entry) {

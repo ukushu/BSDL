@@ -41,6 +41,48 @@ static void clicked(SDL_MenuItem *item, void *data)
         registered_menu = NULL;
     }
 }
+
+static void test_shortcut_property(SDL_DBusContext *ctx)
+{
+    DBusMessage *msg = dbus_message_new_signal(DBUS_MENU_OBJECT_PATH, DBUS_MENU_INTERFACE, "Test");
+    DBusMessageIter body, properties;
+    SDL_DBusMenuItem item = { 0 };
+    assert(msg);
+    item._parent.shortcut_scancode = SDL_SCANCODE_5;
+    item._parent.shortcut_modifiers = SDL_KMOD_CTRL | SDL_KMOD_SHIFT;
+    dbus_message_iter_init_append(msg, &body);
+    assert(dbus_message_iter_open_container(&body, DBUS_TYPE_ARRAY, "{sv}", &properties));
+    MenuAppendItemProperties(ctx, &item, &properties);
+    assert(dbus_message_iter_close_container(&body, &properties));
+
+    DBusMessageIter array, entry, pair, value, sequence, keypress;
+    const char *name;
+    const char *expected[] = { "Control", "Shift", "5" };
+    int index = 0;
+    assert(dbus_message_iter_init(msg, &array));
+    dbus_message_iter_recurse(&array, &entry);
+    while (dbus_message_iter_get_arg_type(&entry) != DBUS_TYPE_INVALID) {
+        dbus_message_iter_recurse(&entry, &pair);
+        dbus_message_iter_get_basic(&pair, &name);
+        if (SDL_strcmp(name, "shortcut") == 0) {
+            assert(dbus_message_iter_next(&pair));
+            dbus_message_iter_recurse(&pair, &value);
+            dbus_message_iter_recurse(&value, &sequence);
+            dbus_message_iter_recurse(&sequence, &keypress);
+            while (dbus_message_iter_get_arg_type(&keypress) == DBUS_TYPE_STRING) {
+                dbus_message_iter_get_basic(&keypress, &name);
+                assert(index < SDL_arraysize(expected));
+                assert(SDL_strcmp(name, expected[index++]) == 0);
+                dbus_message_iter_next(&keypress);
+            }
+            break;
+        }
+        dbus_message_iter_next(&entry);
+    }
+    assert(index == SDL_arraysize(expected));
+    dbus_message_unref(msg);
+}
+
 int main(int argc, char **argv)
 {
     SDL_DBusContext ctx = { 0 };
@@ -50,12 +92,14 @@ int main(int argc, char **argv)
     USE(message_iter_open_container); USE(message_iter_close_container);
     USE(message_unref); USE(message_iter_init); USE(message_iter_get_arg_type);
     USE(message_iter_recurse); USE(message_iter_get_basic); USE(message_iter_next);
+    USE(message_iter_append_basic);
 #undef USE
     ctx.connection_ref = retain_connection;
     ctx.connection_unref = release_connection;
     ctx.connection_send = send_reply;
     ctx.connection_get_is_connected = is_connected;
     ctx.connection_get_object_path_data = get_menu;
+    test_shortcut_property(&ctx);
     for (int fields = 0; fields <= 5; ++fields) {
         DBusMessage *msg = dbus_message_new_method_call("org.test.Menu", DBUS_MENU_OBJECT_PATH, DBUS_MENU_INTERFACE, "Event");
         assert(msg);

@@ -1076,6 +1076,40 @@ void SetTrayEntryLabel(SDL_TrayEntry *entry, const char *label)
     SDL_DBus_UpdateMenu(driver->dbus, tray_dbus->connection, main_menu_dbus->menu, main_menu_dbus->menu_path, TrayNewMenuOnMenuUpdateCallback, tray, SDL_DBUS_UPDATE_MENU_FLAGS_NONE);
 }
 
+void SetTrayEntryShortcut(SDL_TrayEntry *entry, SDL_Scancode scancode, SDL_Keymod mod)
+{
+    const SDL_Keymod supported_modifiers = SDL_KMOD_CTRL | SDL_KMOD_ALT | SDL_KMOD_SHIFT | SDL_KMOD_GUI;
+    SDL_TrayEntryDBus *entry_dbus;
+    SDL_Tray *tray;
+    SDL_TrayDriverDBus *driver;
+    SDL_TrayDBus *tray_dbus;
+    SDL_TrayMenuDBus *main_menu_dbus;
+
+    if (!entry) {
+        SDL_InvalidParamError("entry");
+        return;
+    }
+    if ((scancode != SDL_SCANCODE_UNKNOWN && ((int)scancode < 0 || scancode >= SDL_SCANCODE_COUNT)) ||
+        (mod & ~supported_modifiers) || (scancode == SDL_SCANCODE_UNKNOWN && mod != SDL_KMOD_NONE)) {
+        SDL_InvalidParamError("shortcut");
+        return;
+    }
+    if (scancode != SDL_SCANCODE_UNKNOWN && !SDL_GetScancodeName(scancode)[0]) {
+        SDL_InvalidParamError("scancode");
+        return;
+    }
+
+    tray = entry->parent->parent_tray;
+    tray_dbus = (SDL_TrayDBus *)tray->internal;
+    driver = (SDL_TrayDriverDBus *)tray->driver->internal;
+    entry_dbus = (SDL_TrayEntryDBus *)entry->internal;
+    main_menu_dbus = (SDL_TrayMenuDBus *)tray->menu->internal;
+
+    entry_dbus->item->shortcut_scancode = scancode;
+    entry_dbus->item->shortcut_modifiers = mod;
+    SDL_DBus_UpdateMenu(driver->dbus, tray_dbus->connection, main_menu_dbus->menu, main_menu_dbus->menu_path, TrayNewMenuOnMenuUpdateCallback, tray, SDL_DBUS_UPDATE_MENU_FLAGS_NONE);
+}
+
 const char *GetTrayEntryLabel(SDL_TrayEntry *entry)
 {
     return ((SDL_TrayEntryDBus *)entry->internal)->item->utf8;
@@ -1248,6 +1282,7 @@ SDL_TrayDriver *SDL_Tray_CreateDBusDriver(void)
     driver->RemoveTrayEntry = RemoveTrayEntry;
     driver->SetTrayEntryCallback = SetTrayEntryCallback;
     driver->SetTrayEntryLabel = SetTrayEntryLabel;
+    driver->SetTrayEntryShortcut = SetTrayEntryShortcut;
     driver->GetTrayEntryLabel = GetTrayEntryLabel;
     driver->SetTrayEntryChecked = SetTrayEntryChecked;
     driver->GetTrayEntryChecked = GetTrayEntryChecked;

@@ -92,6 +92,10 @@ void SDL_SetTrayEntryLabel(SDL_TrayEntry *entry, const char *label)
 {
 }
 
+void SDL_SetTrayEntryShortcut(SDL_TrayEntry *entry, SDL_Scancode scancode, SDL_Keymod mod)
+{
+}
+
 const char *SDL_GetTrayEntryLabel(SDL_TrayEntry *entry)
 {
     SDL_InvalidParamError("entry");

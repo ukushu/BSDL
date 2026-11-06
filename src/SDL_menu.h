@@ -23,6 +23,7 @@
 #define SDL_menu_h_
 
 #include "./SDL_list.h"
+#include <SDL3/SDL_keycode.h>
 
 typedef enum SDL_MenuItemType
 {
@@ -47,6 +48,8 @@ typedef struct SDL_MenuItem
     const char *utf8;
     SDL_MenuItemType type;
     SDL_MenuItemFlags flags;
+    SDL_Scancode shortcut_scancode;
+    SDL_Keymod shortcut_modifiers;
 
     /* Callback */
     void *cb_data;
