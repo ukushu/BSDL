@@ -1352,12 +1352,26 @@ static DBusHandlerResult MenuHandleEvent(SDL_DBusContext *ctx, SDL_ListNode *men
     DBusMessage *reply;
     const char *event_id;
     DBusMessageIter args;
-    Uint32 id;
+    dbus_int32_t id;
+    dbus_uint32_t timestamp;
 
     ctx->message_iter_init(msg, &args);
+    if (ctx->message_iter_get_arg_type(&args) != DBUS_TYPE_INT32) {
+        goto invalid_args;
+    }
     ctx->message_iter_get_basic(&args, &id);
-    ctx->message_iter_next(&args);
+    if (!ctx->message_iter_next(&args) || ctx->message_iter_get_arg_type(&args) != DBUS_TYPE_STRING) {
+        goto invalid_args;
+    }
     ctx->message_iter_get_basic(&args, &event_id);
+    if (!ctx->message_iter_next(&args) || ctx->message_iter_get_arg_type(&args) != DBUS_TYPE_VARIANT ||
+        !ctx->message_iter_next(&args) || ctx->message_iter_get_arg_type(&args) != DBUS_TYPE_UINT32) {
+        goto invalid_args;
+    }
+    ctx->message_iter_get_basic(&args, &timestamp);
+    if (ctx->message_iter_next(&args)) {
+        goto invalid_args;
+    }
 
     item = NULL;
     dbus_item = NULL;
@@ -1381,6 +1395,14 @@ static DBusHandlerResult MenuHandleEvent(SDL_DBusContext *ctx, SDL_ListNode *men
         }
     }
 
+    return DBUS_HANDLER_RESULT_HANDLED;
+
+invalid_args:
+    reply = ctx->message_new_error(msg, DBUS_ERROR_INVALID_ARGS, "Expected item id and event name");
+    if (reply) {
+        ctx->connection_send(conn, reply, NULL);
+        ctx->message_unref(reply);
+    }
     return DBUS_HANDLER_RESULT_HANDLED;
 }
 

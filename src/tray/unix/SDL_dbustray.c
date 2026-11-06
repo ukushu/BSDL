@@ -616,6 +616,8 @@ void DestroyTray(SDL_Tray *tray)
         tray->menu = NULL;
     }
 
+    SDL_free(tray_dbus->service_name);
+    SDL_free(tray_dbus);
     /* Free the tray */
     SDL_free(tray);
 }
