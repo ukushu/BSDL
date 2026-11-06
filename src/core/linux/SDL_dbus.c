@@ -1922,6 +1922,33 @@ static DBusHandlerResult MenuMessageHandler(DBusConnection *conn, DBusMessage *m
     } else if (ctx->message_is_method_call(msg, DBUS_MENU_INTERFACE, "AboutToShowGroup")) {
         DBusMessage *reply;
         DBusMessageIter iter, arr_iter;
+        DBusMessageIter args, ids_iter;
+        bool valid_ids = false;
+        bool open_root = false;
+
+        ctx->message_iter_init(msg, &args);
+        if (ctx->message_iter_get_arg_type(&args) == DBUS_TYPE_ARRAY) {
+            valid_ids = true;
+            ctx->message_iter_recurse(&args, &ids_iter);
+            while (ctx->message_iter_get_arg_type(&ids_iter) != DBUS_TYPE_INVALID) {
+                dbus_int32_t id;
+                if (ctx->message_iter_get_arg_type(&ids_iter) != DBUS_TYPE_INT32) {
+                    valid_ids = false;
+                    break;
+                }
+                ctx->message_iter_get_basic(&ids_iter, &id);
+                if (id == 0) {
+                    open_root = true;
+                }
+                if (!ctx->message_iter_next(&ids_iter)) {
+                    break;
+                }
+            }
+            if (ctx->message_iter_next(&args)) {
+                valid_ids = false;
+            }
+        }
+        open_root = open_root && valid_ids;
 
         reply = ctx->message_new_method_return(msg);
         if (!reply) {
@@ -1934,6 +1961,10 @@ static DBusHandlerResult MenuMessageHandler(DBusConnection *conn, DBusMessage *m
         ctx->message_iter_close_container(&iter, &arr_iter);
         ctx->connection_send(conn, reply, NULL);
         ctx->message_unref(reply);
+        /* Match AboutToShow: the callback may destroy the tray and D-Bus context. */
+        if (open_root && item->cb) {
+            item->cb(menu, item->cbdata);
+        }
         return DBUS_HANDLER_RESULT_HANDLED;
     } else if (ctx->message_is_method_call(msg, DBUS_MENU_INTERFACE, "GetGroupProperties")) {
         return MenuHandleGetGroupProperties(ctx, menu, conn, msg);
