@@ -245,6 +245,11 @@ SDL_Tray *SDL_CreateTrayWithProperties(SDL_PropertiesID props)
 
     SDL_Surface *icon = (SDL_Surface *)SDL_GetPointerProperty(props, SDL_PROP_TRAY_CREATE_ICON_POINTER, NULL);
     const char *tooltip = SDL_GetStringProperty(props, SDL_PROP_TRAY_CREATE_TOOLTIP_STRING, NULL);
+    NSString *tooltip_string = tooltip ? [NSString stringWithUTF8String:tooltip] : nil;
+    if (tooltip && !tooltip_string) {
+        SDL_InvalidParamError("tooltip");
+        return NULL;
+    }
 
     Sint64 width = SDL_GetNumberProperty(props, SDL_PROP_TRAY_CREATE_ICON_WIDTH_NUMBER, 0);
     Sint64 height = SDL_GetNumberProperty(props, SDL_PROP_TRAY_CREATE_ICON_HEIGHT_NUMBER, 0);
@@ -271,11 +276,7 @@ SDL_Tray *SDL_CreateTrayWithProperties(SDL_PropertiesID props)
     tray->statusItem = nil;
     tray->statusBar = [NSStatusBar systemStatusBar];
     tray->statusItem = [tray->statusBar statusItemWithLength:NSVariableStatusItemLength];
-    if (tooltip) {
-        tray->statusItem.button.toolTip = [NSString stringWithUTF8String:tooltip];
-    } else {
-        tray->statusItem.button.toolTip = nil;
-    }
+    tray->statusItem.button.toolTip = tooltip_string;
 
     tray->statusItem.button.image = image;
 
@@ -361,11 +362,12 @@ void SDL_SetTrayTooltip(SDL_Tray *tray, const char *tooltip)
         return;
     }
 
-    if (tooltip) {
-        tray->statusItem.button.toolTip = [NSString stringWithUTF8String:tooltip];
-    } else {
-        tray->statusItem.button.toolTip = nil;
+    NSString *tooltip_string = tooltip ? [NSString stringWithUTF8String:tooltip] : nil;
+    if (tooltip && !tooltip_string) {
+        SDL_InvalidParamError("tooltip");
+        return;
     }
+    tray->statusItem.button.toolTip = tooltip_string;
 }
 
 SDL_TrayMenu *SDL_CreateTrayMenu(SDL_Tray *tray)
@@ -538,6 +540,12 @@ SDL_TrayEntry *SDL_InsertTrayEntryAt(SDL_TrayMenu *menu, int pos, const char *la
         return NULL;
     }
 
+    NSString *title = label ? [NSString stringWithUTF8String:label] : nil;
+    if (label && !title) {
+        SDL_InvalidParamError("label");
+        return NULL;
+    }
+
     if (pos == -1) {
         pos = menu->nEntries;
     }
@@ -545,6 +553,26 @@ SDL_TrayEntry *SDL_InsertTrayEntryAt(SDL_TrayMenu *menu, int pos, const char *la
     SDL_TrayEntry *entry = (SDL_TrayEntry *)SDL_calloc(1, sizeof(*entry));
     if (!entry) {
         return NULL;
+    }
+
+    NSMenuItem *nsitem;
+    if (label == NULL) {
+        nsitem = [NSMenuItem separatorItem];
+    } else {
+        SDL_Tray *tray = GetTrayForMenu(menu);
+        SEL action = (flags & SDL_TRAYENTRY_SUBMENU) ? NULL : @selector(handleMenuItemClick:);
+        nsitem = [[NSMenuItem alloc] initWithTitle:title action:action keyEquivalent:@""];
+        if (!nsitem) {
+            SDL_free(entry);
+            SDL_OutOfMemory();
+            return NULL;
+        }
+        if (action) {
+            [nsitem setTarget:tray->clickHandler];
+        }
+        [nsitem setEnabled:((flags & SDL_TRAYENTRY_DISABLED) ? FALSE : TRUE)];
+        [nsitem setState:((flags & SDL_TRAYENTRY_CHECKED) ? NSControlStateValueOn : NSControlStateValueOff)];
+        [nsitem setRepresentedObject:[NSValue valueWithPointer:entry]];
     }
 
     SDL_TrayEntry **new_entries = (SDL_TrayEntry **)SDL_realloc(menu->entries, (menu->nEntries + 2) * sizeof(*new_entries));
@@ -562,21 +590,6 @@ SDL_TrayEntry *SDL_InsertTrayEntryAt(SDL_TrayMenu *menu, int pos, const char *la
 
     new_entries[pos] = entry;
     new_entries[menu->nEntries] = NULL;
-
-    NSMenuItem *nsitem;
-    if (label == NULL) {
-        nsitem = [NSMenuItem separatorItem];
-    } else {
-        SDL_Tray *tray = GetTrayForMenu(menu);
-        SEL action = (flags & SDL_TRAYENTRY_SUBMENU) ? NULL : @selector(handleMenuItemClick:);
-        nsitem = [[NSMenuItem alloc] initWithTitle:[NSString stringWithUTF8String:label] action:action keyEquivalent:@""];
-        if (action) {
-            [nsitem setTarget:tray->clickHandler];
-        }
-        [nsitem setEnabled:((flags & SDL_TRAYENTRY_DISABLED) ? FALSE : TRUE)];
-        [nsitem setState:((flags & SDL_TRAYENTRY_CHECKED) ? NSControlStateValueOn : NSControlStateValueOff)];
-        [nsitem setRepresentedObject:[NSValue valueWithPointer:entry]];
-    }
 
     [menu->nsmenu insertItem:nsitem atIndex:pos];
 
@@ -596,7 +609,13 @@ void SDL_SetTrayEntryLabel(SDL_TrayEntry *entry, const char *label)
         return;
     }
 
-    [entry->nsitem setTitle:[NSString stringWithUTF8String:label]];
+    NSString *title = [NSString stringWithUTF8String:label];
+    if (!title) {
+        SDL_InvalidParamError("label");
+        return;
+    }
+
+    [entry->nsitem setTitle:title];
 }
 
 void SDL_SetTrayEntryShortcut(SDL_TrayEntry *entry, SDL_Scancode scancode, SDL_Keymod mod)
