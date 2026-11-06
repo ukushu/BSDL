@@ -401,6 +401,72 @@ static void count_menu_callback(SDL_MenuItem *item, void *userdata)
     ++*(int *)userdata;
 }
 
+static bool count_menu_open_callback(SDL_ListNode *menu, void *userdata)
+{
+    (void)menu;
+    ++*(int *)userdata;
+    return true;
+}
+
+static void test_about_to_show_only_opens_root_menu(SDL_DBusContext *ctx)
+{
+    SDL_DBusMenuItem root = { 0 }, submenu = { 0 };
+    SDL_ListNode root_node = { 0 }, submenu_node = { 0 };
+    int callback_count = 0;
+
+    root.id = 0;
+    root.dbus = ctx;
+    root.cb = count_menu_open_callback;
+    root.cbdata = &callback_count;
+    root_node.entry = &root;
+    submenu.id = 1;
+    submenu.dbus = ctx;
+    submenu.cb = count_menu_open_callback;
+    submenu.cbdata = &callback_count;
+    submenu_node.entry = &submenu;
+
+    for (dbus_int32_t id = 0; id <= 1; ++id) {
+        DBusMessage *msg = dbus_message_new_method_call("org.test.Menu", DBUS_MENU_OBJECT_PATH,
+                                                        DBUS_MENU_INTERFACE, "AboutToShow");
+        assert(msg);
+        dbus_message_set_serial(msg, 1);
+        assert(dbus_message_append_args(msg, DBUS_TYPE_INT32, &id, DBUS_TYPE_INVALID));
+        replies = calls = 0;
+        expect_error = false;
+        SDL_ListNode *target = id == 0 ? &root_node : &submenu_node;
+        assert(MenuMessageHandler((DBusConnection *)ctx, msg, target) == DBUS_HANDLER_RESULT_HANDLED);
+        assert(replies == 1 && calls == 0);
+        assert(callback_count == 1);
+        dbus_message_unref(msg);
+    }
+
+    DBusMessage *msg = dbus_message_new_method_call("org.test.Menu", DBUS_MENU_OBJECT_PATH,
+                                                    DBUS_MENU_INTERFACE, "AboutToShow");
+    assert(msg);
+    dbus_message_set_serial(msg, 1);
+    const char *invalid_id = "0";
+    assert(dbus_message_append_args(msg, DBUS_TYPE_STRING, &invalid_id, DBUS_TYPE_INVALID));
+    replies = calls = 0;
+    expect_error = true;
+    assert(MenuMessageHandler((DBusConnection *)ctx, msg, &root_node) == DBUS_HANDLER_RESULT_HANDLED);
+    assert(replies == 1 && calls == 0 && callback_count == 1);
+    dbus_message_unref(msg);
+
+    msg = dbus_message_new_method_call("org.test.Menu", DBUS_MENU_OBJECT_PATH,
+                                       DBUS_MENU_INTERFACE, "AboutToShow");
+    assert(msg);
+    dbus_message_set_serial(msg, 1);
+    dbus_int32_t extra_id = 0;
+    dbus_uint32_t extra_arg = 0;
+    assert(dbus_message_append_args(msg, DBUS_TYPE_INT32, &extra_id,
+                                    DBUS_TYPE_UINT32, &extra_arg, DBUS_TYPE_INVALID));
+    replies = calls = 0;
+    assert(MenuMessageHandler((DBusConnection *)ctx, msg, &root_node) == DBUS_HANDLER_RESULT_HANDLED);
+    assert(replies == 1 && calls == 0 && callback_count == 1);
+    expect_error = false;
+    dbus_message_unref(msg);
+}
+
 static void test_disabled_menu_items_ignore_events(SDL_DBusContext *ctx)
 {
     SDL_ListNode *menu = NULL;
@@ -647,6 +713,7 @@ int main(int argc, char **argv)
     test_shortcut_property(&ctx, SDL_SCANCODE_UNKNOWN, NULL);
     assert(SDL_Init(0));
     test_disabled_menu_items_ignore_events(&ctx);
+    test_about_to_show_only_opens_root_menu(&ctx);
     test_tray_click_method_routing(&ctx);
     for (int fields = 0; fields <= 5; ++fields) {
         DBusMessage *msg = dbus_message_new_method_call("org.test.Menu", DBUS_MENU_OBJECT_PATH, DBUS_MENU_INTERFACE, "Event");

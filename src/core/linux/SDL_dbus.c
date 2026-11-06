@@ -1922,7 +1922,25 @@ static DBusHandlerResult MenuMessageHandler(DBusConnection *conn, DBusMessage *m
         return MenuHandleEventGroup(ctx, menu, conn, msg);
     } else if (ctx->message_is_method_call(msg, DBUS_MENU_INTERFACE, "AboutToShow")) {
         DBusMessage *reply;
+        DBusMessageIter args;
+        dbus_int32_t id;
         dbus_bool_t need_update;
+        bool valid_id;
+
+        valid_id = ctx->message_iter_init(msg, &args) &&
+                   ctx->message_iter_get_arg_type(&args) == DBUS_TYPE_INT32;
+        if (valid_id) {
+            ctx->message_iter_get_basic(&args, &id);
+            valid_id = !ctx->message_iter_next(&args);
+        }
+        if (!valid_id) {
+            reply = ctx->message_new_error(msg, DBUS_ERROR_INVALID_ARGS, "Expected one item id");
+            if (reply) {
+                ctx->connection_send(conn, reply, NULL);
+                ctx->message_unref(reply);
+            }
+            return DBUS_HANDLER_RESULT_HANDLED;
+        }
 
         need_update = FALSE;
         reply = ctx->message_new_method_return(msg);
@@ -1933,7 +1951,7 @@ static DBusHandlerResult MenuMessageHandler(DBusConnection *conn, DBusMessage *m
         ctx->connection_send(conn, reply, NULL);
         ctx->message_unref(reply);
         /* The callback may destroy the last tray and its D-Bus context. */
-        if (item->cb) {
+        if (id == 0 && item->cb) {
             item->cb(menu, item->cbdata);
         }
         return DBUS_HANDLER_RESULT_HANDLED;

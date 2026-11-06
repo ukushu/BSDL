@@ -835,13 +835,13 @@ SDL_TrayEntry *SDL_InsertTrayEntryAt(SDL_TrayMenu *menu, int pos, const char *la
 
     SDL_TrayEntry **new_entries = (SDL_TrayEntry **)SDL_realloc(menu->entries, (menu->nEntries + 2) * sizeof(*new_entries));
     if (!new_entries) {
-        SDL_free(entry->label_cache);
-        SDL_free(entry);
-        SDL_free(label_w);
         if (entry->submenu) {
             DestroyMenu(entry->submenu->hMenu);
             SDL_free(entry->submenu);
         }
+        SDL_free(entry->label_cache);
+        SDL_free(entry);
+        SDL_free(label_w);
         return NULL;
     }
 
@@ -854,7 +854,7 @@ SDL_TrayEntry *SDL_InsertTrayEntryAt(SDL_TrayMenu *menu, int pos, const char *la
     } else {
         UINT mf = MF_STRING | MF_BYPOSITION;
         if (flags & SDL_TRAYENTRY_SUBMENU) {
-            mf = MF_POPUP;
+            mf |= MF_POPUP;
         }
 
         if (flags & SDL_TRAYENTRY_DISABLED) {
