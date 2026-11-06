@@ -877,6 +877,12 @@ SDL_TrayEntry *InsertTrayEntryAt(SDL_TrayMenu *menu, int pos, const char *label,
         entry_dbus->item->type = SDL_MENU_ITEM_TYPE_NORMAL;
     }
     entry_dbus->item->flags = SDL_MENU_ITEM_FLAGS_NONE;
+    if (flags & SDL_TRAYENTRY_DISABLED) {
+        entry_dbus->item->flags |= SDL_MENU_ITEM_FLAGS_DISABLED;
+    }
+    if (flags & SDL_TRAYENTRY_CHECKED) {
+        entry_dbus->item->flags |= SDL_MENU_ITEM_FLAGS_CHECKED;
+    }
     entry_dbus->item->cb_data = NULL;
     entry_dbus->item->cb = NULL;
     entry_dbus->item->sub_menu = NULL;

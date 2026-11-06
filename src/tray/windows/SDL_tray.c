@@ -722,9 +722,11 @@ bool SDL_GetTrayEntryEnabled(SDL_TrayEntry *entry)
     mii.cbSize = sizeof(MENUITEMINFOW);
     mii.fMask = MIIM_STATE;
 
-    GetMenuItemInfoW(entry->parent->hMenu, (UINT) entry->id, FALSE, &mii);
+    if (!GetMenuItemInfoW(entry->parent->hMenu, (UINT) entry->id, FALSE, &mii)) {
+        return false;
+    }
 
-    return ((mii.fState & MFS_ENABLED) != 0);
+    return (mii.fState & (MFS_DISABLED | MFS_GRAYED)) == 0;
 }
 
 void SDL_SetTrayEntryCallback(SDL_TrayEntry *entry, SDL_TrayCallback callback, void *userdata)
