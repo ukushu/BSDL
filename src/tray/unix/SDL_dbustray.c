@@ -93,6 +93,9 @@ static DBusHandlerResult TrayHandleGetAllProps(SDL_Tray *tray, SDL_TrayDBus *tra
     driver->dbus->message_iter_init(msg, &iter);
     driver->dbus->message_iter_get_basic(&iter, &interface);
     reply = driver->dbus->message_new_method_return(msg);
+    if (!reply) {
+        return DBUS_HANDLER_RESULT_HANDLED;
+    }
     driver->dbus->message_iter_init_append(reply, &iter);
     driver->dbus->message_iter_open_container(&iter, DBUS_TYPE_ARRAY, "{sv}", &dict_iter);
 
@@ -243,6 +246,9 @@ static DBusHandlerResult TrayHandleGetProp(SDL_Tray *tray, SDL_TrayDBus *tray_db
     driver->dbus->message_iter_get_basic(&iter, &property);
 
     reply = driver->dbus->message_new_method_return(msg);
+    if (!reply) {
+        return DBUS_HANDLER_RESULT_HANDLED;
+    }
     driver->dbus->message_iter_init_append(reply, &iter);
 
     if (!SDL_strcmp(property, "Category")) {
@@ -328,8 +334,10 @@ static DBusHandlerResult TrayHandleGetProp(SDL_Tray *tray, SDL_TrayDBus *tray_db
         reply = driver->dbus->message_new_error(msg, DBUS_ERROR_UNKNOWN_PROPERTY, "Unknown property");
     }
 
-    driver->dbus->connection_send(tray_dbus->connection, reply, NULL);
-    driver->dbus->message_unref(reply);
+    if (reply) {
+        driver->dbus->connection_send(tray_dbus->connection, reply, NULL);
+        driver->dbus->message_unref(reply);
+    }
     return DBUS_HANDLER_RESULT_HANDLED;
 }
 
@@ -350,6 +358,9 @@ static DBusHandlerResult TrayMessageHandler(DBusConnection *connection, DBusMess
         return TrayHandleGetAllProps(tray, tray_dbus, driver, msg);
     } else if (driver->dbus->message_is_method_call(msg, "org.freedesktop.DBus.Introspectable", "Introspect")) {
         reply = driver->dbus->message_new_method_return(msg);
+        if (!reply) {
+            return DBUS_HANDLER_RESULT_HANDLED;
+        }
         driver->dbus->message_append_args(reply, DBUS_TYPE_STRING, &sni_introspect, DBUS_TYPE_INVALID);
         driver->dbus->connection_send(tray_dbus->connection, reply, NULL);
         driver->dbus->message_unref(reply);
@@ -418,8 +429,10 @@ static DBusHandlerResult TrayMessageHandler(DBusConnection *connection, DBusMess
         }
 
         reply = driver->dbus->message_new_method_return(msg);
-        driver->dbus->connection_send(tray_dbus->connection, reply, NULL);
-        driver->dbus->message_unref(reply);
+        if (reply) {
+            driver->dbus->connection_send(tray_dbus->connection, reply, NULL);
+            driver->dbus->message_unref(reply);
+        }
         return DBUS_HANDLER_RESULT_HANDLED;
     }
 
