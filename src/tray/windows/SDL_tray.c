@@ -125,12 +125,14 @@ LRESULT CALLBACK TrayWindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
     switch (uMsg) {
         case WM_TRAYICON:
             {
+                SDL_Point position = { GET_X_LPARAM(wParam), GET_Y_LPARAM(wParam) };
+                const SDL_Point *click_position = (position.x == -1 && position.y == -1) ? NULL : &position;
                 bool show_menu = false;
 
                 switch (LOWORD(lParam)) {
                     case WM_LBUTTONUP:
                         if (tray->left_click_callback) {
-                            show_menu = tray->left_click_callback(tray->userdata, tray);
+                            show_menu = SDL_InvokeTrayClick(tray, tray->left_click_callback, tray->userdata, click_position, NULL);
                         } else {
                             show_menu = true;
                         }
@@ -138,7 +140,7 @@ LRESULT CALLBACK TrayWindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 
                     case WM_CONTEXTMENU:
                         if (tray->right_click_callback) {
-                            show_menu = tray->right_click_callback(tray->userdata, tray);
+                            show_menu = SDL_InvokeTrayClick(tray, tray->right_click_callback, tray->userdata, click_position, NULL);
                         } else {
                             show_menu = true;
                         }
@@ -146,12 +148,12 @@ LRESULT CALLBACK TrayWindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 
                     case WM_MBUTTONUP:
                         if (tray->middle_click_callback) {
-                            tray->middle_click_callback(tray->userdata, tray);
+                            SDL_InvokeTrayClick(tray, tray->middle_click_callback, tray->userdata, click_position, NULL);
                         }
                         break;
                 }
 
-                if (show_menu && tray->menu) {
+                if (show_menu && IsWindow(hwnd) && (SDL_Tray *)GetWindowLongPtr(hwnd, GWLP_USERDATA) == tray && tray->menu) {
                     SetForegroundWindow(hwnd);
                     TrackPopupMenu(tray->menu->hMenu, TPM_BOTTOMALIGN | TPM_RIGHTALIGN, GET_X_LPARAM(wParam), GET_Y_LPARAM(wParam), 0, hwnd, NULL);
                 }
@@ -799,6 +801,7 @@ void SDL_DestroyTray(SDL_Tray *tray)
     }
 
     if (tray->hwnd) {
+        SetWindowLongPtr(tray->hwnd, GWLP_USERDATA, 0);
         DestroyWindow(tray->hwnd);
     }
 

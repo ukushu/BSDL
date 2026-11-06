@@ -509,6 +509,19 @@ add_sdl_test_executable(testtime SOURCES testtime.c NAME83 timesdl)
 add_sdl_test_executable(testmanymouse SOURCES testmanymouse.c NAME83 manymous)
 add_sdl_test_executable(testmodal SOURCES testmodal.c NAME83 modal)
 add_sdl_test_executable(testtray NEEDS_RESOURCES TESTUTILS SOURCES testtray.c NAME83 tray)
+if(TARGET SDL3-static AND NOT SDL_TESTS_LINK_SHARED AND DEFINED SDL3_BINARY_DIR)
+    add_sdl_test_executable(testtraycontext NONINTERACTIVE SOURCES testtraycontext.c)
+    target_include_directories(testtraycontext PRIVATE
+        "${SDL3_BINARY_DIR}/include-config-$<LOWER_CASE:$<CONFIG>>/build_config")
+    target_compile_definitions(testtraycontext PRIVATE USING_GENERATED_CONFIG_H SDL_STATIC_LIB)
+    if(APPLE AND NOT IOS AND NOT TVOS AND NOT VISIONOS)
+        add_sdl_test_executable(testtraycocoa NONINTERACTIVE SOURCES testtraycocoa.m)
+        target_include_directories(testtraycocoa PRIVATE
+            "${SDL3_BINARY_DIR}/include-config-$<LOWER_CASE:$<CONFIG>>/build_config")
+        target_compile_definitions(testtraycocoa PRIVATE USING_GENERATED_CONFIG_H SDL_STATIC_LIB)
+        target_compile_options(testtraycocoa PRIVATE -fobjc-arc)
+    endif()
+endif()
 
 
 add_sdl_test_executable(testprocess

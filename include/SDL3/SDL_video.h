@@ -1661,6 +1661,10 @@ extern SDL_DECLSPEC SDL_Window * SDLCALL SDL_GetWindowParent(SDL_Window *window)
  * client-side decorations such as shadows or invisible resize borders extend
  * beyond the visible frame (see docs/README-wayland.md for details).
  *
+ * - `SDL_PROP_WINDOW_WAYLAND_ACTIVATION_TOKEN_STRING`: an externally supplied
+ *   xdg-activation token. Set this before SDL_ShowWindow or SDL_RaiseWindow to
+ *   request activation; it is consumed once the request is submitted. The
+ *   compositor decides whether to grant focus. Supported since SDL 3.6.0.
  * - `SDL_PROP_WINDOW_WAYLAND_DISPLAY_POINTER`: the wl_display associated with
  *   the window
  * - `SDL_PROP_WINDOW_WAYLAND_SURFACE_POINTER`: the wl_surface associated with
@@ -1758,6 +1762,7 @@ extern SDL_DECLSPEC SDL_PropertiesID SDLCALL SDL_GetWindowProperties(SDL_Window 
 #define SDL_PROP_WINDOW_WIN32_HWND_POINTER                          "SDL.window.win32.hwnd"
 #define SDL_PROP_WINDOW_WIN32_HDC_POINTER                           "SDL.window.win32.hdc"
 #define SDL_PROP_WINDOW_WIN32_INSTANCE_POINTER                      "SDL.window.win32.instance"
+#define SDL_PROP_WINDOW_WAYLAND_ACTIVATION_TOKEN_STRING             "SDL.window.wayland.activation_token"
 #define SDL_PROP_WINDOW_WAYLAND_DISPLAY_POINTER                     "SDL.window.wayland.display"
 #define SDL_PROP_WINDOW_WAYLAND_SURFACE_POINTER                     "SDL.window.wayland.surface"
 #define SDL_PROP_WINDOW_WAYLAND_LAYER_SURFACE_POINTER               "SDL.window.wayland.layer_surface"

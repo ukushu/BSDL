@@ -29,6 +29,7 @@
 #include "../../events/SDL_events_c.h"
 #include "../../core/unix/SDL_appid.h"
 #include "../../notification/SDL_notification_c.h"
+#include "../../tray/SDL_tray_utils.h"
 #include "../SDL_egl_c.h"
 #include "SDL_waylandevents_c.h"
 #include "SDL_waylandmouse.h"
@@ -2604,14 +2605,26 @@ void Wayland_ShowWindow(SDL_VideoDevice *_this, SDL_Window *window)
          * Note that we don't check for empty strings, as that is still
          * considered a valid activation token!
          */
-        const char *activation_token = SDL_getenv("XDG_ACTIVATION_TOKEN");
+        const char *activation_token = SDL_GetStringProperty(SDL_GetWindowProperties(window),
+            SDL_PROP_WINDOW_WAYLAND_ACTIVATION_TOKEN_STRING, NULL);
+        bool activation_token_from_environment = false;
+        if (!activation_token) {
+            activation_token = SDL_GetTrayActivationToken();
+        }
+        if (!activation_token) {
+            activation_token = SDL_getenv("XDG_ACTIVATION_TOKEN");
+            activation_token_from_environment = (activation_token != NULL);
+        }
         if (activation_token) {
             xdg_activation_v1_activate(c->activation_manager,
                                        activation_token,
                                        data->surface);
+            SDL_ClearProperty(SDL_GetWindowProperties(window), SDL_PROP_WINDOW_WAYLAND_ACTIVATION_TOKEN_STRING);
 
-            // Clear this variable, per the protocol's request
-            SDL_unsetenv_unsafe("XDG_ACTIVATION_TOKEN");
+            if (activation_token_from_environment) {
+                // Clear this variable, per the protocol's request
+                SDL_unsetenv_unsafe("XDG_ACTIVATION_TOKEN");
+            }
         } else {
             // Try to generate an activation token for this window.
             Wayland_RaiseWindow(_this, window);
@@ -2852,11 +2865,19 @@ void Wayland_RaiseWindow(SDL_VideoDevice *_this, SDL_Window *window)
          * Note that we don't check for empty strings, as that is still
          * considered a valid activation token!
          */
-        const char *activation_token = SDL_GetNotificationActivationToken();
+        const char *activation_token = SDL_GetStringProperty(SDL_GetWindowProperties(window),
+            SDL_PROP_WINDOW_WAYLAND_ACTIVATION_TOKEN_STRING, NULL);
+        if (!activation_token) {
+            activation_token = SDL_GetTrayActivationToken();
+        }
+        if (!activation_token) {
+            activation_token = SDL_GetNotificationActivationToken();
+        }
         if (activation_token) {
             xdg_activation_v1_activate(viddata->activation_manager,
                                        activation_token,
                                        wind->surface);
+            SDL_ClearProperty(SDL_GetWindowProperties(window), SDL_PROP_WINDOW_WAYLAND_ACTIVATION_TOKEN_STRING);
             return;
         }
     }

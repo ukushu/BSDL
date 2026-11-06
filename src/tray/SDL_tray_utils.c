@@ -95,3 +95,61 @@ int SDL_GetActiveTrayCount(void)
 {
     return active_trays;
 }
+
+/* Click contexts are synchronous, main-thread-only, and may be nested. */
+typedef struct SDL_TrayClickContext
+{
+    SDL_Tray *tray;
+    const SDL_Point *position;
+    const char *activation_token;
+} SDL_TrayClickContext;
+
+static const SDL_TrayClickContext *current_click;
+
+bool SDL_InvokeTrayClick(SDL_Tray *tray, SDL_TrayClickCallback callback, void *userdata,
+                         const SDL_Point *position, const char *activation_token)
+{
+    const SDL_TrayClickContext context = { tray, position, activation_token };
+    const SDL_TrayClickContext *previous = current_click;
+    current_click = &context;
+    bool show_menu = callback ? callback(userdata, tray) : true;
+    current_click = previous;
+    return show_menu;
+}
+
+bool SDL_GetTrayClickPosition(SDL_Tray *tray, int *x, int *y)
+{
+    if (!SDL_IsMainThread()) {
+        return SDL_SetError("This function should be called on the main thread");
+    }
+    if (!SDL_ObjectValid(tray, SDL_OBJECT_TYPE_TRAY)) {
+        return SDL_InvalidParamError("tray");
+    }
+    if (!x || !y) {
+        return SDL_InvalidParamError(!x ? "x" : "y");
+    }
+    if (!current_click || current_click->tray != tray || !current_click->position) {
+        return false;
+    }
+    *x = current_click->position->x;
+    *y = current_click->position->y;
+    return true;
+}
+
+const char *SDL_GetTrayActivationToken(void)
+{
+    return current_click ? current_click->activation_token : NULL;
+}
+
+const char *SDL_GetTrayClickActivationToken(SDL_Tray *tray)
+{
+    if (!SDL_IsMainThread()) {
+        SDL_SetError("This function should be called on the main thread");
+        return NULL;
+    }
+    if (!SDL_ObjectValid(tray, SDL_OBJECT_TYPE_TRAY)) {
+        SDL_InvalidParamError("tray");
+        return NULL;
+    }
+    return current_click && current_click->tray == tray ? current_click->activation_token : NULL;
+}

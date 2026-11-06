@@ -114,6 +114,46 @@ typedef void (SDLCALL *SDL_TrayCallback)(void *userdata, SDL_TrayEntry *entry);
 typedef bool (SDLCALL *SDL_TrayClickCallback)(void *userdata, SDL_Tray *tray);
 
 /**
+ * Gets the screen position supplied for the current tray click callback.
+ *
+ * The coordinates are a placement hint in the host desktop's screen coordinate
+ * space. They may be negative on multi-display desktops. Not all hosts supply
+ * a position, and Wayland does not generally allow absolute window placement.
+ * Call this inside SDL_TrayClickCallback, before returning or destroying tray.
+ * For an application-rendered menu, return false from the callback and create
+ * or raise its window synchronously to use any supplied Wayland activation token.
+ * For deferred presentation, copy SDL_GetTrayClickActivationToken() and set
+ * SDL_PROP_WINDOW_WAYLAND_ACTIVATION_TOKEN_STRING before showing or raising it.
+ *
+ * \param tray the tray whose click is being handled.
+ * \param x a pointer filled with the horizontal coordinate.
+ * \param y a pointer filled with the vertical coordinate.
+ * \returns true if a position was supplied, or false if unavailable; outputs
+ *          are unchanged on false. Call SDL_GetError() for invalid arguments.
+ *
+ * \threadsafety This function should only be called on the main thread.
+ * \since This function is available since SDL 3.6.0.
+ */
+extern SDL_DECLSPEC bool SDLCALL SDL_GetTrayClickPosition(SDL_Tray *tray, int *x, int *y);
+
+/**
+ * Gets the activation token supplied for the current tray click callback.
+ *
+ * The returned string is borrowed and valid only until the callback returns.
+ * Copy it if the menu window will be presented later, then set the window's
+ * SDL_PROP_WINDOW_WAYLAND_ACTIVATION_TOKEN_STRING before showing or raising it.
+ * A token is a request to the compositor; focus is not guaranteed.
+ *
+ * \param tray the tray whose click is being handled.
+ * \returns the token, or NULL if unavailable or outside its click callback.
+ * \threadsafety This function should only be called on the main thread.
+ * \since This function is available since SDL 3.6.0.
+ */
+extern SDL_DECLSPEC const char * SDLCALL SDL_GetTrayClickActivationToken(SDL_Tray *tray);
+
+
+
+/**
  * Create an icon to be placed in the operating system's tray, or equivalent.
  *
  * Many platforms advise not using a system tray unless persistence is a
@@ -157,6 +197,14 @@ extern SDL_DECLSPEC SDL_Tray * SDLCALL SDL_CreateTray(SDL_Surface *icon, const c
  *
  * - `SDL_PROP_TRAY_CREATE_ICON_POINTER`: an SDL_Surface to be used as the
  *   tray icon. May be NULL.
+ * - `SDL_PROP_TRAY_CREATE_ICON_IS_TEMPLATE_BOOLEAN`: whether the icon should
+ *   be treated as a template image by platforms that support template icons.
+ *   Defaults to false. Supported on macOS; ignored elsewhere.
+ * - `SDL_PROP_TRAY_CREATE_ICON_WIDTH_NUMBER` and
+ *   `SDL_PROP_TRAY_CREATE_ICON_HEIGHT_NUMBER`: the logical icon size in points
+ *   on macOS. Both must be positive integers up to INT_MAX, or both zero to
+ *   use the platform's default sizing behavior. Defaults to zero. Retained by
+ *   SDL_SetTrayIcon; ignored elsewhere.
  * - `SDL_PROP_TRAY_CREATE_TOOLTIP_STRING`: a tooltip to be displayed when the
  *   mouse hovers the icon in UTF-8 encoding. Not supported on all platforms.
  *   May be NULL.
@@ -189,6 +237,9 @@ extern SDL_DECLSPEC SDL_Tray * SDLCALL SDL_CreateTray(SDL_Surface *icon, const c
 extern SDL_DECLSPEC SDL_Tray * SDLCALL SDL_CreateTrayWithProperties(SDL_PropertiesID props);
 
 #define SDL_PROP_TRAY_CREATE_ICON_POINTER                 "SDL.tray.create.icon"
+#define SDL_PROP_TRAY_CREATE_ICON_IS_TEMPLATE_BOOLEAN     "SDL.tray.create.icon_is_template"
+#define SDL_PROP_TRAY_CREATE_ICON_WIDTH_NUMBER            "SDL.tray.create.icon_width"
+#define SDL_PROP_TRAY_CREATE_ICON_HEIGHT_NUMBER           "SDL.tray.create.icon_height"
 #define SDL_PROP_TRAY_CREATE_TOOLTIP_STRING               "SDL.tray.create.tooltip"
 #define SDL_PROP_TRAY_CREATE_USERDATA_POINTER             "SDL.tray.create.userdata"
 #define SDL_PROP_TRAY_CREATE_LEFTCLICK_CALLBACK_POINTER   "SDL.tray.create.leftclick_callback"

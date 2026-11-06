@@ -27,3 +27,7 @@ extern void SDL_UnregisterTray(SDL_Tray *tray);
 extern void SDL_CleanupTrays(void);
 extern bool SDL_HasActiveTrays(void);
 extern int SDL_GetActiveTrayCount(void);
+
+extern bool SDL_InvokeTrayClick(SDL_Tray *tray, SDL_TrayClickCallback callback, void *userdata,
+                                const SDL_Point *position, const char *activation_token);
+extern const char *SDL_GetTrayActivationToken(void);

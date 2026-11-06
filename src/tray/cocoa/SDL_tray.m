@@ -69,6 +69,8 @@ struct SDL_Tray {
     SDLTrayClickHandler *clickHandler;
 
     void *userdata;
+    bool icon_is_template;
+    NSSize icon_size;
     SDL_TrayClickCallback left_click_callback;
     SDL_TrayClickCallback right_click_callback;
     SDL_TrayClickCallback middle_click_callback;
@@ -82,34 +84,39 @@ struct SDL_Tray {
         return;
     }
 
+    SDL_Tray *tray = self.tray;
+
     NSEvent *event = [NSApp currentEvent];
     NSUInteger buttonNumber = [event buttonNumber];
 
+    float x, y;
+    SDL_GetGlobalMouseState(&x, &y);
+    SDL_Point position = { (int)x, (int)y };
     bool show_menu = false;
 
     if (buttonNumber == 0) {
         /* Left click */
-        if (self.tray->left_click_callback) {
-            show_menu = self.tray->left_click_callback(self.tray->userdata, self.tray);
+        if (tray->left_click_callback) {
+            show_menu = SDL_InvokeTrayClick(tray, tray->left_click_callback, tray->userdata, &position, NULL);
         } else {
             show_menu = true;
         }
     } else if (buttonNumber == 1) {
         /* Right click */
-        if (self.tray->right_click_callback) {
-            show_menu = self.tray->right_click_callback(self.tray->userdata, self.tray);
+        if (tray->right_click_callback) {
+            show_menu = SDL_InvokeTrayClick(tray, tray->right_click_callback, tray->userdata, &position, NULL);
         } else {
             show_menu = true;
         }
     } else if (buttonNumber == 2) {
         /* Middle click */
-        if (self.tray->middle_click_callback) {
-            self.tray->middle_click_callback(self.tray->userdata, self.tray);
+        if (tray->middle_click_callback) {
+            SDL_InvokeTrayClick(tray, tray->middle_click_callback, tray->userdata, &position, NULL);
         }
     }
 
-    if (show_menu && self.tray->menu) {
-        [self.tray->statusItem popUpStatusItemMenu:self.tray->menu->nsmenu];
+    if (show_menu && self.tray == tray && tray->menu) {
+        [tray->statusItem popUpStatusItemMenu:tray->menu->nsmenu];
     }
 }
 
@@ -134,7 +141,11 @@ struct SDL_Tray {
             NSPoint localPoint = [strongSelf.tray->statusItem.button convertPoint:clickLocation fromView:nil];
             if (NSPointInRect(localPoint, strongSelf.tray->statusItem.button.bounds)) {
                 if (strongSelf.tray->middle_click_callback) {
-                    strongSelf.tray->middle_click_callback(strongSelf.tray->userdata, strongSelf.tray);
+                    float x, y;
+                    SDL_GetGlobalMouseState(&x, &y);
+                    SDL_Point position = { (int)x, (int)y };
+                    SDL_InvokeTrayClick(strongSelf.tray, strongSelf.tray->middle_click_callback,
+                                        strongSelf.tray->userdata, &position, NULL);
                 }
             }
         }
@@ -177,6 +188,36 @@ void SDL_UpdateTrays(void)
 {
 }
 
+static NSImage *CreateTrayImage(SDL_Surface *source, NSSize size, bool is_template)
+{
+    SDL_Surface *icon = SDL_ConvertSurface(source, SDL_PIXELFORMAT_RGBA32);
+    if (!icon) {
+        return nil;
+    }
+    NSBitmapImageRep *bitmap = [[NSBitmapImageRep alloc] initWithBitmapDataPlanes:NULL
+        pixelsWide:icon->w pixelsHigh:icon->h bitsPerSample:8 samplesPerPixel:4
+        hasAlpha:YES isPlanar:NO colorSpaceName:NSDeviceRGBColorSpace
+        bitmapFormat:NSBitmapFormatAlphaNonpremultiplied bytesPerRow:0 bitsPerPixel:32];
+    if (!bitmap) {
+        SDL_DestroySurface(icon);
+        SDL_SetError("Unable to allocate tray icon bitmap");
+        return nil;
+    }
+    for (int y = 0; y < icon->h; ++y) {
+        SDL_memcpy(bitmap.bitmapData + y * bitmap.bytesPerRow,
+                   (const Uint8 *)icon->pixels + y * icon->pitch, (size_t)icon->w * 4);
+    }
+    if (size.width == 0) {
+        size = NSMakeSize(22.0, 22.0);
+    }
+    bitmap.size = size;
+    NSImage *image = [[NSImage alloc] initWithSize:size];
+    [image addRepresentation:bitmap];
+    image.template = is_template;
+    SDL_DestroySurface(icon);
+    return image;
+}
+
 SDL_Tray *SDL_CreateTrayWithProperties(SDL_PropertiesID props)
 {
     if (!SDL_IsMainThread()) {
@@ -187,61 +228,38 @@ SDL_Tray *SDL_CreateTrayWithProperties(SDL_PropertiesID props)
     SDL_Surface *icon = (SDL_Surface *)SDL_GetPointerProperty(props, SDL_PROP_TRAY_CREATE_ICON_POINTER, NULL);
     const char *tooltip = SDL_GetStringProperty(props, SDL_PROP_TRAY_CREATE_TOOLTIP_STRING, NULL);
 
-    if (icon) {
-        icon = SDL_ConvertSurface(icon, SDL_PIXELFORMAT_RGBA32);
-        if (!icon) {
-            return NULL;
-        }
-    }
-
-    SDL_Tray *tray = (SDL_Tray *)SDL_calloc(1, sizeof(*tray));
-    if (!tray) {
-        SDL_DestroySurface(icon);
+    Sint64 width = SDL_GetNumberProperty(props, SDL_PROP_TRAY_CREATE_ICON_WIDTH_NUMBER, 0);
+    Sint64 height = SDL_GetNumberProperty(props, SDL_PROP_TRAY_CREATE_ICON_HEIGHT_NUMBER, 0);
+    if (width < 0 || height < 0 || (width == 0) != (height == 0) || width > INT_MAX || height > INT_MAX) {
+        SDL_SetError("Tray icon width and height must both be zero or positive integers up to INT_MAX");
         return NULL;
     }
-
+    SDL_Tray *tray = (SDL_Tray *)SDL_calloc(1, sizeof(*tray));
+    if (!tray) {
+        return NULL;
+    }
+    tray->icon_size = NSMakeSize((CGFloat)width, (CGFloat)height);
     tray->userdata = SDL_GetPointerProperty(props, SDL_PROP_TRAY_CREATE_USERDATA_POINTER, NULL);
+    tray->icon_is_template = SDL_GetBooleanProperty(props, SDL_PROP_TRAY_CREATE_ICON_IS_TEMPLATE_BOOLEAN, false);
     tray->left_click_callback = (SDL_TrayClickCallback)SDL_GetPointerProperty(props, SDL_PROP_TRAY_CREATE_LEFTCLICK_CALLBACK_POINTER, NULL);
     tray->right_click_callback = (SDL_TrayClickCallback)SDL_GetPointerProperty(props, SDL_PROP_TRAY_CREATE_RIGHTCLICK_CALLBACK_POINTER, NULL);
     tray->middle_click_callback = (SDL_TrayClickCallback)SDL_GetPointerProperty(props, SDL_PROP_TRAY_CREATE_MIDDLECLICK_CALLBACK_POINTER, NULL);
 
+    NSImage *image = icon ? CreateTrayImage(icon, tray->icon_size, tray->icon_is_template) : nil;
+    if (icon && !image) {
+        SDL_free(tray);
+        return NULL;
+    }
     tray->statusItem = nil;
     tray->statusBar = [NSStatusBar systemStatusBar];
     tray->statusItem = [tray->statusBar statusItemWithLength:NSVariableStatusItemLength];
-    [[NSApplication sharedApplication] activateIgnoringOtherApps:TRUE];
-
     if (tooltip) {
         tray->statusItem.button.toolTip = [NSString stringWithUTF8String:tooltip];
     } else {
         tray->statusItem.button.toolTip = nil;
     }
 
-    if (icon) {
-        NSBitmapImageRep *bitmap = [[NSBitmapImageRep alloc] initWithBitmapDataPlanes:(unsigned char **)&icon->pixels
-                                                                           pixelsWide:icon->w
-                                                                           pixelsHigh:icon->h
-                                                                        bitsPerSample:8
-                                                                      samplesPerPixel:4
-                                                                             hasAlpha:YES
-                                                                             isPlanar:NO
-                                                                       colorSpaceName:NSCalibratedRGBColorSpace
-                                                                          bytesPerRow:icon->pitch
-                                                                         bitsPerPixel:32];
-        NSImage *iconimg = [[NSImage alloc] initWithSize:NSMakeSize(icon->w, icon->h)];
-        [iconimg addRepresentation:bitmap];
-
-        /* A typical icon size is 22x22 on macOS. Failing to resize the icon
-           may give oversized status bar buttons. */
-        NSImage *iconimg22 = [[NSImage alloc] initWithSize:NSMakeSize(22, 22)];
-        [iconimg22 lockFocus];
-        [iconimg setSize:NSMakeSize(22, 22)];
-        [iconimg drawInRect:NSMakeRect(0, 0, 22, 22)];
-        [iconimg22 unlockFocus];
-
-        tray->statusItem.button.image = iconimg22;
-
-        SDL_DestroySurface(icon);
-    }
+    tray->statusItem.button.image = image;
 
     /* Create click handler and set up button to receive clicks */
     tray->clickHandler = [[SDLTrayClickHandler alloc] init];
@@ -283,41 +301,10 @@ void SDL_SetTrayIcon(SDL_Tray *tray, SDL_Surface *icon)
         return;
     }
 
-    if (!icon) {
-        tray->statusItem.button.image = nil;
-        return;
+    NSImage *image = icon ? CreateTrayImage(icon, tray->icon_size, tray->icon_is_template) : nil;
+    if (!icon || image) {
+        tray->statusItem.button.image = image;
     }
-
-    icon = SDL_ConvertSurface(icon, SDL_PIXELFORMAT_RGBA32);
-    if (!icon) {
-        tray->statusItem.button.image = nil;
-        return;
-    }
-
-    NSBitmapImageRep *bitmap = [[NSBitmapImageRep alloc] initWithBitmapDataPlanes:(unsigned char **)&icon->pixels
-                                                                       pixelsWide:icon->w
-                                                                       pixelsHigh:icon->h
-                                                                    bitsPerSample:8
-                                                                  samplesPerPixel:4
-                                                                         hasAlpha:YES
-                                                                         isPlanar:NO
-                                                                   colorSpaceName:NSCalibratedRGBColorSpace
-                                                                      bytesPerRow:icon->pitch
-                                                                     bitsPerPixel:32];
-    NSImage *iconimg = [[NSImage alloc] initWithSize:NSMakeSize(icon->w, icon->h)];
-    [iconimg addRepresentation:bitmap];
-
-    /* A typical icon size is 22x22 on macOS. Failing to resize the icon
-       may give oversized status bar buttons. */
-    NSImage *iconimg22 = [[NSImage alloc] initWithSize:NSMakeSize(22, 22)];
-    [iconimg22 lockFocus];
-    [iconimg setSize:NSMakeSize(22, 22)];
-    [iconimg drawInRect:NSMakeRect(0, 0, 22, 22)];
-    [iconimg22 unlockFocus];
-
-    tray->statusItem.button.image = iconimg22;
-
-    SDL_DestroySurface(icon);
 }
 
 void SDL_SetTrayTooltip(SDL_Tray *tray, const char *tooltip)

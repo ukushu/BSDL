@@ -44,6 +44,7 @@ typedef struct SDL_TrayDBus
     char *service_name;
 
     char *tooltip;
+    char *activation_token;
     SDL_Surface *surface;
 
     SDL_TrayClickCallback l_cb;
@@ -149,7 +150,7 @@ static DBusHandlerResult TrayHandleGetAllProps(SDL_Tray *tray, SDL_TrayDBus *tra
 
     key = "ItemIsMenu";
     menu_dbus = tray->menu ? (SDL_TrayMenuDBus *)tray->menu->internal : NULL;
-    if (menu_dbus && menu_dbus->menu_path) {
+    if (menu_dbus && menu_dbus->menu_path && !tray_dbus->l_cb) {
         bool_value = TRUE;
     } else {
         bool_value = FALSE;
@@ -268,7 +269,7 @@ static DBusHandlerResult TrayHandleGetProp(SDL_Tray *tray, SDL_TrayDBus *tray_db
         driver->dbus->message_iter_append_basic(&variant_iter, DBUS_TYPE_STRING, &empty);
         driver->dbus->message_iter_close_container(&iter, &variant_iter);
     } else if (!SDL_strcmp(property, "ItemIsMenu")) {
-        if (menu_dbus && menu_dbus->menu_path) {
+        if (menu_dbus && menu_dbus->menu_path && !tray_dbus->l_cb) {
             bool_value = TRUE;
         } else {
             bool_value = FALSE;
@@ -353,32 +354,55 @@ static DBusHandlerResult TrayMessageHandler(DBusConnection *connection, DBusMess
         driver->dbus->connection_send(tray_dbus->connection, reply, NULL);
         driver->dbus->message_unref(reply);
         return DBUS_HANDLER_RESULT_HANDLED;
-    } else if (driver->dbus->message_is_method_call(msg, SNI_INTERFACE, "ContextMenu")) {
-        if (tray_dbus->r_cb) {
-            tray_dbus->r_cb(tray_dbus->udata, tray);
+    } else if (driver->dbus->message_is_method_call(msg, SNI_INTERFACE, "ProvideXdgActivationToken")) {
+        const char *token;
+        if (!driver->dbus->message_get_args(msg, NULL, DBUS_TYPE_STRING, &token, DBUS_TYPE_INVALID)) {
+            reply = driver->dbus->message_new_error(msg, DBUS_ERROR_INVALID_ARGS, "Expected an activation token string");
+        } else {
+            char *copy = SDL_strdup(token);
+            if (!copy) {
+                reply = driver->dbus->message_new_error(msg, DBUS_ERROR_NO_MEMORY, "Unable to copy activation token");
+            } else {
+                SDL_free(tray_dbus->activation_token);
+                tray_dbus->activation_token = copy;
+                reply = driver->dbus->message_new_method_return(msg);
+            }
         }
-
-        reply = driver->dbus->message_new_method_return(msg);
-        driver->dbus->connection_send(tray_dbus->connection, reply, NULL);
-        driver->dbus->message_unref(reply);
+        if (reply) {
+            driver->dbus->connection_send(connection, reply, NULL);
+            driver->dbus->message_unref(reply);
+        }
         return DBUS_HANDLER_RESULT_HANDLED;
-    } else if (driver->dbus->message_is_method_call(msg, SNI_INTERFACE, "Activate")) {
-        if (tray_dbus->l_cb) {
-            tray_dbus->l_cb(tray_dbus->udata, tray);
+    } else if (driver->dbus->message_is_method_call(msg, SNI_INTERFACE, "ContextMenu") ||
+               driver->dbus->message_is_method_call(msg, SNI_INTERFACE, "Activate") ||
+               driver->dbus->message_is_method_call(msg, SNI_INTERFACE, "SecondaryActivate")) {
+        dbus_int32_t x, y;
+        if (!driver->dbus->message_get_args(msg, NULL, DBUS_TYPE_INT32, &x, DBUS_TYPE_INT32, &y, DBUS_TYPE_INVALID)) {
+            reply = driver->dbus->message_new_error(msg, DBUS_ERROR_INVALID_ARGS, "Expected screen coordinates");
+            if (reply) {
+                driver->dbus->connection_send(connection, reply, NULL);
+                driver->dbus->message_unref(reply);
+            }
+            return DBUS_HANDLER_RESULT_HANDLED;
         }
-
-        reply = driver->dbus->message_new_method_return(msg);
-        driver->dbus->connection_send(tray_dbus->connection, reply, NULL);
-        driver->dbus->message_unref(reply);
-        return DBUS_HANDLER_RESULT_HANDLED;
-    } else if (driver->dbus->message_is_method_call(msg, SNI_INTERFACE, "SecondaryActivate")) {
-        if (tray_dbus->m_cb) {
-            tray_dbus->m_cb(tray_dbus->udata, tray);
+        SDL_TrayClickCallback callback = tray_dbus->l_cb;
+        if (driver->dbus->message_is_method_call(msg, SNI_INTERFACE, "ContextMenu")) {
+            callback = tray_dbus->r_cb;
+        } else if (driver->dbus->message_is_method_call(msg, SNI_INTERFACE, "SecondaryActivate")) {
+            callback = tray_dbus->m_cb;
         }
-
+        void *userdata = tray_dbus->udata;
+        char *token = tray_dbus->activation_token;
+        tray_dbus->activation_token = NULL;
+        SDL_Point position = { x, y };
+        // Reply before user code, which may destroy the tray and its connection.
         reply = driver->dbus->message_new_method_return(msg);
-        driver->dbus->connection_send(tray_dbus->connection, reply, NULL);
-        driver->dbus->message_unref(reply);
+        if (reply) {
+            driver->dbus->connection_send(connection, reply, NULL);
+            driver->dbus->message_unref(reply);
+        }
+        SDL_InvokeTrayClick(tray, callback, userdata, &position, token);
+        SDL_free(token);
         return DBUS_HANDLER_RESULT_HANDLED;
     } else if (driver->dbus->message_is_method_call(msg, SNI_INTERFACE, "Scroll")) {
         DBusError err;
@@ -429,7 +453,7 @@ SDL_Tray *CreateTray(SDL_TrayDriver *driver, SDL_PropertiesID props)
     icon = (SDL_Surface *)SDL_GetPointerProperty(props, SDL_PROP_TRAY_CREATE_ICON_POINTER, NULL);
 
     /* Allocate the tray structure */
-    tray_dbus = SDL_malloc(sizeof(SDL_TrayDBus));
+    tray_dbus = SDL_calloc(1, sizeof(SDL_TrayDBus));
     if (!tray_dbus) {
         return NULL;
     }
@@ -582,6 +606,7 @@ void DestroyTray(SDL_Tray *tray)
     tray_dbus->connection = NULL;
 
     /* Destroy icon and tooltip */
+    SDL_free(tray_dbus->activation_token);
     SDL_free(tray_dbus->tooltip);
     SDL_DestroySurface(tray_dbus->surface);
 
@@ -738,7 +763,11 @@ bool TrayRightClickHandler(SDL_ListNode *menu, void *udata)
     SDL_Tray *tray = (SDL_Tray *)udata;
     SDL_TrayDBus *tray_dbus = (SDL_TrayDBus *)tray->internal;
 
-    return tray_dbus->r_cb(tray_dbus->udata, tray);
+    char *token = tray_dbus->activation_token;
+    tray_dbus->activation_token = NULL;
+    bool show_menu = SDL_InvokeTrayClick(tray, tray_dbus->r_cb, tray_dbus->udata, NULL, token);
+    SDL_free(token);
+    return show_menu;
 }
 
 void TraySendNewMenu(SDL_Tray *tray, const char *new_path)
