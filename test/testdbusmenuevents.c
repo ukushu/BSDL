@@ -82,6 +82,18 @@ static void test_tray_entry_without_callback(void)
     SDL_MenuItem item = { 0 };
     EntryCallback(&item, NULL);
 }
+
+static void test_tray_insert_rejects_out_of_range_position(void)
+{
+    SDL_TrayMenu menu = { 0 };
+    SDL_TrayMenuDBus menu_dbus = { 0 };
+    menu.internal = &menu_dbus;
+
+    assert(!InsertTrayEntryAt(&menu, -2, "Invalid", 0));
+    assert(!InsertTrayEntryAt(&menu, 1, "Invalid", 0));
+    assert(!menu_dbus.menu);
+}
+
 static void retain_connection(DBusConnection *conn) { ++refs; }
 static void release_connection(DBusConnection *conn) { --refs; }
 static void close_connection(DBusConnection *conn) { ++connection_closes; }
@@ -481,6 +493,7 @@ int main(int argc, char **argv)
     ctx.connection_get_object_path_data = get_menu;
     test_tray_icon_byte_order();
     test_tray_entry_without_callback();
+    test_tray_insert_rejects_out_of_range_position();
     test_tray_getall_without_icon_or_tooltip(&ctx);
     test_tray_get_window_id(&ctx);
     test_tray_get_menu_path(&ctx);

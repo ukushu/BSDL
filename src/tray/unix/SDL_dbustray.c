@@ -1120,6 +1120,11 @@ SDL_TrayEntry *InsertTrayEntryAt(SDL_TrayMenu *menu, int pos, const char *label,
     SDL_TrayEntryDBus *entry_dbus;
     bool update;
 
+    if (pos < -1 || pos > SDL_ListCountEntries(&((SDL_TrayMenuDBus *)menu->internal)->menu)) {
+        SDL_InvalidParamError("pos");
+        return NULL;
+    }
+
     tray = menu->parent_tray;
     menu_dbus = (SDL_TrayMenuDBus *)menu->internal;
     tray_dbus = (SDL_TrayDBus *)tray->internal;
@@ -1183,7 +1188,14 @@ SDL_TrayEntry *InsertTrayEntryAt(SDL_TrayMenu *menu, int pos, const char *label,
         update = true;
     }
 
-    SDL_ListInsertAtPosition(&menu_dbus->menu, pos, entry_dbus->item);
+    if (!SDL_ListInsertAtPosition(&menu_dbus->menu, pos, entry_dbus->item)) {
+        SDL_OutOfMemory();
+        SDL_free((char *)entry_dbus->item->utf8);
+        SDL_free(entry_dbus->item);
+        SDL_free(entry_dbus);
+        SDL_free(entry);
+        return NULL;
+    }
 
     if (menu->parent_entry) {
         SDL_TrayEntryDBus *parent_entry_dbus;
