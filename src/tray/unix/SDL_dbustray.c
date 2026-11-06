@@ -934,11 +934,16 @@ void SetTrayIcon(SDL_Tray *tray, SDL_Surface *surface)
     tray_dbus->surface = converted;
 
     signal = driver->dbus->message_new_signal(SNI_OBJECT_PATH, SNI_INTERFACE, "NewIcon");
-    if (signal) {
-        driver->dbus->connection_send(tray_dbus->connection, signal, NULL);
-        driver->dbus->connection_flush(tray_dbus->connection);
-        driver->dbus->message_unref(signal);
+    if (!signal) {
+        SDL_OutOfMemory();
+        return;
     }
+    if (!driver->dbus->connection_send(tray_dbus->connection, signal, NULL)) {
+        SDL_SetError("Unable to send tray icon update");
+    } else {
+        driver->dbus->connection_flush(tray_dbus->connection);
+    }
+    driver->dbus->message_unref(signal);
 }
 
 void SetTrayTooltip(SDL_Tray *tray, const char *text)
@@ -959,11 +964,16 @@ void SetTrayTooltip(SDL_Tray *tray, const char *text)
     tray_dbus->tooltip = copy;
 
     signal = driver->dbus->message_new_signal(SNI_OBJECT_PATH, SNI_INTERFACE, "NewToolTip");
-    if (signal) {
-        driver->dbus->connection_send(tray_dbus->connection, signal, NULL);
-        driver->dbus->connection_flush(tray_dbus->connection);
-        driver->dbus->message_unref(signal);
+    if (!signal) {
+        SDL_OutOfMemory();
+        return;
     }
+    if (!driver->dbus->connection_send(tray_dbus->connection, signal, NULL)) {
+        SDL_SetError("Unable to send tray tooltip update");
+    } else {
+        driver->dbus->connection_flush(tray_dbus->connection);
+    }
+    driver->dbus->message_unref(signal);
 }
 
 SDL_TrayMenu *CreateTrayMenu(SDL_Tray *tray)
