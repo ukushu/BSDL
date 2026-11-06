@@ -1504,6 +1504,24 @@ static DBusHandlerResult MenuHandleEventGroup(SDL_DBusContext *ctx, SDL_ListNode
     }
     ctx->message_iter_init_append(reply, &reply_iter);
     ctx->message_iter_open_container(&reply_iter, DBUS_TYPE_ARRAY, "i", &id_errors_iter);
+    ctx->message_iter_init(msg, &args);
+    if (ctx->message_iter_get_arg_type(&args) == DBUS_TYPE_ARRAY) {
+        ctx->message_iter_recurse(&args, &array_iter);
+        while (ctx->message_iter_get_arg_type(&array_iter) == DBUS_TYPE_STRUCT) {
+            DBusMessageIter struct_iter;
+            ctx->message_iter_recurse(&array_iter, &struct_iter);
+            if (ctx->message_iter_get_arg_type(&struct_iter) == DBUS_TYPE_INT32) {
+                dbus_int32_t id;
+                ctx->message_iter_get_basic(&struct_iter, &id);
+                if (!MenuGetItemById(menu, id)) {
+                    ctx->message_iter_append_basic(&id_errors_iter, DBUS_TYPE_INT32, &id);
+                }
+            }
+            if (!ctx->message_iter_next(&array_iter)) {
+                break;
+            }
+        }
+    }
     ctx->message_iter_close_container(&reply_iter, &id_errors_iter);
     ctx->connection_send(conn, reply, NULL);
     ctx->message_unref(reply);
