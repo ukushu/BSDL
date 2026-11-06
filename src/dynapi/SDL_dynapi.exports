@@ -1321,3 +1321,4 @@ _SDL_EncodeURL
 _SDL_GetTrayClickPosition
 _SDL_GetTrayClickActivationToken
 _SDL_SetTrayEntryShortcut
+_SDL_GetTrayRect

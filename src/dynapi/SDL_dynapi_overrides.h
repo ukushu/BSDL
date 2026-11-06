@@ -1348,3 +1348,4 @@
 #define SDL_GetTrayClickPosition SDL_GetTrayClickPosition_REAL
 #define SDL_GetTrayClickActivationToken SDL_GetTrayClickActivationToken_REAL
 #define SDL_SetTrayEntryShortcut SDL_SetTrayEntryShortcut_REAL
+#define SDL_GetTrayRect SDL_GetTrayRect_REAL

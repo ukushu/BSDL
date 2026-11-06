@@ -35,6 +35,7 @@
 #endif
 
 #define WM_TRAYICON (WM_USER + 1)
+#define ID_TRAY_RETRY_TIMER 1
 
 struct SDL_TrayMenu {
     HMENU hMenu;
@@ -107,6 +108,17 @@ static SDL_TrayEntry *find_entry_with_id(SDL_Tray *tray, UINT_PTR id)
     return find_entry_in_menu(tray->menu, id);
 }
 
+static bool WIN_AddTrayIcon(SDL_Tray *tray)
+{
+    if (!Shell_NotifyIconW(NIM_ADD, &tray->nid)) {
+        tray->version4 = false;
+        return false;
+    }
+
+    tray->version4 = Shell_NotifyIconW(NIM_SETVERSION, &tray->nid) != FALSE;
+    return true;
+}
+
 LRESULT CALLBACK TrayWindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     SDL_Tray *tray = (SDL_Tray *) GetWindowLongPtr(hwnd, GWLP_USERDATA);
     SDL_TrayEntry *entry = NULL;
@@ -120,10 +132,11 @@ LRESULT CALLBACK TrayWindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
         s_taskbarRestart = RegisterWindowMessage(TEXT("TaskbarCreated"));
     }
     if (s_taskbarRestart && uMsg == s_taskbarRestart) {
-        if (Shell_NotifyIconW(NIM_ADD, &tray->nid)) {
-            tray->version4 = Shell_NotifyIconW(NIM_SETVERSION, &tray->nid) != FALSE;
-        } else {
-            tray->version4 = false;
+        KillTimer(hwnd, ID_TRAY_RETRY_TIMER);
+        if (!WIN_AddTrayIcon(tray)) {
+            if (!SetTimer(hwnd, ID_TRAY_RETRY_TIMER, 1000, NULL)) {
+                SDL_LogWarn(SDL_LOG_CATEGORY_VIDEO, "Couldn't schedule tray icon retry after Explorer restart");
+            }
         }
     }
 
@@ -179,6 +192,12 @@ LRESULT CALLBACK TrayWindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
                     }
                     TrackPopupMenu(tray->menu->hMenu, TPM_BOTTOMALIGN | TPM_RIGHTALIGN, position.x, position.y, 0, hwnd, NULL);
                 }
+            }
+            break;
+
+        case WM_TIMER:
+            if (wParam == ID_TRAY_RETRY_TIMER && WIN_AddTrayIcon(tray)) {
+                KillTimer(hwnd, ID_TRAY_RETRY_TIMER);
             }
             break;
 
@@ -394,7 +413,7 @@ SDL_Tray *SDL_CreateTrayWithProperties(SDL_PropertiesID props)
     }
 
     SetWindowLongPtr(tray->hwnd, GWLP_USERDATA, (LONG_PTR) tray);
-    if (!Shell_NotifyIconW(NIM_ADD, &tray->nid)) {
+    if (!WIN_AddTrayIcon(tray)) {
         SetWindowLongPtr(tray->hwnd, GWLP_USERDATA, 0);
         DestroyIcon(tray->nid.hIcon);
         DestroyWindow(tray->hwnd);
@@ -402,7 +421,6 @@ SDL_Tray *SDL_CreateTrayWithProperties(SDL_PropertiesID props)
         SDL_SetError("Failed to add tray icon");
         return NULL;
     }
-    tray->version4 = Shell_NotifyIconW(NIM_SETVERSION, &tray->nid) != FALSE;
 
     SDL_RegisterTray(tray);
 
