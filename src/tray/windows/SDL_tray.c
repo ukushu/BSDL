@@ -36,6 +36,8 @@
 
 #define WM_TRAYICON (WM_USER + 1)
 #define ID_TRAY_RETRY_TIMER 1
+#define MAX_TRAY_MENU_COMMAND_ID 0xFFFEu
+#define TRAY_MENU_COMMAND_ID_BITMAP_SIZE ((MAX_TRAY_MENU_COMMAND_ID + 8u) / 8u)
 
 struct SDL_TrayMenu {
     HMENU hMenu;
@@ -119,20 +121,38 @@ static SDL_Tray *get_tray_for_menu(SDL_TrayMenu *menu)
     return NULL;
 }
 
+static void mark_menu_entry_ids(SDL_TrayMenu *menu, Uint8 *used_ids)
+{
+    for (int i = 0; i < menu->nEntries; ++i) {
+        SDL_TrayEntry *entry = menu->entries[i];
+        if (entry->id <= MAX_TRAY_MENU_COMMAND_ID) {
+            used_ids[entry->id >> 3] |= (Uint8)(1u << (entry->id & 7));
+        }
+        if (entry->submenu) {
+            mark_menu_entry_ids(entry->submenu, used_ids);
+        }
+    }
+}
+
 static UINT_PTR get_next_menu_item_id(SDL_Tray *tray)
 {
     static UINT_PTR next_id = 0;
+    Uint8 used_ids[TRAY_MENU_COMMAND_ID_BITMAP_SIZE];
 
     if (!tray) {
         return 0;
     }
 
-    // shortcut: allocation can be O(n^2) near 65,534 live entries; use a free-ID bitmap if huge menus become practical.
-    for (int i = 0; i < 0xFFFE; ++i) {
-        if (++next_id > 0xFFFE) {
+    SDL_zero(used_ids);
+    if (tray->menu) {
+        mark_menu_entry_ids(tray->menu, used_ids);
+    }
+
+    for (int i = 0; i < MAX_TRAY_MENU_COMMAND_ID; ++i) {
+        if (++next_id > MAX_TRAY_MENU_COMMAND_ID) {
             next_id = 1;
         }
-        if (!find_entry_with_id(tray, next_id)) {
+        if (!(used_ids[next_id >> 3] & (1u << (next_id & 7)))) {
             return next_id;
         }
     }
