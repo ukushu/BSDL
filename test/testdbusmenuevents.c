@@ -145,6 +145,31 @@ static void test_tray_get_window_id(SDL_DBusContext *ctx)
     assert(replies == 1);
     dbus_message_unref(msg);
 }
+
+static bool test_tray_click_callback(void *userdata, SDL_Tray *tray)
+{
+    (void)userdata;
+    (void)tray;
+    return false;
+}
+
+static void test_item_is_menu_matches_left_click_behavior(void)
+{
+    SDL_Tray tray = { 0 };
+    SDL_TrayMenu menu = { 0 };
+    SDL_TrayMenuDBus menu_dbus = { 0 };
+    SDL_TrayDBus tray_dbus = { 0 };
+
+    tray.menu = &menu;
+    menu.internal = &menu_dbus;
+    menu_dbus.menu_path = "/MenuBar";
+    assert(TrayItemIsMenu(&tray, &tray_dbus));
+    tray_dbus.l_cb = test_tray_click_callback;
+    assert(!TrayItemIsMenu(&tray, &tray_dbus));
+    tray_dbus.l_cb = NULL;
+    menu_dbus.menu_path = NULL;
+    assert(!TrayItemIsMenu(&tray, &tray_dbus));
+}
 static void clicked(SDL_MenuItem *item, void *data)
 {
     SDL_ListNode *old = registered_menu;
@@ -222,6 +247,7 @@ int main(int argc, char **argv)
     test_tray_entry_without_callback();
     test_tray_getall_without_icon_or_tooltip(&ctx);
     test_tray_get_window_id(&ctx);
+    test_item_is_menu_matches_left_click_behavior();
     test_shortcut_property(&ctx, SDL_SCANCODE_5, "5");
     test_shortcut_property(&ctx, SDL_SCANCODE_KP_1, "KP_1");
     for (int fields = 0; fields <= 5; ++fields) {

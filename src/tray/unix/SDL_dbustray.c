@@ -63,6 +63,12 @@ typedef struct SDL_TrayMenuDBus
     SDL_TrayEntry **array_representation;
 } SDL_TrayMenuDBus;
 
+static bool TrayItemIsMenu(SDL_Tray *tray, SDL_TrayDBus *tray_dbus)
+{
+    SDL_TrayMenuDBus *menu_dbus = tray->menu ? (SDL_TrayMenuDBus *)tray->menu->internal : NULL;
+    return menu_dbus && menu_dbus->menu_path && !tray_dbus->l_cb;
+}
+
 typedef struct SDL_TrayEntryDBus
 {
     SDL_MenuItem *item;
@@ -232,11 +238,7 @@ static DBusHandlerResult TrayHandleGetAllProps(SDL_Tray *tray, SDL_TrayDBus *tra
 
     key = "ItemIsMenu";
     menu_dbus = tray->menu ? (SDL_TrayMenuDBus *)tray->menu->internal : NULL;
-    if (menu_dbus && menu_dbus->menu_path && !tray_dbus->l_cb) {
-        bool_value = TRUE;
-    } else {
-        bool_value = FALSE;
-    }
+    bool_value = TrayItemIsMenu(tray, tray_dbus) ? TRUE : FALSE;
     driver->dbus->message_iter_open_container(&dict_iter, DBUS_TYPE_DICT_ENTRY, NULL, &entry_iter);
     driver->dbus->message_iter_append_basic(&entry_iter, DBUS_TYPE_STRING, &key);
     driver->dbus->message_iter_open_container(&entry_iter, DBUS_TYPE_VARIANT, "b", &variant_iter);
@@ -385,11 +387,7 @@ static DBusHandlerResult TrayHandleGetProp(SDL_Tray *tray, SDL_TrayDBus *tray_db
                !SDL_strcmp(property, "AttentionIconPixmap")) {
         TrayAppendEmptyPixmapVariant(driver, &iter);
     } else if (!SDL_strcmp(property, "ItemIsMenu")) {
-        if (menu_dbus && menu_dbus->menu_path && !tray_dbus->l_cb) {
-            bool_value = TRUE;
-        } else {
-            bool_value = FALSE;
-        }
+        bool_value = TrayItemIsMenu(tray, tray_dbus) ? TRUE : FALSE;
         driver->dbus->message_iter_open_container(&iter, DBUS_TYPE_VARIANT, "b", &variant_iter);
         driver->dbus->message_iter_append_basic(&variant_iter, DBUS_TYPE_BOOLEAN, &bool_value);
         driver->dbus->message_iter_close_container(&iter, &variant_iter);
@@ -670,6 +668,7 @@ SDL_Tray *CreateTray(SDL_TrayDriver *driver, SDL_PropertiesID props)
 
     /* Create object */
     object_path = SNI_OBJECT_PATH;
+    SDL_zero(vtable);
     vtable.message_function = TrayMessageHandler;
     bool_status = dbus_driver->dbus->connection_try_register_object_path(tray_dbus->connection, object_path, &vtable, tray, &err);
     if (dbus_driver->dbus->error_is_set(&err)) {
@@ -703,6 +702,7 @@ SDL_Tray *CreateTray(SDL_TrayDriver *driver, SDL_PropertiesID props)
 
 void DestroyDriver(SDL_TrayDriver *driver)
 {
+    SDL_free(driver->internal);
     SDL_DBus_Quit();
     SDL_free(driver);
 }
@@ -970,7 +970,7 @@ void TraySendNewMenu(SDL_Tray *tray, const char *new_path)
         } else {
             path = menu_dbus->menu_path;
         }
-        bool_val = TRUE;
+        bool_val = TrayItemIsMenu(tray, tray_dbus) ? TRUE : FALSE;
         driver->dbus->message_iter_init_append(signal, &iter);
         driver->dbus->message_iter_append_basic(&iter, DBUS_TYPE_STRING, &iface);
         driver->dbus->message_iter_open_container(&iter, DBUS_TYPE_ARRAY, "{sv}", &dict);
@@ -1434,11 +1434,13 @@ SDL_TrayDriver *SDL_Tray_CreateDBusDriver(void)
     /* Allocate the driver struct */
     dbus_driver = SDL_malloc(sizeof(SDL_TrayDriverDBus));
     if (!dbus_driver) {
+        SDL_DBus_Quit();
         return NULL;
     }
     driver = SDL_malloc(sizeof(SDL_TrayDriver));
     if (!driver) {
         SDL_free(dbus_driver);
+        SDL_DBus_Quit();
         return NULL;
     }
 

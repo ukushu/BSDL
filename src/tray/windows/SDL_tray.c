@@ -68,6 +68,7 @@ struct SDL_Tray {
     SDL_TrayClickCallback left_click_callback;
     SDL_TrayClickCallback right_click_callback;
     SDL_TrayClickCallback middle_click_callback;
+    bool version4;
 };
 
 static UINT_PTR get_next_id(void)
@@ -118,15 +119,30 @@ LRESULT CALLBACK TrayWindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
     if (s_taskbarRestart == 0) {
         s_taskbarRestart = RegisterWindowMessage(TEXT("TaskbarCreated"));
     }
-    if (uMsg == s_taskbarRestart) {
-        Shell_NotifyIconW(NIM_ADD, &tray->nid);
-        Shell_NotifyIconW(NIM_SETVERSION, &tray->nid);
+    if (s_taskbarRestart && uMsg == s_taskbarRestart) {
+        if (Shell_NotifyIconW(NIM_ADD, &tray->nid)) {
+            tray->version4 = Shell_NotifyIconW(NIM_SETVERSION, &tray->nid) != FALSE;
+        } else {
+            tray->version4 = false;
+        }
     }
 
     switch (uMsg) {
         case WM_TRAYICON:
             {
-                SDL_Point position = { GET_X_LPARAM(wParam), GET_Y_LPARAM(wParam) };
+                SDL_Point position;
+                if (tray->version4) {
+                    position.x = GET_X_LPARAM(wParam);
+                    position.y = GET_Y_LPARAM(wParam);
+                } else {
+                    POINT cursor;
+                    if (GetCursorPos(&cursor)) {
+                        position.x = cursor.x;
+                        position.y = cursor.y;
+                    } else {
+                        position.x = position.y = -1;
+                    }
+                }
                 const SDL_Point *click_position = (position.x == -1 && position.y == -1) ? NULL : &position;
                 bool show_menu = false;
 
@@ -155,8 +171,13 @@ LRESULT CALLBACK TrayWindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
                 }
 
                 if (show_menu && IsWindow(hwnd) && (SDL_Tray *)GetWindowLongPtr(hwnd, GWLP_USERDATA) == tray && tray->menu) {
+                    POINT cursor;
                     SetForegroundWindow(hwnd);
-                    TrackPopupMenu(tray->menu->hMenu, TPM_BOTTOMALIGN | TPM_RIGHTALIGN, GET_X_LPARAM(wParam), GET_Y_LPARAM(wParam), 0, hwnd, NULL);
+                    if (!click_position && GetCursorPos(&cursor)) {
+                        position.x = cursor.x;
+                        position.y = cursor.y;
+                    }
+                    TrackPopupMenu(tray->menu->hMenu, TPM_BOTTOMALIGN | TPM_RIGHTALIGN, position.x, position.y, 0, hwnd, NULL);
                 }
             }
             break;
@@ -329,6 +350,11 @@ SDL_Tray *SDL_CreateTrayWithProperties(SDL_PropertiesID props)
     }
     tray->hwnd = CreateWindowEx(0, TEXT("SDL_TRAY"), NULL, WS_OVERLAPPEDWINDOW,
                                 CW_USEDEFAULT, 0, CW_USEDEFAULT, 0, NULL, NULL, NULL, NULL);
+    if (!tray->hwnd) {
+        SDL_free(tray);
+        SDL_SetError("Failed to create tray window");
+        return NULL;
+    }
 
     WIN_UpdateDarkModeForHWND(tray->hwnd);
 
@@ -360,10 +386,23 @@ SDL_Tray *SDL_CreateTrayWithProperties(SDL_PropertiesID props)
         tray->icon = tray->nid.hIcon;
     }
 
-    Shell_NotifyIconW(NIM_ADD, &tray->nid);
-    Shell_NotifyIconW(NIM_SETVERSION, &tray->nid);
+    if (!tray->nid.hIcon) {
+        DestroyWindow(tray->hwnd);
+        SDL_free(tray);
+        SDL_SetError("Failed to create tray icon");
+        return NULL;
+    }
 
     SetWindowLongPtr(tray->hwnd, GWLP_USERDATA, (LONG_PTR) tray);
+    if (!Shell_NotifyIconW(NIM_ADD, &tray->nid)) {
+        SetWindowLongPtr(tray->hwnd, GWLP_USERDATA, 0);
+        DestroyIcon(tray->nid.hIcon);
+        DestroyWindow(tray->hwnd);
+        SDL_free(tray);
+        SDL_SetError("Failed to add tray icon");
+        return NULL;
+    }
+    tray->version4 = Shell_NotifyIconW(NIM_SETVERSION, &tray->nid) != FALSE;
 
     SDL_RegisterTray(tray);
 
