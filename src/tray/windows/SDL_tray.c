@@ -161,6 +161,8 @@ LRESULT CALLBACK TrayWindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 
                 switch (LOWORD(lParam)) {
                     case WM_LBUTTONUP:
+                    case NIN_SELECT:
+                    case NIN_KEYSELECT:
                         if (tray->left_click_callback) {
                             show_menu = SDL_InvokeTrayClick(tray, tray->left_click_callback, tray->userdata, click_position, NULL);
                         } else {
