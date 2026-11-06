@@ -371,6 +371,71 @@ static void clicked(SDL_MenuItem *item, void *data)
     }
 }
 
+static void count_menu_callback(SDL_MenuItem *item, void *userdata)
+{
+    (void)item;
+    ++*(int *)userdata;
+}
+
+static void test_disabled_menu_items_ignore_events(SDL_DBusContext *ctx)
+{
+    SDL_ListNode *menu = NULL;
+    SDL_DBusMenuItem *item = SDL_calloc(1, sizeof(*item));
+    DBusMessage *msg;
+    int callback_count = 0;
+    assert(item);
+    item->id = 1;
+    item->_parent.flags = SDL_MENU_ITEM_FLAGS_DISABLED;
+    item->_parent.cb = count_menu_callback;
+    item->_parent.cb_data = &callback_count;
+    assert(SDL_ListAppend(&menu, item));
+
+    msg = dbus_message_new_method_call("org.test.Menu", DBUS_MENU_OBJECT_PATH, DBUS_MENU_INTERFACE, "Event");
+    assert(msg);
+    dbus_message_set_serial(msg, 1);
+    dbus_int32_t id = 1;
+    dbus_uint32_t timestamp = 0;
+    const char *event_name = "clicked";
+    DBusMessageIter iter, variant;
+    dbus_message_iter_init_append(msg, &iter);
+    assert(dbus_message_iter_append_basic(&iter, DBUS_TYPE_INT32, &id));
+    assert(dbus_message_iter_append_basic(&iter, DBUS_TYPE_STRING, &event_name));
+    assert(dbus_message_iter_open_container(&iter, DBUS_TYPE_VARIANT, "i", &variant));
+    assert(dbus_message_iter_append_basic(&variant, DBUS_TYPE_INT32, &id));
+    assert(dbus_message_iter_close_container(&iter, &variant));
+    assert(dbus_message_iter_append_basic(&iter, DBUS_TYPE_UINT32, &timestamp));
+    replies = calls = 0;
+    expect_error = false;
+    assert(MenuHandleEvent(ctx, menu, (DBusConnection *)ctx, msg) == DBUS_HANDLER_RESULT_HANDLED);
+    assert(replies == 1 && callback_count == 0);
+    dbus_message_unref(msg);
+
+    registered_menu = menu;
+    connected = true;
+    msg = dbus_message_new_method_call("org.test.Menu", DBUS_MENU_OBJECT_PATH, DBUS_MENU_INTERFACE, "EventGroup");
+    assert(msg);
+    dbus_message_set_serial(msg, 1);
+    dbus_message_iter_init_append(msg, &iter);
+    DBusMessageIter array, event;
+    assert(dbus_message_iter_open_container(&iter, DBUS_TYPE_ARRAY, "(isvu)", &array));
+    assert(dbus_message_iter_open_container(&array, DBUS_TYPE_STRUCT, NULL, &event));
+    assert(dbus_message_iter_append_basic(&event, DBUS_TYPE_INT32, &id));
+    assert(dbus_message_iter_append_basic(&event, DBUS_TYPE_STRING, &event_name));
+    assert(dbus_message_iter_open_container(&event, DBUS_TYPE_VARIANT, "i", &variant));
+    assert(dbus_message_iter_append_basic(&variant, DBUS_TYPE_INT32, &id));
+    assert(dbus_message_iter_close_container(&event, &variant));
+    assert(dbus_message_iter_append_basic(&event, DBUS_TYPE_UINT32, &timestamp));
+    assert(dbus_message_iter_close_container(&array, &event));
+    assert(dbus_message_iter_close_container(&iter, &array));
+    replies = calls = refs = 0;
+    assert(MenuHandleEventGroup(ctx, menu, (DBusConnection *)ctx, msg) == DBUS_HANDLER_RESULT_HANDLED);
+    assert(replies == 1 && callback_count == 0 && refs == 0);
+    dbus_message_unref(msg);
+    registered_menu = NULL;
+    SDL_ListClear(&menu);
+    SDL_free(item);
+}
+
 static void test_shortcut_property(SDL_DBusContext *ctx, SDL_Scancode scancode, const char *key_name)
 {
     DBusMessage *msg = dbus_message_new_signal(DBUS_MENU_OBJECT_PATH, DBUS_MENU_INTERFACE, "Test");
@@ -553,6 +618,7 @@ int main(int argc, char **argv)
     test_shortcut_property(&ctx, SDL_SCANCODE_KP_1, "KP_1");
     test_shortcut_property(&ctx, SDL_SCANCODE_UNKNOWN, NULL);
     assert(SDL_Init(0));
+    test_disabled_menu_items_ignore_events(&ctx);
     test_tray_click_method_routing(&ctx);
     for (int fields = 0; fields <= 5; ++fields) {
         DBusMessage *msg = dbus_message_new_method_call("org.test.Menu", DBUS_MENU_OBJECT_PATH, DBUS_MENU_INTERFACE, "Event");

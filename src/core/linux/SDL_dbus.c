@@ -1468,7 +1468,7 @@ static DBusHandlerResult MenuHandleEvent(SDL_DBusContext *ctx, SDL_ListNode *men
     ctx->connection_send(conn, reply, NULL);
     ctx->message_unref(reply);
 
-    if (item) {
+    if (item && !(item->flags & SDL_MENU_ITEM_FLAGS_DISABLED)) {
         if (item->type == SDL_MENU_ITEM_TYPE_CHECKBOX) {
             item->flags ^= SDL_MENU_ITEM_FLAGS_CHECKED;
             SDL_DBus_UpdateMenu(ctx, conn, menu, NULL, NULL, NULL, SDL_DBUS_UPDATE_MENU_FLAG_DO_NOT_REPLACE);
@@ -1537,7 +1537,7 @@ static DBusHandlerResult MenuHandleEventGroup(SDL_DBusContext *ctx, SDL_ListNode
                         dbus_item = MenuGetItemById(menu, id);
                         item = (SDL_MenuItem *)dbus_item;
 
-                        if (item) {
+                        if (item && !(item->flags & SDL_MENU_ITEM_FLAGS_DISABLED)) {
                             if (item->type == SDL_MENU_ITEM_TYPE_CHECKBOX) {
                                 item->flags ^= SDL_MENU_ITEM_FLAGS_CHECKED;
                                 SDL_DBus_UpdateMenu(ctx, conn, menu, NULL, NULL, NULL, SDL_DBUS_UPDATE_MENU_FLAG_DO_NOT_REPLACE);
