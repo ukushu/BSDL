@@ -507,7 +507,9 @@ void SDL_SetTrayIcon(SDL_Tray *tray, SDL_Surface *icon)
     tray->nid.hIcon = new_icon;
     tray->icon = new_icon;
 
-    Shell_NotifyIconW(NIM_MODIFY, &tray->nid);
+    if (!Shell_NotifyIconW(NIM_MODIFY, &tray->nid)) {
+        SDL_SetError("Couldn't update tray icon");
+    }
 }
 
 void SDL_SetTrayTooltip(SDL_Tray *tray, const char *tooltip)
@@ -527,7 +529,9 @@ void SDL_SetTrayTooltip(SDL_Tray *tray, const char *tooltip)
         tray->nid.szTip[0] = '\0';
     }
 
-    Shell_NotifyIconW(NIM_MODIFY, &tray->nid);
+    if (!Shell_NotifyIconW(NIM_MODIFY, &tray->nid)) {
+        SDL_SetError("Couldn't update tray tooltip");
+    }
 }
 
 SDL_TrayMenu *SDL_CreateTrayMenu(SDL_Tray *tray)
