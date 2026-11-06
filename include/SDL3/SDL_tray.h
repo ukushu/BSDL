@@ -122,6 +122,10 @@ typedef bool (SDLCALL *SDL_TrayClickCallback)(void *userdata, SDL_Tray *tray);
  * Call this inside SDL_TrayClickCallback, before returning or destroying tray.
  * For an application-rendered menu, return false from the callback and create
  * or raise its window synchronously to use any supplied Wayland activation token.
+ * On Wayland, an interactive popup must have an application window as its
+ * parent; SDL supports popup children of custom layer-shell parent windows.
+ * The coordinates returned here remain a placement hint and do not position
+ * an unparented Wayland toplevel.
  * For deferred presentation, copy SDL_GetTrayClickActivationToken() and set
  * SDL_PROP_WINDOW_WAYLAND_ACTIVATION_TOKEN_STRING before showing or raising it.
  *
