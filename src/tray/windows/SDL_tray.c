@@ -489,7 +489,14 @@ bool SDL_GetTrayRect(SDL_Tray *tray, SDL_Rect *rect)
 
 void SDL_SetTrayIcon(SDL_Tray *tray, SDL_Surface *icon)
 {
+    HICON new_icon;
+
     if (!SDL_ObjectValid(tray, SDL_OBJECT_TYPE_TRAY)) {
+        return;
+    }
+
+    new_icon = icon ? WIN_CreateIconFromSurface(icon) : load_default_icon();
+    if (!new_icon) {
         return;
     }
 
@@ -497,18 +504,8 @@ void SDL_SetTrayIcon(SDL_Tray *tray, SDL_Surface *icon)
         DestroyIcon(tray->icon);
     }
 
-    if (icon) {
-        tray->nid.hIcon = WIN_CreateIconFromSurface(icon);
-
-        if (!tray->nid.hIcon) {
-            tray->nid.hIcon = load_default_icon();
-        }
-
-        tray->icon = tray->nid.hIcon;
-    } else {
-        tray->nid.hIcon = load_default_icon();
-        tray->icon = tray->nid.hIcon;
-    }
+    tray->nid.hIcon = new_icon;
+    tray->icon = new_icon;
 
     Shell_NotifyIconW(NIM_MODIFY, &tray->nid);
 }
