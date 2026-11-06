@@ -1239,8 +1239,12 @@ void SetTrayEntryLabel(SDL_TrayEntry *entry, const char *label)
     entry_dbus = (SDL_TrayEntryDBus *)entry->internal;
     main_menu_dbus = (SDL_TrayMenuDBus *)tray->menu->internal;
 
-    char *copy = label ? SDL_strdup(label) : NULL;
-    if (label && !copy) {
+    if ((label == NULL) != (entry_dbus->item->utf8 == NULL) || !label) {
+        return;
+    }
+
+    char *copy = SDL_strdup(label);
+    if (!copy) {
         return;
     }
     SDL_free((char *)entry_dbus->item->utf8);
@@ -1285,7 +1289,8 @@ void SetTrayEntryShortcut(SDL_TrayEntry *entry, SDL_Scancode scancode, SDL_Keymo
 
 const char *GetTrayEntryLabel(SDL_TrayEntry *entry)
 {
-    return ((SDL_TrayEntryDBus *)entry->internal)->item->utf8;
+    SDL_MenuItem *item = ((SDL_TrayEntryDBus *)entry->internal)->item;
+    return item->type == SDL_MENU_ITEM_TYPE_SEPERATOR ? NULL : item->utf8;
 }
 
 void SetTrayEntryChecked(SDL_TrayEntry *entry, bool val)

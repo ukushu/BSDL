@@ -515,7 +515,7 @@ SDL_TrayEntry *SDL_InsertTrayEntryAt(SDL_TrayMenu *menu, int pos, const char *la
 
 void SDL_SetTrayEntryLabel(SDL_TrayEntry *entry, const char *label)
 {
-    if (!entry) {
+    if (!entry || [entry->nsitem isSeparatorItem] != (label == NULL) || !label) {
         return;
     }
 
@@ -533,7 +533,7 @@ const char *SDL_GetTrayEntryLabel(SDL_TrayEntry *entry)
         return NULL;
     }
 
-    return [[entry->nsitem title] UTF8String];
+    return [entry->nsitem isSeparatorItem] ? NULL : [[entry->nsitem title] UTF8String];
 }
 
 void SDL_SetTrayEntryChecked(SDL_TrayEntry *entry, bool checked)

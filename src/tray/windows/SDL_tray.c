@@ -51,6 +51,7 @@ struct SDL_TrayEntry {
     UINT_PTR id;
 
     char label_cache[4096];
+    bool separator;
     SDL_TrayEntryFlags flags;
     SDL_TrayCallback callback;
     void *userdata;
@@ -571,6 +572,7 @@ SDL_TrayEntry *SDL_InsertTrayEntryAt(SDL_TrayMenu *menu, int pos, const char *la
     }
 
     entry->parent = menu;
+    entry->separator = (label == NULL);
     entry->flags = flags;
     entry->callback = NULL;
     entry->userdata = NULL;
@@ -643,11 +645,9 @@ SDL_TrayEntry *SDL_InsertTrayEntryAt(SDL_TrayMenu *menu, int pos, const char *la
 
 void SDL_SetTrayEntryLabel(SDL_TrayEntry *entry, const char *label)
 {
-    if (!entry) {
+    if (!entry || entry->separator != (label == NULL) || !label) {
         return;
     }
-
-    SDL_snprintf(entry->label_cache, sizeof(entry->label_cache), "%s", label);
 
     wchar_t *label_w = escape_label(label);
 
@@ -664,6 +664,8 @@ void SDL_SetTrayEntryLabel(SDL_TrayEntry *entry, const char *label)
 
     if (!SetMenuItemInfoW(entry->parent->hMenu, (UINT) entry->id, FALSE, &mii)) {
         SDL_SetError("Couldn't update tray entry label");
+    } else {
+        SDL_snprintf(entry->label_cache, sizeof(entry->label_cache), "%s", label);
     }
 
     SDL_free(label_w);
@@ -680,7 +682,7 @@ const char *SDL_GetTrayEntryLabel(SDL_TrayEntry *entry)
         return NULL;
     }
 
-    return entry->label_cache;
+    return entry->separator ? NULL : entry->label_cache;
 }
 
 void SDL_SetTrayEntryChecked(SDL_TrayEntry *entry, bool checked)

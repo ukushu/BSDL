@@ -657,6 +657,14 @@ int main(int argc, char **argv)
     SDL_SetTrayEntryLabel(entry_quit, label_copy_check);
     SDL_memset(label_copy_check, 'x', sizeof(label_copy_check) - 1);
     SDL_assert(SDL_strcmp(SDL_GetTrayEntryLabel(entry_quit), "Quit") == 0);
+    SDL_SetTrayEntryLabel(entry_quit, NULL);
+    SDL_assert(SDL_strcmp(SDL_GetTrayEntryLabel(entry_quit), "Quit") == 0);
+
+    SDL_TrayEntry *entry_separator = SDL_InsertTrayEntryAt(menu, -1, NULL, SDL_TRAYENTRY_BUTTON);
+    CHECK(entry_separator);
+    SDL_assert(SDL_GetTrayEntryLabel(entry_separator) == NULL);
+    SDL_SetTrayEntryLabel(entry_separator, "Not a separator");
+    SDL_assert(SDL_GetTrayEntryLabel(entry_separator) == NULL);
 
     SDL_TrayEntry *entry_close = SDL_InsertTrayEntryAt(menu, -1, "Destroy trays", SDL_TRAYENTRY_BUTTON);
     CHECK(entry_close);
