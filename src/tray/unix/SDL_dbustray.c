@@ -40,6 +40,7 @@ typedef struct SDL_TrayDriverDBus
 
 typedef struct SDL_TrayDBus
 {
+    SDL_DBusContext *dbus;
     DBusConnection *connection;
     char *service_name;
 
@@ -52,6 +53,8 @@ typedef struct SDL_TrayDBus
     SDL_TrayClickCallback m_cb;
     void *udata;
 
+    Uint64 watcher_retry_time;
+    bool watcher_needs_register;
     bool block;
 } SDL_TrayDBus;
 
@@ -80,6 +83,7 @@ typedef struct SDL_TrayEntryDBus
 #define SNI_WATCHER_PATH      "/StatusNotifierWatcher"
 #define SNI_WATCHER_INTERFACE "org.kde.StatusNotifierWatcher"
 #define SNI_OBJECT_PATH       "/StatusNotifierItem"
+#define SNI_WATCHER_MATCH     "type='signal',sender='org.freedesktop.DBus',interface='org.freedesktop.DBus',member='NameOwnerChanged',arg0='org.kde.StatusNotifierWatcher'"
 static const char *sni_introspect = "<!DOCTYPE node PUBLIC \"-//freedesktop//DTD D-BUS Object Introspection 1.0//EN\" \"http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd\">\r\n<node>\r\n  <interface name=\"org.kde.StatusNotifierItem\">\r\n\r\n    <property name=\"Category\" type=\"s\" access=\"read\"/>\r\n    <property name=\"Id\" type=\"s\" access=\"read\"/>\r\n    <property name=\"Title\" type=\"s\" access=\"read\"/>\r\n    <property name=\"Status\" type=\"s\" access=\"read\"/>\r\n    <property name=\"WindowId\" type=\"u\" access=\"read\"/>\r\n\r\n    <!-- An additional path to add to the theme search path to find the icons specified above. -->\r\n    <property name=\"IconThemePath\" type=\"s\" access=\"read\"/>\r\n    <property name=\"Menu\" type=\"o\" access=\"read\"/>\r\n    <property name=\"ItemIsMenu\" type=\"b\" access=\"read\"/>\r\n\r\n\r\n    <!-- main icon -->\r\n    <!-- names are preferred over pixmaps -->\r\n    <property name=\"IconName\" type=\"s\" access=\"read\"/>\r\n\r\n    <!--struct containing width, height and image data-->\r\n    <property name=\"IconPixmap\" type=\"a(iiay)\" access=\"read\">\r\n      <annotation name=\"org.qtproject.QtDBus.QtTypeName\" value=\"KDbusImageVector\"/>\r\n    </property>\r\n\r\n    <property name=\"OverlayIconName\" type=\"s\" access=\"read\"/>\r\n\r\n    <property name=\"OverlayIconPixmap\" type=\"a(iiay)\" access=\"read\">\r\n      <annotation name=\"org.qtproject.QtDBus.QtTypeName\" value=\"KDbusImageVector\"/>\r\n    </property>\r\n\r\n\r\n    <!-- Requesting attention icon -->\r\n    <property name=\"AttentionIconName\" type=\"s\" access=\"read\"/>\r\n\r\n    <!--same definition as image-->\r\n    <property name=\"AttentionIconPixmap\" type=\"a(iiay)\" access=\"read\">\r\n      <annotation name=\"org.qtproject.QtDBus.QtTypeName\" value=\"KDbusImageVector\"/>\r\n    </property>\r\n\r\n    <property name=\"AttentionMovieName\" type=\"s\" access=\"read\"/>\r\n\r\n\r\n\r\n    <!-- tooltip data -->\r\n\r\n    <!--(iiay) is an image-->\r\n    <property name=\"ToolTip\" type=\"(sa(iiay)ss)\" access=\"read\">\r\n      <annotation name=\"org.qtproject.QtDBus.QtTypeName\" value=\"KDbusToolTipStruct\"/>\r\n    </property>\r\n\r\n    <method name=\"ProvideXdgActivationToken\">\r\n        <arg name=\"token\" type=\"s\" direction=\"in\"/>\r\n    </method>\r\n\r\n    <!-- interaction: the systemtray wants the application to do something -->\r\n    <method name=\"ContextMenu\">\r\n        <!-- we\'re passing the coordinates of the icon, so the app knows where to put the popup window -->\r\n        <arg name=\"x\" type=\"i\" direction=\"in\"/>\r\n        <arg name=\"y\" type=\"i\" direction=\"in\"/>\r\n    </method>\r\n\r\n    <method name=\"Activate\">\r\n        <arg name=\"x\" type=\"i\" direction=\"in\"/>\r\n        <arg name=\"y\" type=\"i\" direction=\"in\"/>\r\n    </method>\r\n\r\n    <method name=\"SecondaryActivate\">\r\n        <arg name=\"x\" type=\"i\" direction=\"in\"/>\r\n        <arg name=\"y\" type=\"i\" direction=\"in\"/>\r\n    </method>\r\n\r\n    <method name=\"Scroll\">\r\n      <arg name=\"delta\" type=\"i\" direction=\"in\"/>\r\n      <arg name=\"orientation\" type=\"s\" direction=\"in\"/>\r\n    </method>\r\n\r\n    <!-- Signals: the client wants to change something in the status-->\r\n    <signal name=\"NewTitle\">\r\n    </signal>\r\n\r\n    <signal name=\"NewIcon\">\r\n    </signal>\r\n\r\n    <signal name=\"NewAttentionIcon\">\r\n    </signal>\r\n\r\n    <signal name=\"NewOverlayIcon\">\r\n    </signal>\r\n\r\n    <signal name=\"NewMenu\">\r\n    </signal>\r\n\r\n    <signal name=\"NewToolTip\">\r\n    </signal>\r\n\r\n    <signal name=\"NewStatus\">\r\n      <arg name=\"status\" type=\"s\"/>\r\n    </signal>\r\n\r\n  </interface>\r\n</node>";
 
 static SDL_Surface *ConvertTrayIcon(SDL_Surface *icon)
@@ -565,6 +569,27 @@ static DBusHandlerResult TrayMessageHandler(DBusConnection *connection, DBusMess
     return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
 }
 
+static DBusHandlerResult TrayWatcherOwnerChanged(DBusConnection *connection, DBusMessage *msg, void *userdata)
+{
+    SDL_TrayDBus *tray_dbus = userdata;
+    const char *name, *old_owner, *new_owner;
+    (void)connection;
+
+    if (!tray_dbus->dbus->message_is_signal(msg, "org.freedesktop.DBus", "NameOwnerChanged") ||
+        !tray_dbus->dbus->message_get_args(msg, NULL,
+                                           DBUS_TYPE_STRING, &name,
+                                           DBUS_TYPE_STRING, &old_owner,
+                                           DBUS_TYPE_STRING, &new_owner,
+                                           DBUS_TYPE_INVALID) ||
+        SDL_strcmp(name, SNI_WATCHER_SERVICE)) {
+        return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
+    }
+
+    tray_dbus->watcher_needs_register = (*new_owner != '\0');
+    tray_dbus->watcher_retry_time = 0;
+    return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
+}
+
 SDL_Tray *CreateTray(SDL_TrayDriver *driver, SDL_PropertiesID props)
 {
     SDL_TrayDriverDBus *dbus_driver;
@@ -666,6 +691,26 @@ SDL_Tray *CreateTray(SDL_TrayDriver *driver, SDL_PropertiesID props)
         return NULL;
     }
 
+    tray_dbus->dbus = dbus_driver->dbus;
+    dbus_driver->dbus->error_init(&err);
+    dbus_driver->dbus->bus_add_match(tray_dbus->connection, SNI_WATCHER_MATCH, &err);
+    if (dbus_driver->dbus->error_is_set(&err)) {
+        SDL_SetError("Unable to monitor tray host: %s", err.message);
+        dbus_driver->dbus->error_free(&err);
+        CLEANUP2();
+        return NULL;
+    }
+    if (!dbus_driver->dbus->connection_add_filter(tray_dbus->connection, TrayWatcherOwnerChanged, tray_dbus, NULL)) {
+        SDL_SetError("Unable to monitor tray host changes");
+        dbus_driver->dbus->error_init(&err);
+        dbus_driver->dbus->bus_remove_match(tray_dbus->connection, SNI_WATCHER_MATCH, &err);
+        if (dbus_driver->dbus->error_is_set(&err)) {
+            dbus_driver->dbus->error_free(&err);
+        }
+        CLEANUP2();
+        return NULL;
+    }
+
     /* Create object */
     object_path = SNI_OBJECT_PATH;
     SDL_zero(vtable);
@@ -690,6 +735,7 @@ SDL_Tray *CreateTray(SDL_TrayDriver *driver, SDL_PropertiesID props)
         CLEANUP2();
         return NULL;
     }
+    dbus_driver->dbus->connection_flush(tray_dbus->connection);
 
     /* Icon mouse event callbacks */
     tray_dbus->l_cb = (SDL_TrayClickCallback)SDL_GetPointerProperty(props, SDL_PROP_TRAY_CREATE_LEFTCLICK_CALLBACK_POINTER, NULL);
@@ -758,6 +804,8 @@ void DestroyTray(SDL_Tray *tray)
     driver = (SDL_TrayDriverDBus *)tray->driver->internal;
     tray_dbus = (SDL_TrayDBus *)tray->internal;
 
+    driver->dbus->connection_remove_filter(tray_dbus->connection, TrayWatcherOwnerChanged, tray_dbus);
+
     /* Destroy connection */
     driver->dbus->connection_flush(tray_dbus->connection);
     tray_dbus->block = true;
@@ -809,6 +857,27 @@ void UpdateTray(SDL_Tray *tray)
         }
 
         SDL_DelayNS(SDL_US_TO_NS(10));
+    }
+
+    if (SDL_ObjectValid(tray, SDL_OBJECT_TYPE_TRAY) && tray_dbus->watcher_needs_register &&
+        SDL_GetTicksNS() >= tray_dbus->watcher_retry_time) {
+        dbus_bool_t host_registered = FALSE;
+        if (SDL_DBus_QueryPropertyOnConnection(tray_dbus->connection, NULL, SNI_WATCHER_SERVICE,
+                                               SNI_WATCHER_PATH, SNI_WATCHER_INTERFACE,
+                                               "IsStatusNotifierHostRegistered", DBUS_TYPE_BOOLEAN,
+                                               &host_registered) && host_registered) {
+            const char *register_name = tray_dbus->service_name;
+            if (SDL_DBus_CallVoidMethodOnConnection(tray_dbus->connection, SNI_WATCHER_SERVICE,
+                                                    SNI_WATCHER_PATH, SNI_WATCHER_INTERFACE,
+                                                    "RegisterStatusNotifierItem", DBUS_TYPE_STRING,
+                                                    &register_name, DBUS_TYPE_INVALID)) {
+                tray_dbus->watcher_needs_register = false;
+                driver->dbus->connection_flush(tray_dbus->connection);
+            }
+        }
+        if (tray_dbus->watcher_needs_register) {
+            tray_dbus->watcher_retry_time = SDL_GetTicksNS() + SDL_NS_PER_SECOND;
+        }
     }
 }
 

@@ -170,6 +170,40 @@ static void test_item_is_menu_matches_left_click_behavior(void)
     menu_dbus.menu_path = NULL;
     assert(!TrayItemIsMenu(&tray, &tray_dbus));
 }
+
+static void test_tray_watcher_restart_filter(SDL_DBusContext *ctx)
+{
+    SDL_TrayDBus tray_dbus = { 0 };
+    DBusMessage *msg;
+    DBusMessageIter iter;
+    const char *name = SNI_WATCHER_SERVICE;
+    const char *old_owner = ":1.1";
+    const char *new_owner = ":1.2";
+
+    tray_dbus.dbus = ctx;
+    msg = dbus_message_new_signal("/org/freedesktop/DBus", "org.freedesktop.DBus", "NameOwnerChanged");
+    assert(msg);
+    dbus_message_iter_init_append(msg, &iter);
+    assert(dbus_message_iter_append_basic(&iter, DBUS_TYPE_STRING, &name));
+    assert(dbus_message_iter_append_basic(&iter, DBUS_TYPE_STRING, &old_owner));
+    assert(dbus_message_iter_append_basic(&iter, DBUS_TYPE_STRING, &new_owner));
+    assert(TrayWatcherOwnerChanged(NULL, msg, &tray_dbus) == DBUS_HANDLER_RESULT_NOT_YET_HANDLED);
+    assert(tray_dbus.watcher_needs_register && tray_dbus.watcher_retry_time == 0);
+    dbus_message_unref(msg);
+
+    old_owner = new_owner;
+    new_owner = "";
+    msg = dbus_message_new_signal("/org/freedesktop/DBus", "org.freedesktop.DBus", "NameOwnerChanged");
+    assert(msg);
+    dbus_message_iter_init_append(msg, &iter);
+    assert(dbus_message_iter_append_basic(&iter, DBUS_TYPE_STRING, &name));
+    assert(dbus_message_iter_append_basic(&iter, DBUS_TYPE_STRING, &old_owner));
+    assert(dbus_message_iter_append_basic(&iter, DBUS_TYPE_STRING, &new_owner));
+    assert(TrayWatcherOwnerChanged(NULL, msg, &tray_dbus) == DBUS_HANDLER_RESULT_NOT_YET_HANDLED);
+    assert(!tray_dbus.watcher_needs_register);
+    dbus_message_unref(msg);
+}
+
 static void clicked(SDL_MenuItem *item, void *data)
 {
     SDL_ListNode *old = registered_menu;
@@ -237,6 +271,7 @@ int main(int argc, char **argv)
     USE(message_unref); USE(message_iter_init); USE(message_iter_get_arg_type);
     USE(message_iter_recurse); USE(message_iter_get_basic); USE(message_iter_next);
     USE(message_iter_append_basic);
+    USE(message_is_signal); USE(message_get_args);
 #undef USE
     ctx.connection_ref = retain_connection;
     ctx.connection_unref = release_connection;
@@ -248,6 +283,7 @@ int main(int argc, char **argv)
     test_tray_getall_without_icon_or_tooltip(&ctx);
     test_tray_get_window_id(&ctx);
     test_item_is_menu_matches_left_click_behavior();
+    test_tray_watcher_restart_filter(&ctx);
     test_shortcut_property(&ctx, SDL_SCANCODE_5, "5");
     test_shortcut_property(&ctx, SDL_SCANCODE_KP_1, "KP_1");
     for (int fields = 0; fields <= 5; ++fields) {
