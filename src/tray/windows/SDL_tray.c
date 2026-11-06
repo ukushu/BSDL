@@ -108,6 +108,17 @@ static SDL_TrayEntry *find_entry_with_id(SDL_Tray *tray, UINT_PTR id)
     return find_entry_in_menu(tray->menu, id);
 }
 
+static int get_tray_entry_position(SDL_TrayEntry *entry)
+{
+    SDL_TrayMenu *menu = entry->parent;
+    for (int i = 0; i < menu->nEntries; ++i) {
+        if (menu->entries[i] == entry) {
+            return i;
+        }
+    }
+    return -1;
+}
+
 static bool WIN_AddTrayIcon(SDL_Tray *tray)
 {
     if (!Shell_NotifyIconW(NIM_ADD, &tray->nid)) {
@@ -631,21 +642,15 @@ void SDL_RemoveTrayEntry(SDL_TrayEntry *entry)
     }
 
     SDL_TrayMenu *menu = entry->parent;
+    int pos = get_tray_entry_position(entry);
 
-    if (!DeleteMenu(menu->hMenu, (UINT) entry->id, MF_BYCOMMAND)) {
+    if (pos < 0 || !DeleteMenu(menu->hMenu, (UINT) pos, MF_BYPOSITION)) {
         SDL_SetError("Couldn't destroy tray entry");
         return;
     }
 
-    bool found = false;
-    for (int i = 0; i < menu->nEntries - 1; i++) {
-        if (menu->entries[i] == entry) {
-            found = true;
-        }
-
-        if (found) {
-            menu->entries[i] = menu->entries[i + 1];
-        }
+    for (int i = pos; i < menu->nEntries - 1; ++i) {
+        menu->entries[i] = menu->entries[i + 1];
     }
 
     if (entry->submenu) {
@@ -804,6 +809,11 @@ void SDL_SetTrayEntryLabel(SDL_TrayEntry *entry, const char *label)
     if (!entry || entry->separator != (label == NULL) || !label) {
         return;
     }
+    int pos = get_tray_entry_position(entry);
+    if (pos < 0) {
+        SDL_SetError("Couldn't update tray entry label");
+        return;
+    }
 
     char *label_copy = SDL_strdup(label);
     if (!label_copy) {
@@ -825,7 +835,7 @@ void SDL_SetTrayEntryLabel(SDL_TrayEntry *entry, const char *label)
     mii.dwTypeData = label_w;
     mii.cch = (UINT) SDL_wcslen(label_w);
 
-    if (!SetMenuItemInfoW(entry->parent->hMenu, (UINT) entry->id, FALSE, &mii)) {
+    if (!SetMenuItemInfoW(entry->parent->hMenu, (UINT) pos, TRUE, &mii)) {
         SDL_SetError("Couldn't update tray entry label");
     } else {
         SDL_free(entry->label_cache);
@@ -856,8 +866,13 @@ void SDL_SetTrayEntryChecked(SDL_TrayEntry *entry, bool checked)
     if (!entry || !(entry->flags & SDL_TRAYENTRY_CHECKBOX)) {
         return;
     }
+    int pos = get_tray_entry_position(entry);
+    if (pos < 0) {
+        SDL_SetError("Couldn't update tray entry state");
+        return;
+    }
 
-    if (CheckMenuItem(entry->parent->hMenu, (UINT) entry->id, checked ? MF_CHECKED : MF_UNCHECKED) == (UINT)-1) {
+    if (CheckMenuItem(entry->parent->hMenu, (UINT) pos, MF_BYPOSITION | (checked ? MF_CHECKED : MF_UNCHECKED)) == (UINT)-1) {
         SDL_SetError("Couldn't update tray entry state");
     }
 }
@@ -867,12 +882,17 @@ bool SDL_GetTrayEntryChecked(SDL_TrayEntry *entry)
     if (!entry || !(entry->flags & SDL_TRAYENTRY_CHECKBOX)) {
         return false;
     }
+    int pos = get_tray_entry_position(entry);
+    if (pos < 0) {
+        SDL_SetError("Couldn't query tray entry state");
+        return false;
+    }
 
     MENUITEMINFOW mii;
     mii.cbSize = sizeof(MENUITEMINFOW);
     mii.fMask = MIIM_STATE;
 
-    if (!GetMenuItemInfoW(entry->parent->hMenu, (UINT) entry->id, FALSE, &mii)) {
+    if (!GetMenuItemInfoW(entry->parent->hMenu, (UINT) pos, TRUE, &mii)) {
         SDL_SetError("Couldn't query tray entry state");
         return false;
     }
@@ -885,8 +905,13 @@ void SDL_SetTrayEntryEnabled(SDL_TrayEntry *entry, bool enabled)
     if (!entry) {
         return;
     }
+    int pos = get_tray_entry_position(entry);
+    if (pos < 0) {
+        SDL_SetError("Couldn't update tray entry state");
+        return;
+    }
 
-    if (EnableMenuItem(entry->parent->hMenu, (UINT) entry->id, MF_BYCOMMAND | (enabled ? MF_ENABLED : (MF_DISABLED | MF_GRAYED))) == (UINT)-1) {
+    if (EnableMenuItem(entry->parent->hMenu, (UINT) pos, MF_BYPOSITION | (enabled ? MF_ENABLED : (MF_DISABLED | MF_GRAYED))) == (UINT)-1) {
         SDL_SetError("Couldn't update tray entry state");
     }
 }
@@ -896,12 +921,17 @@ bool SDL_GetTrayEntryEnabled(SDL_TrayEntry *entry)
     if (!entry) {
         return false;
     }
+    int pos = get_tray_entry_position(entry);
+    if (pos < 0) {
+        SDL_SetError("Couldn't query tray entry state");
+        return false;
+    }
 
     MENUITEMINFOW mii;
     mii.cbSize = sizeof(MENUITEMINFOW);
     mii.fMask = MIIM_STATE;
 
-    if (!GetMenuItemInfoW(entry->parent->hMenu, (UINT) entry->id, FALSE, &mii)) {
+    if (!GetMenuItemInfoW(entry->parent->hMenu, (UINT) pos, TRUE, &mii)) {
         SDL_SetError("Couldn't query tray entry state");
         return false;
     }
