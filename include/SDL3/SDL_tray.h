@@ -512,9 +512,11 @@ extern SDL_DECLSPEC const char * SDLCALL SDL_GetTrayEntryLabel(SDL_TrayEntry *en
  *
  * This only sends shortcut metadata; it does not register or activate it.
  * Linux tray hosts may display or handle it through the D-Bus menu protocol.
- * Whether or how they do so depends on the host. Other platforms ignore it.
- * The scancode is a physical key identifier and is independent of the active
- * keyboard layout.
+ * That protocol carries key names rather than physical scancodes, so hosts may
+ * interpret them according to the active keyboard layout. Whether or how a
+ * host uses the shortcut depends on the host. Other platforms ignore it. The
+ * scancode passed here is a physical key identifier and is independent of the
+ * active keyboard layout.
  *
  * Pass SDL_SCANCODE_UNKNOWN and SDL_KMOD_NONE to clear the shortcut. Only
  * Control, Alt, Shift, and GUI modifiers are supported.
