@@ -181,6 +181,10 @@ void SDL_DBus_Init(void)
 {
     static bool is_dbus_available = true;
 
+    if (dbus_dispatch_depth > 0 && dbus_quit_pending && dbus.session_conn) {
+        dbus_quit_pending = false;
+    }
+
     if (!is_dbus_available) {
         return; // don't keep trying if this fails.
     }
