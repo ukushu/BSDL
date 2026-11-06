@@ -539,7 +539,7 @@ static DBusHandlerResult TrayMessageHandler(DBusConnection *connection, DBusMess
             tray_dbus_local->deferred_connection_close = previous_deferred_connection_close;
         }
 
-        // shortcut: only hosts such as Plasma open on Activate errors; expand if SNI gains a portable menu-request method.
+        // shortcut: Plasma uses Activate errors to open the menu; ItemActivationRequested targets a menu item and is host-dependent.
         if (show_menu && has_menu && is_activate) {
             reply = dbus_context->message_new_error(msg, DBUS_ERROR_FAILED, "Tray menu requested");
         } else {
