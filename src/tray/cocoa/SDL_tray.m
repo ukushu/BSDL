@@ -38,6 +38,7 @@ struct SDL_Tray;
 @property (nonatomic, assign) struct SDL_Tray *tray;
 @property (nonatomic, strong) id middleClickMonitor;
 - (void)handleClick:(id)sender;
+- (void)handleMenuItemClick:(id)sender;
 - (void)startMonitoringMiddleClicks;
 - (void)stopMonitoringMiddleClicks;
 @end
@@ -119,6 +120,16 @@ struct SDL_Tray {
 
     if (show_menu && self.tray == tray && tray->menu) {
         [tray->statusItem popUpStatusItemMenu:tray->menu->nsmenu];
+    }
+}
+
+- (void)handleMenuItemClick:(id)sender
+{
+    if (self.tray) {
+        SDL_TrayEntry *entry = (SDL_TrayEntry *)[[sender representedObject] pointerValue];
+        if (entry) {
+            SDL_ClickTrayEntry(entry);
+        }
     }
 }
 
@@ -389,6 +400,17 @@ SDL_TrayMenu *SDL_GetTrayMenu(SDL_Tray *tray)
     return tray->menu;
 }
 
+static SDL_Tray *GetTrayForMenu(SDL_TrayMenu *menu)
+{
+    while (menu) {
+        if (menu->parent_tray) {
+            return menu->parent_tray;
+        }
+        menu = menu->parent_entry ? menu->parent_entry->parent : NULL;
+    }
+    return NULL;
+}
+
 SDL_TrayMenu *SDL_CreateTraySubmenu(SDL_TrayEntry *entry)
 {
     CHECK_PARAM(!entry) {
@@ -527,7 +549,12 @@ SDL_TrayEntry *SDL_InsertTrayEntryAt(SDL_TrayMenu *menu, int pos, const char *la
     if (label == NULL) {
         nsitem = [NSMenuItem separatorItem];
     } else {
-        nsitem = [[NSMenuItem alloc] initWithTitle:[NSString stringWithUTF8String:label] action:@selector(menu) keyEquivalent:@""];
+        SDL_Tray *tray = GetTrayForMenu(menu);
+        SEL action = (flags & SDL_TRAYENTRY_SUBMENU) ? NULL : @selector(handleMenuItemClick:);
+        nsitem = [[NSMenuItem alloc] initWithTitle:[NSString stringWithUTF8String:label] action:action keyEquivalent:@""];
+        if (action) {
+            [nsitem setTarget:tray->clickHandler];
+        }
         [nsitem setEnabled:((flags & SDL_TRAYENTRY_DISABLED) ? FALSE : TRUE)];
         [nsitem setState:((flags & SDL_TRAYENTRY_CHECKED) ? NSControlStateValueOn : NSControlStateValueOff)];
         [nsitem setRepresentedObject:[NSValue valueWithPointer:entry]];

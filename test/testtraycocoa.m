@@ -3,6 +3,12 @@
 #undef NDEBUG
 #include <assert.h>
 
+static void SDLCALL tray_entry_callback(void *userdata, SDL_TrayEntry *entry)
+{
+    (void)entry;
+    ++*(int *)userdata;
+}
+
 int main(int argc, char **argv)
 {
     @autoreleasepool {
@@ -48,6 +54,26 @@ int main(int argc, char **argv)
         assert(tray_icon);
         SDL_Tray *tray = SDL_CreateTray(tray_icon, "Tray geometry test");
         assert(tray);
+
+        int callback_count = 0;
+        SDL_TrayMenu *menu = SDL_CreateTrayMenu(tray);
+        assert(menu);
+        SDL_TrayEntry *checkbox = SDL_InsertTrayEntryAt(menu, -1, "Check", SDL_TRAYENTRY_CHECKBOX);
+        assert(checkbox);
+        SDL_SetTrayEntryCallback(checkbox, tray_entry_callback, &callback_count);
+        assert([NSApp sendAction:checkbox->nsitem.action to:checkbox->nsitem.target from:checkbox->nsitem]);
+        assert(callback_count == 1 && SDL_GetTrayEntryChecked(checkbox));
+
+        SDL_TrayEntry *submenu_entry = SDL_InsertTrayEntryAt(menu, -1, "More", SDL_TRAYENTRY_SUBMENU);
+        assert(submenu_entry);
+        SDL_TrayMenu *submenu = SDL_CreateTraySubmenu(submenu_entry);
+        assert(submenu);
+        SDL_TrayEntry *submenu_item = SDL_InsertTrayEntryAt(submenu, -1, "Run", 0);
+        assert(submenu_item);
+        SDL_SetTrayEntryCallback(submenu_item, tray_entry_callback, &callback_count);
+        assert([NSApp sendAction:submenu_item->nsitem.action to:submenu_item->nsitem.target from:submenu_item->nsitem]);
+        assert(callback_count == 2);
+
         SDL_Rect tray_rect = { 0, 0, 0, 0 };
         assert(SDL_GetTrayRect(tray, &tray_rect));
         assert(tray_rect.w > 0 && tray_rect.h > 0);
