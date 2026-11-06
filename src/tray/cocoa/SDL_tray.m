@@ -24,8 +24,10 @@
 #ifdef SDL_PLATFORM_MACOS
 
 #include <Cocoa/Cocoa.h>
+#include <math.h>
 
 #include "../SDL_tray_utils.h"
+#include "../../video/cocoa/SDL_cocoavideo.h"
 #include "../../video/SDL_surface_c.h"
 
 /* Forward declaration */
@@ -293,6 +295,36 @@ SDL_Tray *SDL_CreateTray(SDL_Surface *icon, const char *tooltip)
     tray = SDL_CreateTrayWithProperties(props);
     SDL_DestroyProperties(props);
     return tray;
+}
+
+bool SDL_GetTrayRect(SDL_Tray *tray, SDL_Rect *rect)
+{
+    if (!SDL_IsMainThread()) {
+        return SDL_SetError("This function should only be called on the main thread");
+    }
+    if (!SDL_ObjectValid(tray, SDL_OBJECT_TYPE_TRAY)) {
+        return SDL_InvalidParamError("tray");
+    }
+    if (!rect) {
+        return SDL_InvalidParamError("rect");
+    }
+
+    NSStatusBarButton *button = tray->statusItem.button;
+    NSWindow *window = button.window;
+    SDL_VideoDevice *device = SDL_GetVideoDevice();
+    if (!button || !window || !device) {
+        return false;
+    }
+
+    SDL_CocoaVideoData *videodata = (__bridge SDL_CocoaVideoData *)device->internal;
+    NSRect screen_rect = [window convertRectToScreen:[button convertRect:button.bounds toView:nil]];
+    const int x = (int)floor(NSMinX(screen_rect));
+    const int y = (int)floor(videodata.mainDisplayHeight - NSMaxY(screen_rect));
+    rect->x = x;
+    rect->y = y;
+    rect->w = (int)ceil(NSMaxX(screen_rect)) - x;
+    rect->h = (int)ceil(videodata.mainDisplayHeight - NSMinY(screen_rect)) - y;
+    return true;
 }
 
 void SDL_SetTrayIcon(SDL_Tray *tray, SDL_Surface *icon)

@@ -156,6 +156,27 @@ extern SDL_DECLSPEC bool SDLCALL SDL_GetTrayClickPosition(SDL_Tray *tray, int *x
  */
 extern SDL_DECLSPEC const char * SDLCALL SDL_GetTrayClickActivationToken(SDL_Tray *tray);
 
+/**
+ * Gets the screen rectangle occupied by a system tray icon.
+ *
+ * Coordinates use the same screen space as SDL_GetGlobalMouseState() and may
+ * be negative on multi-display desktops. The rectangle is a placement hint;
+ * not all platforms expose tray icon geometry. On platforms where it is
+ * unavailable, this returns false without changing `rect`. Use
+ * SDL_GetTrayClickPosition() inside a click callback for a click-specific
+ * placement hint.
+ *
+ * \param tray the tray icon to query.
+ * \param rect a pointer filled with the icon rectangle.
+ * \returns true if the rectangle was available, or false if unavailable; on
+ *          failure, outputs are unchanged. Call SDL_GetError() for invalid
+ *          arguments.
+ *
+ * \threadsafety This function should only be called on the main thread.
+ * \since This function is available since SDL 3.6.0.
+ */
+extern SDL_DECLSPEC bool SDLCALL SDL_GetTrayRect(SDL_Tray *tray, SDL_Rect *rect);
+
 
 
 /**

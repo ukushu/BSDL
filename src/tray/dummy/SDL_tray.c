@@ -41,6 +41,14 @@ SDL_Tray *SDL_CreateTray(SDL_Surface *icon, const char *tooltip)
     return NULL;
 }
 
+bool SDL_GetTrayRect(SDL_Tray *tray, SDL_Rect *rect)
+{
+    (void)tray;
+    (void)rect;
+    SDL_InvalidParamError("tray");
+    return false;
+}
+
 void SDL_SetTrayIcon(SDL_Tray *tray, SDL_Surface *icon)
 {
 }

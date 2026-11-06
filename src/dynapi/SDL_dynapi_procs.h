@@ -1355,4 +1355,5 @@ SDL_DYNAPI_PROC(bool,SDL_SetSoftwareRendererSurface,(SDL_Renderer *a,SDL_Surface
 SDL_DYNAPI_PROC(char*,SDL_EncodeURL,(const char *a,const char *b),(a,b),return)
 SDL_DYNAPI_PROC(bool,SDL_GetTrayClickPosition,(SDL_Tray *a,int *b,int *c),(a,b,c),return)
 SDL_DYNAPI_PROC(const char*,SDL_GetTrayClickActivationToken,(SDL_Tray *a),(a),return)
+SDL_DYNAPI_PROC(bool,SDL_GetTrayRect,(SDL_Tray *a,SDL_Rect *b),(a,b),return)
 SDL_DYNAPI_PROC(void,SDL_SetTrayEntryShortcut,(SDL_TrayEntry *a,SDL_Scancode b,SDL_Keymod c),(a,b,c),)

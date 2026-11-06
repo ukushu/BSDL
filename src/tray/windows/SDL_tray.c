@@ -427,6 +427,36 @@ SDL_Tray *SDL_CreateTray(SDL_Surface *icon, const char *tooltip)
     return tray;
 }
 
+bool SDL_GetTrayRect(SDL_Tray *tray, SDL_Rect *rect)
+{
+    NOTIFYICONIDENTIFIER identifier;
+    RECT native_rect;
+
+    if (!SDL_IsMainThread()) {
+        return SDL_SetError("This function should be called on the main thread");
+    }
+    if (!SDL_ObjectValid(tray, SDL_OBJECT_TYPE_TRAY)) {
+        return SDL_InvalidParamError("tray");
+    }
+    if (!rect) {
+        return SDL_InvalidParamError("rect");
+    }
+
+    SDL_zero(identifier);
+    identifier.cbSize = sizeof(identifier);
+    identifier.hWnd = tray->hwnd;
+    identifier.uID = tray->nid.uID;
+    if (FAILED(Shell_NotifyIconGetRect(&identifier, &native_rect))) {
+        return false;
+    }
+
+    rect->x = native_rect.left;
+    rect->y = native_rect.top;
+    rect->w = native_rect.right - native_rect.left;
+    rect->h = native_rect.bottom - native_rect.top;
+    return true;
+}
+
 void SDL_SetTrayIcon(SDL_Tray *tray, SDL_Surface *icon)
 {
     if (!SDL_ObjectValid(tray, SDL_OBJECT_TYPE_TRAY)) {

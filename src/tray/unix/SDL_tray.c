@@ -26,6 +26,20 @@
 
 static SDL_TrayDriver *driver = NULL;
 
+bool SDL_GetTrayRect(SDL_Tray *tray, SDL_Rect *rect)
+{
+    if (!SDL_IsMainThread()) {
+        return SDL_SetError("This function should be called on the main thread");
+    }
+    if (!SDL_ObjectValid(tray, SDL_OBJECT_TYPE_TRAY)) {
+        return SDL_InvalidParamError("tray");
+    }
+    if (!rect) {
+        return SDL_InvalidParamError("rect");
+    }
+    return false;
+}
+
 void SDL_UpdateTrays(void)
 {
     SDL_Tray **trays;
