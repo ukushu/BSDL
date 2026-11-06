@@ -841,7 +841,9 @@ void SDL_SetTrayEntryChecked(SDL_TrayEntry *entry, bool checked)
         return;
     }
 
-    CheckMenuItem(entry->parent->hMenu, (UINT) entry->id, checked ? MF_CHECKED : MF_UNCHECKED);
+    if (CheckMenuItem(entry->parent->hMenu, (UINT) entry->id, checked ? MF_CHECKED : MF_UNCHECKED) == (UINT)-1) {
+        SDL_SetError("Couldn't update tray entry state");
+    }
 }
 
 bool SDL_GetTrayEntryChecked(SDL_TrayEntry *entry)
@@ -867,7 +869,9 @@ void SDL_SetTrayEntryEnabled(SDL_TrayEntry *entry, bool enabled)
         return;
     }
 
-    EnableMenuItem(entry->parent->hMenu, (UINT) entry->id, MF_BYCOMMAND | (enabled ? MF_ENABLED : (MF_DISABLED | MF_GRAYED)));
+    if (EnableMenuItem(entry->parent->hMenu, (UINT) entry->id, MF_BYCOMMAND | (enabled ? MF_ENABLED : (MF_DISABLED | MF_GRAYED))) == (UINT)-1) {
+        SDL_SetError("Couldn't update tray entry state");
+    }
 }
 
 bool SDL_GetTrayEntryEnabled(SDL_TrayEntry *entry)
