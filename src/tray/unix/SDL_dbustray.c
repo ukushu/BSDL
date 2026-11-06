@@ -1128,8 +1128,10 @@ void ClickTrayEntry(SDL_TrayEntry *entry)
         dbus_entry->item->flags ^= SDL_MENU_ITEM_FLAGS_CHECKED;
         SDL_DBus_UpdateMenu(driver->dbus, tray_dbus->connection, main_menu_dbus->menu, main_menu_dbus->menu_path, TrayNewMenuOnMenuUpdateCallback, tray, SDL_DBUS_UPDATE_MENU_FLAGS_NONE);
     }
-    entry_cb = dbus_entry->item->udata2;
-    entry_cb(dbus_entry->item->cb_data, dbus_entry->item->udata);
+    entry_cb = dbus_entry->item->cb ? dbus_entry->item->udata2 : NULL;
+    if (entry_cb) {
+        entry_cb(dbus_entry->item->cb_data, dbus_entry->item->udata);
+    }
 }
 
 SDL_TrayDriver *SDL_Tray_CreateDBusDriver(void)

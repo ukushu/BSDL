@@ -1390,6 +1390,14 @@ static DBusHandlerResult MenuHandleEventGroup(SDL_DBusContext *ctx, SDL_ListNode
     DBusMessageIter reply_iter, id_errors_iter;
     DBusMessageIter args, array_iter;
 
+    ctx->connection_ref(conn);
+    reply = ctx->message_new_method_return(msg);
+    ctx->message_iter_init_append(reply, &reply_iter);
+    ctx->message_iter_open_container(&reply_iter, DBUS_TYPE_ARRAY, "i", &id_errors_iter);
+    ctx->message_iter_close_container(&reply_iter, &id_errors_iter);
+    ctx->connection_send(conn, reply, NULL);
+    ctx->message_unref(reply);
+
     ctx->message_iter_init(msg, &args);
     if (ctx->message_iter_get_arg_type(&args) == DBUS_TYPE_ARRAY) {
         ctx->message_iter_recurse(&args, &array_iter);
@@ -1409,6 +1417,13 @@ static DBusHandlerResult MenuHandleEventGroup(SDL_DBusContext *ctx, SDL_ListNode
                         SDL_DBusMenuItem *dbus_item;
                         SDL_MenuItem *item;
 
+                        void *current_menu = NULL;
+                        // A previous callback may have destroyed or replaced the menu.
+                        if (!ctx->connection_get_is_connected(conn) ||
+                            !ctx->connection_get_object_path_data(conn, DBUS_MENU_OBJECT_PATH, &current_menu) || !current_menu) {
+                            break;
+                        }
+                        menu = current_menu;
                         dbus_item = MenuGetItemById(menu, id);
                         item = (SDL_MenuItem *)dbus_item;
 
@@ -1429,12 +1444,7 @@ static DBusHandlerResult MenuHandleEventGroup(SDL_DBusContext *ctx, SDL_ListNode
         }
     }
 
-    reply = ctx->message_new_method_return(msg);
-    ctx->message_iter_init_append(reply, &reply_iter);
-    ctx->message_iter_open_container(&reply_iter, DBUS_TYPE_ARRAY, "i", &id_errors_iter);
-    ctx->message_iter_close_container(&reply_iter, &id_errors_iter);
-    ctx->connection_send(conn, reply, NULL);
-    ctx->message_unref(reply);
+    ctx->connection_unref(conn);
     return DBUS_HANDLER_RESULT_HANDLED;
 }
 

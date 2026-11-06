@@ -552,7 +552,7 @@ bool SDL_GetTrayEntryChecked(SDL_TrayEntry *entry)
 
 void SDL_SetTrayEntryEnabled(SDL_TrayEntry *entry, bool enabled)
 {
-    if (!entry || !(entry->flags & SDL_TRAYENTRY_CHECKBOX)) {
+    if (!entry) {
         return;
     }
 
@@ -561,7 +561,7 @@ void SDL_SetTrayEntryEnabled(SDL_TrayEntry *entry, bool enabled)
 
 bool SDL_GetTrayEntryEnabled(SDL_TrayEntry *entry)
 {
-    if (!entry || !(entry->flags & SDL_TRAYENTRY_CHECKBOX)) {
+    if (!entry) {
         return false;
     }
 

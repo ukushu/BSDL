@@ -514,6 +514,18 @@ if(TARGET SDL3-static AND NOT SDL_TESTS_LINK_SHARED AND DEFINED SDL3_BINARY_DIR)
     target_include_directories(testtraycontext PRIVATE
         "${SDL3_BINARY_DIR}/include-config-$<LOWER_CASE:$<CONFIG>>/build_config")
     target_compile_definitions(testtraycontext PRIVATE USING_GENERATED_CONFIG_H SDL_STATIC_LIB)
+    find_package(PkgConfig QUIET)
+    if(PkgConfig_FOUND)
+        pkg_check_modules(TrayTestDBus QUIET IMPORTED_TARGET dbus-1)
+        if(TARGET PkgConfig::TrayTestDBus)
+            add_sdl_test_executable(testdbusmenuevents NONINTERACTIVE SOURCES testdbusmenuevents.c)
+            target_include_directories(testdbusmenuevents PRIVATE
+                "${SDL3_BINARY_DIR}/include-config-$<LOWER_CASE:$<CONFIG>>/build_config")
+            target_compile_definitions(testdbusmenuevents PRIVATE
+                USING_GENERATED_CONFIG_H SDL_STATIC_LIB HAVE_DBUS_DBUS_H SDL_USE_LIBDBUS)
+            target_link_libraries(testdbusmenuevents PRIVATE PkgConfig::TrayTestDBus)
+        endif()
+    endif()
     if(APPLE AND NOT IOS AND NOT TVOS AND NOT VISIONOS)
         add_sdl_test_executable(testtraycocoa NONINTERACTIVE SOURCES testtraycocoa.m)
         target_include_directories(testtraycocoa PRIVATE

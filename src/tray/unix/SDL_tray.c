@@ -285,7 +285,7 @@ void SDL_ClickTrayEntry(SDL_TrayEntry *entry)
         return;
     }
 
-    entry->parent->parent_tray->driver->GetTrayEntryEnabled(entry);
+    entry->parent->parent_tray->driver->ClickTrayEntry(entry);
 }
 
 SDL_TrayMenu *SDL_GetTrayEntryParent(SDL_TrayEntry *entry)

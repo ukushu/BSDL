@@ -6,6 +6,13 @@
 int main(int argc, char **argv)
 {
     @autoreleasepool {
+        SDL_TrayEntry entry = { 0 };
+        entry.nsitem = [[NSMenuItem alloc] initWithTitle:@"Command" action:nil keyEquivalent:@""];
+        SDL_SetTrayEntryEnabled(&entry, false);
+        assert(!SDL_GetTrayEntryEnabled(&entry));
+        SDL_SetTrayEntryEnabled(&entry, true);
+        assert(SDL_GetTrayEntryEnabled(&entry));
+
         SDL_Surface *source = SDL_CreateSurface(1028, 820, SDL_PIXELFORMAT_RGBA32);
         assert(source);
         assert(SDL_FillSurfaceRect(source, NULL, SDL_MapSurfaceRGBA(source, 24, 48, 72, 128)));
