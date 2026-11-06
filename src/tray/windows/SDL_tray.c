@@ -429,8 +429,10 @@ SDL_Tray *SDL_CreateTray(SDL_Surface *icon, const char *tooltip)
 
 bool SDL_GetTrayRect(SDL_Tray *tray, SDL_Rect *rect)
 {
+#if defined(_WIN32_WINNT) && _WIN32_WINNT >= 0x0601
     NOTIFYICONIDENTIFIER identifier;
     RECT native_rect;
+#endif
 
     if (!SDL_IsMainThread()) {
         return SDL_SetError("This function should be called on the main thread");
@@ -442,6 +444,7 @@ bool SDL_GetTrayRect(SDL_Tray *tray, SDL_Rect *rect)
         return SDL_InvalidParamError("rect");
     }
 
+#if defined(_WIN32_WINNT) && _WIN32_WINNT >= 0x0601
     SDL_zero(identifier);
     identifier.cbSize = sizeof(identifier);
     identifier.hWnd = tray->hwnd;
@@ -455,6 +458,9 @@ bool SDL_GetTrayRect(SDL_Tray *tray, SDL_Rect *rect)
     rect->w = native_rect.right - native_rect.left;
     rect->h = native_rect.bottom - native_rect.top;
     return true;
+#else
+    return false;
+#endif
 }
 
 void SDL_SetTrayIcon(SDL_Tray *tray, SDL_Surface *icon)

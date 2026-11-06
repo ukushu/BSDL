@@ -161,8 +161,9 @@ extern SDL_DECLSPEC const char * SDLCALL SDL_GetTrayClickActivationToken(SDL_Tra
  *
  * Coordinates use the same screen space as SDL_GetGlobalMouseState() and may
  * be negative on multi-display desktops. The rectangle is a placement hint;
- * not all platforms expose tray icon geometry. On platforms where it is
- * unavailable, this returns false without changing `rect`. Use
+ * not all platforms expose tray icon geometry (including StatusNotifier
+ * hosts on Linux and Windows versions before Windows 7). On platforms where
+ * it is unavailable, this returns false without changing `rect`. Use
  * SDL_GetTrayClickPosition() inside a click callback for a click-specific
  * placement hint.
  *
