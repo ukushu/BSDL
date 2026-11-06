@@ -656,7 +656,7 @@ void SDL_SetTrayEntryCallback(SDL_TrayEntry *entry, SDL_TrayCallback callback, v
 
 void SDL_ClickTrayEntry(SDL_TrayEntry *entry)
 {
-	if (!entry) {
+	if (!entry || !SDL_GetTrayEntryEnabled(entry)) {
 		return;
 	}
 

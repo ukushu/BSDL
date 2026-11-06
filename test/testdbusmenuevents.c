@@ -83,6 +83,30 @@ static void test_tray_entry_without_callback(void)
     EntryCallback(&item, NULL);
 }
 
+static void SDLCALL count_tray_entry_callback(void *userdata, SDL_TrayEntry *entry)
+{
+    (void)entry;
+    ++*(int *)userdata;
+}
+
+static void test_disabled_tray_entry_cannot_be_clicked(void)
+{
+    SDL_TrayEntry entry = { 0 };
+    SDL_TrayEntryDBus entry_dbus = { 0 };
+    SDL_MenuItem item = { 0 };
+    int callback_count = 0;
+    entry.internal = &entry_dbus;
+    entry_dbus.item = &item;
+    item.flags = SDL_MENU_ITEM_FLAGS_DISABLED;
+    item.cb = EntryCallback;
+    item.cb_data = &callback_count;
+    item.udata = &entry;
+    item.udata2 = count_tray_entry_callback;
+
+    ClickTrayEntry(&entry);
+    assert(callback_count == 0);
+}
+
 static void test_tray_entries_cache(void)
 {
     SDL_TrayMenu menu = { 0 };
@@ -609,6 +633,7 @@ int main(int argc, char **argv)
     ctx.connection_get_object_path_data = get_menu;
     test_tray_icon_byte_order();
     test_tray_entry_without_callback();
+    test_disabled_tray_entry_cannot_be_clicked();
     test_tray_entries_cache();
     test_tray_menu_creation_guards();
     test_tray_insert_rejects_out_of_range_position();

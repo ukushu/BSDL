@@ -1496,6 +1496,10 @@ void ClickTrayEntry(SDL_TrayEntry *entry)
     SDL_TrayEntryDBus *dbus_entry;
     SDL_TrayCallback entry_cb;
 
+    if (!GetTrayEntryEnabled(entry)) {
+        return;
+    }
+
     dbus_entry = (SDL_TrayEntryDBus *)entry->internal;
     if (dbus_entry->item->type == SDL_MENU_ITEM_TYPE_CHECKBOX) {
         SDL_Tray *tray;

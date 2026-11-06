@@ -65,6 +65,10 @@ int main(int argc, char **argv)
         SDL_SetTrayEntryCallback(checkbox, tray_entry_callback, &callback_count);
         assert([NSApp sendAction:checkbox->nsitem.action to:checkbox->nsitem.target from:checkbox->nsitem]);
         assert(callback_count == 1 && SDL_GetTrayEntryChecked(checkbox));
+        SDL_SetTrayEntryEnabled(checkbox, false);
+        SDL_ClickTrayEntry(checkbox);
+        assert(callback_count == 1 && SDL_GetTrayEntryChecked(checkbox));
+        SDL_SetTrayEntryEnabled(checkbox, true);
 
         SDL_TrayEntry *submenu_entry = SDL_InsertTrayEntryAt(menu, -1, "More", SDL_TRAYENTRY_SUBMENU);
         assert(submenu_entry);
