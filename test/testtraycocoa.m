@@ -68,7 +68,7 @@ int main(int argc, char **argv)
         assert(submenu_entry);
         SDL_TrayMenu *submenu = SDL_CreateTraySubmenu(submenu_entry);
         assert(submenu);
-        SDL_TrayEntry *submenu_item = SDL_InsertTrayEntryAt(submenu, -1, "Run", 0);
+        SDL_TrayEntry *submenu_item = SDL_InsertTrayEntryAt(submenu, -1, "Run", SDL_TRAYENTRY_BUTTON);
         assert(submenu_item);
         SDL_SetTrayEntryCallback(submenu_item, tray_entry_callback, &callback_count);
         assert([NSApp sendAction:submenu_item->nsitem.action to:submenu_item->nsitem.target from:submenu_item->nsitem]);

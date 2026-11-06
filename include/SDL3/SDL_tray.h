@@ -69,9 +69,11 @@ typedef struct SDL_TrayEntry SDL_TrayEntry;
 /**
  * Flags that control the creation of system tray entries.
  *
- * Some of these flags are required; exactly one of them must be specified at
- * the time a tray entry is created. Other flags are optional; zero or more of
- * those can be OR'ed together with the required flag.
+ * For entries with a label, exactly one of SDL_TRAYENTRY_BUTTON,
+ * SDL_TRAYENTRY_CHECKBOX, or SDL_TRAYENTRY_SUBMENU must be specified when the
+ * entry is created. Separators (entries with a NULL label) do not need a type
+ * flag. Other flags are optional; zero or more of those can be OR'ed together
+ * with the required type flag.
  *
  * \since This datatype is available since SDL 3.2.0.
  *

@@ -519,6 +519,9 @@ SDL_TrayEntry *SDL_InsertTrayEntryAt(SDL_TrayMenu *menu, int pos, const char *la
         SDL_InvalidParamError("pos");
         return NULL;
     }
+    if (!SDL_ValidateTrayEntryFlags(flags, label == NULL)) {
+        return NULL;
+    }
 
     if (pos == -1) {
         pos = menu->nEntries;

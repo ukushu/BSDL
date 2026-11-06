@@ -42,6 +42,14 @@ static bool SDLCALL destroy_in_callback(void *userdata, SDL_Tray *tray)
 
 int main(int argc, char **argv)
 {
+    assert(SDL_ValidateTrayEntryFlags(SDL_TRAYENTRY_BUTTON, false));
+    assert(SDL_ValidateTrayEntryFlags(SDL_TRAYENTRY_CHECKBOX | SDL_TRAYENTRY_CHECKED, false));
+    assert(SDL_ValidateTrayEntryFlags(SDL_TRAYENTRY_BUTTON, true));
+    assert(!SDL_ValidateTrayEntryFlags(0, false));
+    assert(!SDL_ValidateTrayEntryFlags(SDL_TRAYENTRY_BUTTON | SDL_TRAYENTRY_SUBMENU, false));
+    assert(!SDL_ValidateTrayEntryFlags(SDL_TRAYENTRY_BUTTON | SDL_TRAYENTRY_CHECKED, false));
+    assert(!SDL_ValidateTrayEntryFlags(SDL_TRAYENTRY_CHECKED, true));
+
     SDL_Tray *tray;
     SDL_Point position = { 10, -20 };
     int x = 7, y = 8;

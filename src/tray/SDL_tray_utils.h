@@ -30,4 +30,5 @@ extern int SDL_GetActiveTrayCount(void);
 
 extern bool SDL_InvokeTrayClick(SDL_Tray *tray, SDL_TrayClickCallback callback, void *userdata,
                                 const SDL_Point *position, const char *activation_token);
+extern bool SDL_ValidateTrayEntryFlags(SDL_TrayEntryFlags flags, bool is_separator);
 extern const char *SDL_GetTrayActivationToken(void);

@@ -1124,6 +1124,9 @@ SDL_TrayEntry *InsertTrayEntryAt(SDL_TrayMenu *menu, int pos, const char *label,
         SDL_InvalidParamError("pos");
         return NULL;
     }
+    if (!SDL_ValidateTrayEntryFlags(flags, label == NULL)) {
+        return NULL;
+    }
 
     tray = menu->parent_tray;
     menu_dbus = (SDL_TrayMenuDBus *)menu->internal;

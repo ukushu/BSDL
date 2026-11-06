@@ -648,6 +648,9 @@ SDL_TrayEntry *SDL_InsertTrayEntryAt(SDL_TrayMenu *menu, int pos, const char *la
         SDL_InvalidParamError("pos");
         return NULL;
     }
+    if (!SDL_ValidateTrayEntryFlags(flags, label == NULL)) {
+        return NULL;
+    }
 
     int windows_compatible_pos = pos;
 

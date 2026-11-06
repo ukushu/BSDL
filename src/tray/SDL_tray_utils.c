@@ -117,6 +117,23 @@ bool SDL_InvokeTrayClick(SDL_Tray *tray, SDL_TrayClickCallback callback, void *u
     return show_menu;
 }
 
+bool SDL_ValidateTrayEntryFlags(SDL_TrayEntryFlags flags, bool is_separator)
+{
+    const SDL_TrayEntryFlags types = flags & (SDL_TRAYENTRY_BUTTON | SDL_TRAYENTRY_CHECKBOX | SDL_TRAYENTRY_SUBMENU);
+    const SDL_TrayEntryFlags allowed = SDL_TRAYENTRY_BUTTON | SDL_TRAYENTRY_CHECKBOX | SDL_TRAYENTRY_SUBMENU | SDL_TRAYENTRY_DISABLED | SDL_TRAYENTRY_CHECKED;
+
+    if ((flags & ~allowed) || ((flags & SDL_TRAYENTRY_CHECKED) && (is_separator || !(types & SDL_TRAYENTRY_CHECKBOX)))) {
+        return SDL_InvalidParamError("flags");
+    }
+    if (is_separator) {
+        return true;
+    }
+    if (!types || (types & (types - 1))) {
+        return SDL_InvalidParamError("flags");
+    }
+    return true;
+}
+
 bool SDL_GetTrayClickPosition(SDL_Tray *tray, int *x, int *y)
 {
     if (!SDL_IsMainThread()) {

@@ -89,8 +89,9 @@ static void test_tray_insert_rejects_out_of_range_position(void)
     SDL_TrayMenuDBus menu_dbus = { 0 };
     menu.internal = &menu_dbus;
 
-    assert(!InsertTrayEntryAt(&menu, -2, "Invalid", 0));
-    assert(!InsertTrayEntryAt(&menu, 1, "Invalid", 0));
+    assert(!InsertTrayEntryAt(&menu, -2, "Invalid", SDL_TRAYENTRY_BUTTON));
+    assert(!InsertTrayEntryAt(&menu, 1, "Invalid", SDL_TRAYENTRY_BUTTON));
+    assert(!InsertTrayEntryAt(&menu, 0, "Invalid", 0));
     assert(!menu_dbus.menu);
 }
 
