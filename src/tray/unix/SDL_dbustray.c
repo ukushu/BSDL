@@ -91,6 +91,16 @@ static DBusHandlerResult TrayHandleGetAllProps(SDL_Tray *tray, SDL_TrayDBus *tra
 
     empty = "";
     driver->dbus->message_iter_init(msg, &iter);
+    if (driver->dbus->message_iter_get_arg_type(&iter) != DBUS_TYPE_STRING ||
+        !driver->dbus->message_iter_next(&iter) || driver->dbus->message_iter_get_arg_type(&iter) != DBUS_TYPE_INVALID) {
+        reply = driver->dbus->message_new_error(msg, DBUS_ERROR_INVALID_ARGS, "Expected an interface name");
+        if (reply) {
+            driver->dbus->connection_send(tray_dbus->connection, reply, NULL);
+            driver->dbus->message_unref(reply);
+        }
+        return DBUS_HANDLER_RESULT_HANDLED;
+    }
+    driver->dbus->message_iter_init(msg, &iter);
     driver->dbus->message_iter_get_basic(&iter, &interface);
     reply = driver->dbus->message_new_method_return(msg);
     if (!reply) {
@@ -240,6 +250,17 @@ static DBusHandlerResult TrayHandleGetProp(SDL_Tray *tray, SDL_TrayDBus *tray_db
     menu_dbus = tray->menu ? (SDL_TrayMenuDBus *)tray->menu->internal : NULL;
 
     empty = "";
+    driver->dbus->message_iter_init(msg, &iter);
+    if (driver->dbus->message_iter_get_arg_type(&iter) != DBUS_TYPE_STRING ||
+        !driver->dbus->message_iter_next(&iter) || driver->dbus->message_iter_get_arg_type(&iter) != DBUS_TYPE_STRING ||
+        !driver->dbus->message_iter_next(&iter) || driver->dbus->message_iter_get_arg_type(&iter) != DBUS_TYPE_INVALID) {
+        reply = driver->dbus->message_new_error(msg, DBUS_ERROR_INVALID_ARGS, "Expected interface and property names");
+        if (reply) {
+            driver->dbus->connection_send(tray_dbus->connection, reply, NULL);
+            driver->dbus->message_unref(reply);
+        }
+        return DBUS_HANDLER_RESULT_HANDLED;
+    }
     driver->dbus->message_iter_init(msg, &iter);
     driver->dbus->message_iter_get_basic(&iter, &interface);
     driver->dbus->message_iter_next(&iter);
@@ -422,8 +443,14 @@ static DBusHandlerResult TrayMessageHandler(DBusConnection *connection, DBusMess
 
         driver->dbus->error_init(&err);
         driver->dbus->message_get_args(msg, &err, DBUS_TYPE_INT32, &delta, DBUS_TYPE_STRING, &orientation, DBUS_TYPE_INVALID);
-        if (!driver->dbus->error_is_set(&err)) {
-            /* Scroll callback support will come later :) */
+        if (driver->dbus->error_is_set(&err)) {
+            driver->dbus->error_free(&err);
+            reply = driver->dbus->message_new_error(msg, DBUS_ERROR_INVALID_ARGS, "Expected scroll delta and orientation");
+            if (reply) {
+                driver->dbus->connection_send(tray_dbus->connection, reply, NULL);
+                driver->dbus->message_unref(reply);
+            }
+            return DBUS_HANDLER_RESULT_HANDLED;
         } else {
             driver->dbus->error_free(&err);
         }
