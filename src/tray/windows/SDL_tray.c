@@ -255,6 +255,7 @@ static wchar_t *escape_label(const char *in)
 
     char *escaped = (char *)SDL_malloc(SDL_strlen(in) + len + 1);
     if (!escaped) {
+        SDL_OutOfMemory();
         return NULL;
     }
 
@@ -270,6 +271,9 @@ static wchar_t *escape_label(const char *in)
 
     wchar_t *out = WIN_UTF8ToStringW(escaped);
     SDL_free(escaped);
+    if (!out) {
+        SDL_OutOfMemory();
+    }
 
     return out;
 }
