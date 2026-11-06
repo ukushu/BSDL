@@ -230,17 +230,16 @@ LRESULT CALLBACK TrayWindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
     return 0;
 }
 
-static void DestroySDLMenu(SDL_TrayMenu *menu)
+static void FreeSDLMenuData(SDL_TrayMenu *menu)
 {
     for (int i = 0; i < menu->nEntries; i++) {
         if (menu->entries[i] && menu->entries[i]->submenu) {
-            DestroySDLMenu(menu->entries[i]->submenu);
+            FreeSDLMenuData(menu->entries[i]->submenu);
         }
         SDL_free(menu->entries[i]->label_cache);
         SDL_free(menu->entries[i]);
     }
     SDL_free(menu->entries);
-    DestroyMenu(menu->hMenu);
     SDL_free(menu);
 }
 
@@ -645,7 +644,7 @@ void SDL_RemoveTrayEntry(SDL_TrayEntry *entry)
     }
 
     if (entry->submenu) {
-        DestroySDLMenu(entry->submenu);
+        FreeSDLMenuData(entry->submenu);
     }
     SDL_free(entry->label_cache);
 
@@ -969,7 +968,8 @@ void SDL_DestroyTray(SDL_Tray *tray)
     Shell_NotifyIconW(NIM_DELETE, &tray->nid);
 
     if (tray->menu) {
-        DestroySDLMenu(tray->menu);
+        DestroyMenu(tray->menu->hMenu);
+        FreeSDLMenuData(tray->menu);
     }
 
     if (tray->icon) {
