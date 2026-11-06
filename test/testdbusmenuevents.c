@@ -1,5 +1,6 @@
 /* Regression: callbacks may destroy or replace a menu during EventGroup. */
 #include "../src/core/linux/SDL_dbus.c"
+#include "../src/tray/unix/SDL_dbustray.c"
 #undef NDEBUG
 #include <assert.h>
 
@@ -7,6 +8,32 @@ static SDL_ListNode *registered_menu;
 static int replies, calls, refs;
 static bool connected, destroy;
 static bool expect_error;
+static bool expect_getall_reply;
+static bool expect_window_id_reply;
+
+const char *SDL_GetAppID(void)
+{
+    return "test";
+}
+
+static void test_tray_icon_byte_order(void)
+{
+    const Uint8 rgba[] = { 0x11, 0x22, 0x33, 0x44 };
+    const Uint8 argb[] = { 0x44, 0x11, 0x22, 0x33 };
+    SDL_Surface *source = SDL_CreateSurface(1, 1, SDL_PIXELFORMAT_RGBA32);
+    assert(source);
+    assert(SDL_LockSurface(source));
+    SDL_memcpy(source->pixels, rgba, sizeof(rgba));
+    SDL_UnlockSurface(source);
+
+    SDL_Surface *wire = ConvertTrayIcon(source);
+    assert(wire);
+    assert(SDL_LockSurface(wire));
+    assert(SDL_memcmp(wire->pixels, argb, sizeof(argb)) == 0);
+    SDL_UnlockSurface(wire);
+    SDL_DestroySurface(wire);
+    SDL_DestroySurface(source);
+}
 static void retain_connection(DBusConnection *conn) { ++refs; }
 static void release_connection(DBusConnection *conn) { --refs; }
 static dbus_bool_t is_connected(DBusConnection *conn) { return connected; }
@@ -23,8 +50,94 @@ static dbus_bool_t send_reply(DBusConnection *conn, DBusMessage *msg, dbus_uint3
     if (expect_error) {
         assert(SDL_strcmp(dbus_message_get_error_name(msg), DBUS_ERROR_INVALID_ARGS) == 0);
     }
+    if (expect_getall_reply) {
+        DBusMessageIter iter, entries;
+        bool found_icon = false, found_tooltip = false, found_window_id = false;
+        assert(SDL_strcmp(dbus_message_get_signature(msg), "a{sv}") == 0);
+        assert(dbus_message_iter_init(msg, &iter));
+        assert(dbus_message_iter_get_arg_type(&iter) == DBUS_TYPE_ARRAY);
+        dbus_message_iter_recurse(&iter, &entries);
+        while (dbus_message_iter_get_arg_type(&entries) == DBUS_TYPE_DICT_ENTRY) {
+            DBusMessageIter entry, value;
+            const char *name;
+            dbus_message_iter_recurse(&entries, &entry);
+            dbus_message_iter_get_basic(&entry, &name);
+            assert(dbus_message_iter_next(&entry));
+            dbus_message_iter_recurse(&entry, &value);
+            if (!SDL_strcmp(name, "IconPixmap")) {
+                found_icon = true;
+                assert(dbus_message_iter_get_arg_type(&value) == DBUS_TYPE_ARRAY);
+            } else if (!SDL_strcmp(name, "ToolTip")) {
+                found_tooltip = true;
+                assert(dbus_message_iter_get_arg_type(&value) == DBUS_TYPE_STRUCT);
+            } else if (!SDL_strcmp(name, "WindowId")) {
+                found_window_id = true;
+                assert(dbus_message_iter_get_arg_type(&value) == DBUS_TYPE_UINT32);
+            }
+            dbus_message_iter_next(&entries);
+        }
+        assert(found_icon && found_tooltip && found_window_id);
+    }
+    if (expect_window_id_reply) {
+        DBusMessageIter iter, value;
+        dbus_uint32_t window_id;
+        assert(SDL_strcmp(dbus_message_get_signature(msg), "v") == 0);
+        assert(dbus_message_iter_init(msg, &iter));
+        assert(dbus_message_iter_get_arg_type(&iter) == DBUS_TYPE_VARIANT);
+        dbus_message_iter_recurse(&iter, &value);
+        assert(dbus_message_iter_get_arg_type(&value) == DBUS_TYPE_UINT32);
+        dbus_message_iter_get_basic(&value, &window_id);
+        assert(window_id == 0);
+    }
     ++replies;
     return true;
+}
+
+static void test_tray_getall_without_icon_or_tooltip(SDL_DBusContext *ctx)
+{
+    SDL_Tray tray = { 0 };
+    SDL_TrayDBus tray_dbus = { 0 };
+    SDL_TrayDriverDBus driver = { 0 };
+    DBusMessage *msg = dbus_message_new_method_call("org.test.Tray", SNI_OBJECT_PATH, "org.freedesktop.DBus.Properties", "GetAll");
+    const char *interface = SNI_INTERFACE;
+
+    assert(msg);
+    dbus_message_set_serial(msg, 1);
+    driver.dbus = ctx;
+    tray.internal = &tray_dbus;
+    tray_dbus.connection = (DBusConnection *)ctx;
+    assert(dbus_message_append_args(msg, DBUS_TYPE_STRING, &interface, DBUS_TYPE_INVALID));
+    replies = calls = 0;
+    expect_error = false;
+    expect_getall_reply = true;
+    assert(TrayHandleGetAllProps(&tray, &tray_dbus, &driver, msg) == DBUS_HANDLER_RESULT_HANDLED);
+    expect_getall_reply = false;
+    assert(replies == 1);
+    dbus_message_unref(msg);
+}
+
+static void test_tray_get_window_id(SDL_DBusContext *ctx)
+{
+    SDL_Tray tray = { 0 };
+    SDL_TrayDBus tray_dbus = { 0 };
+    SDL_TrayDriverDBus driver = { 0 };
+    DBusMessage *msg = dbus_message_new_method_call("org.test.Tray", SNI_OBJECT_PATH, "org.freedesktop.DBus.Properties", "Get");
+    const char *interface = SNI_INTERFACE;
+    const char *property = "WindowId";
+
+    assert(msg);
+    dbus_message_set_serial(msg, 1);
+    driver.dbus = ctx;
+    tray.internal = &tray_dbus;
+    tray_dbus.connection = (DBusConnection *)ctx;
+    assert(dbus_message_append_args(msg, DBUS_TYPE_STRING, &interface, DBUS_TYPE_STRING, &property, DBUS_TYPE_INVALID));
+    replies = calls = 0;
+    expect_error = false;
+    expect_window_id_reply = true;
+    assert(TrayHandleGetProp(&tray, &tray_dbus, &driver, msg) == DBUS_HANDLER_RESULT_HANDLED);
+    expect_window_id_reply = false;
+    assert(replies == 1);
+    dbus_message_unref(msg);
 }
 static void clicked(SDL_MenuItem *item, void *data)
 {
@@ -42,13 +155,13 @@ static void clicked(SDL_MenuItem *item, void *data)
     }
 }
 
-static void test_shortcut_property(SDL_DBusContext *ctx)
+static void test_shortcut_property(SDL_DBusContext *ctx, SDL_Scancode scancode, const char *key_name)
 {
     DBusMessage *msg = dbus_message_new_signal(DBUS_MENU_OBJECT_PATH, DBUS_MENU_INTERFACE, "Test");
     DBusMessageIter body, properties;
     SDL_DBusMenuItem item = { 0 };
     assert(msg);
-    item._parent.shortcut_scancode = SDL_SCANCODE_5;
+    item._parent.shortcut_scancode = scancode;
     item._parent.shortcut_modifiers = SDL_KMOD_CTRL | SDL_KMOD_SHIFT;
     dbus_message_iter_init_append(msg, &body);
     assert(dbus_message_iter_open_container(&body, DBUS_TYPE_ARRAY, "{sv}", &properties));
@@ -57,7 +170,7 @@ static void test_shortcut_property(SDL_DBusContext *ctx)
 
     DBusMessageIter array, entry, pair, value, sequence, keypress;
     const char *name;
-    const char *expected[] = { "Control", "Shift", "5" };
+    const char *expected[] = { "Control", "Shift", key_name };
     int index = 0;
     assert(dbus_message_iter_init(msg, &array));
     dbus_message_iter_recurse(&array, &entry);
@@ -99,7 +212,11 @@ int main(int argc, char **argv)
     ctx.connection_send = send_reply;
     ctx.connection_get_is_connected = is_connected;
     ctx.connection_get_object_path_data = get_menu;
-    test_shortcut_property(&ctx);
+    test_tray_icon_byte_order();
+    test_tray_getall_without_icon_or_tooltip(&ctx);
+    test_tray_get_window_id(&ctx);
+    test_shortcut_property(&ctx, SDL_SCANCODE_5, "5");
+    test_shortcut_property(&ctx, SDL_SCANCODE_KP_1, "KP_1");
     for (int fields = 0; fields <= 5; ++fields) {
         DBusMessage *msg = dbus_message_new_method_call("org.test.Menu", DBUS_MENU_OBJECT_PATH, DBUS_MENU_INTERFACE, "Event");
         assert(msg);

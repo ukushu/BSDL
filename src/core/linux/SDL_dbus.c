@@ -1109,9 +1109,30 @@ static void MenuAppendShortcutValue(SDL_DBusContext *ctx, SDL_MenuItem *item, DB
         }
         switch (item->shortcut_scancode) {
         case SDL_SCANCODE_BACKSPACE: key_name = "BackSpace"; break;
+        case SDL_SCANCODE_CAPSLOCK: key_name = "Caps_Lock"; break;
+        case SDL_SCANCODE_NUMLOCKCLEAR: key_name = "Num_Lock"; break;
         case SDL_SCANCODE_PRINTSCREEN: key_name = "Print"; break;
         case SDL_SCANCODE_PAGEUP: key_name = "Page_Up"; break;
         case SDL_SCANCODE_PAGEDOWN: key_name = "Page_Down"; break;
+        case SDL_SCANCODE_SCROLLLOCK: key_name = "Scroll_Lock"; break;
+        case SDL_SCANCODE_KP_0: key_name = "KP_0"; break;
+        case SDL_SCANCODE_KP_1: key_name = "KP_1"; break;
+        case SDL_SCANCODE_KP_2: key_name = "KP_2"; break;
+        case SDL_SCANCODE_KP_3: key_name = "KP_3"; break;
+        case SDL_SCANCODE_KP_4: key_name = "KP_4"; break;
+        case SDL_SCANCODE_KP_5: key_name = "KP_5"; break;
+        case SDL_SCANCODE_KP_6: key_name = "KP_6"; break;
+        case SDL_SCANCODE_KP_7: key_name = "KP_7"; break;
+        case SDL_SCANCODE_KP_8: key_name = "KP_8"; break;
+        case SDL_SCANCODE_KP_9: key_name = "KP_9"; break;
+        case SDL_SCANCODE_KP_DIVIDE: key_name = "KP_Divide"; break;
+        case SDL_SCANCODE_KP_MULTIPLY: key_name = "KP_Multiply"; break;
+        case SDL_SCANCODE_KP_MINUS: key_name = "KP_Subtract"; break;
+        case SDL_SCANCODE_KP_PLUS: key_name = "KP_Add"; break;
+        case SDL_SCANCODE_KP_ENTER: key_name = "KP_Enter"; break;
+        case SDL_SCANCODE_KP_PERIOD: key_name = "KP_Decimal"; break;
+        case SDL_SCANCODE_KP_EQUALS: key_name = "KP_Equal"; break;
+        case SDL_SCANCODE_KP_COMMA: key_name = "KP_Separator"; break;
         default: key_name = SDL_GetScancodeName(item->shortcut_scancode); break;
         }
         ctx->message_iter_append_basic(&keypress_iter, DBUS_TYPE_STRING, &key_name);
