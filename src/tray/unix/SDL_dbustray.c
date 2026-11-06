@@ -1199,6 +1199,8 @@ SDL_TrayEntry *InsertTrayEntryAt(SDL_TrayMenu *menu, int pos, const char *label,
         SDL_free(entry);
         return NULL;
     }
+    SDL_free(menu_dbus->array_representation);
+    menu_dbus->array_representation = NULL;
 
     if (menu->parent_entry) {
         SDL_TrayEntryDBus *parent_entry_dbus;
@@ -1237,9 +1239,14 @@ SDL_TrayEntry **GetTrayEntries(SDL_TrayMenu *menu, int *count)
 
     menu_dbus = (SDL_TrayMenuDBus *)menu->internal;
 
-    SDL_free(menu_dbus->array_representation);
-
     sz = SDL_ListCountEntries(&menu_dbus->menu);
+    if (menu_dbus->array_representation) {
+        if (count) {
+            *count = sz;
+        }
+        return menu_dbus->array_representation;
+    }
+
     array_representation = SDL_calloc(sz + 1, sizeof(SDL_TrayEntry *));
     if (!array_representation) {
         SDL_SetError("Memory allocation failure!");
@@ -1258,7 +1265,10 @@ SDL_TrayEntry **GetTrayEntries(SDL_TrayMenu *menu, int *count)
     }
     array_representation[sz] = NULL;
 
-    *count = sz;
+    menu_dbus->array_representation = array_representation;
+    if (count) {
+        *count = sz;
+    }
     return array_representation;
 }
 
@@ -1291,6 +1301,8 @@ void RemoveTrayEntry(SDL_TrayEntry *entry)
 
     driver->dbus->connection_flush(tray_dbus->connection);
     DestroyMenu(entry_dbus->sub_menu);
+    SDL_free(menu_dbus->array_representation);
+    menu_dbus->array_representation = NULL;
     SDL_ListRemove(&menu_dbus->menu, entry_dbus->item);
     if (entry->parent->parent_entry) {
         SDL_TrayEntryDBus *parent_entry_dbus = (SDL_TrayEntryDBus *)entry->parent->parent_entry->internal;

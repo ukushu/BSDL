@@ -189,11 +189,6 @@ const SDL_TrayEntry **SDL_GetTrayEntries(SDL_TrayMenu *menu, int *count)
         return NULL;
     }
 
-    CHECK_PARAM (!count) {
-        SDL_InvalidParamError("count");
-        return NULL;
-    }
-
     return (const SDL_TrayEntry **)menu->parent_tray->driver->GetTrayEntries(menu, count);
 }
 

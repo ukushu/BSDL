@@ -83,6 +83,27 @@ static void test_tray_entry_without_callback(void)
     EntryCallback(&item, NULL);
 }
 
+static void test_tray_entries_cache(void)
+{
+    SDL_TrayMenu menu = { 0 };
+    SDL_TrayMenuDBus menu_dbus = { 0 };
+    SDL_TrayEntry entry = { 0 };
+    SDL_MenuItem item = { 0 };
+    int count = -1;
+    menu.internal = &menu_dbus;
+    item.udata = &entry;
+    assert(SDL_ListAppend(&menu_dbus.menu, &item));
+
+    SDL_TrayEntry **entries = GetTrayEntries(&menu, &count);
+    assert(entries && count == 1 && entries[0] == &entry && entries[1] == NULL);
+    assert(GetTrayEntries(&menu, &count) == entries);
+    assert(count == 1);
+    assert(GetTrayEntries(&menu, NULL) == entries);
+
+    SDL_free(menu_dbus.array_representation);
+    SDL_ListClear(&menu_dbus.menu);
+}
+
 static void test_tray_insert_rejects_out_of_range_position(void)
 {
     SDL_TrayMenu menu = { 0 };
@@ -494,6 +515,7 @@ int main(int argc, char **argv)
     ctx.connection_get_object_path_data = get_menu;
     test_tray_icon_byte_order();
     test_tray_entry_without_callback();
+    test_tray_entries_cache();
     test_tray_insert_rejects_out_of_range_position();
     test_tray_getall_without_icon_or_tooltip(&ctx);
     test_tray_get_window_id(&ctx);
