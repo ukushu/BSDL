@@ -506,12 +506,13 @@ extern SDL_DECLSPEC void SDLCALL SDL_SetTrayEntryLabel(SDL_TrayEntry *entry, con
 extern SDL_DECLSPEC const char * SDLCALL SDL_GetTrayEntryLabel(SDL_TrayEntry *entry);
 
 /**
- * Sets the physical keyboard shortcut displayed for a tray menu entry.
+ * Sets physical keyboard shortcut metadata for a tray menu entry.
  *
- * This only displays the shortcut; it does not register or activate it.
- * The shortcut is displayed by Linux tray hosts using the D-Bus menu
- * protocol. Other platforms ignore it. The scancode is a physical key
- * identifier and is independent of the active keyboard layout.
+ * This only sends shortcut metadata; it does not register or activate it.
+ * Linux tray hosts may display or handle it through the D-Bus menu protocol.
+ * Whether or how they do so depends on the host. Other platforms ignore it.
+ * The scancode is a physical key identifier and is independent of the active
+ * keyboard layout.
  *
  * Pass SDL_SCANCODE_UNKNOWN and SDL_KMOD_NONE to clear the shortcut. Only
  * Control, Alt, Shift, and GUI modifiers are supported.
