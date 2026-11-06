@@ -279,22 +279,22 @@ static HICON load_default_icon(void)
 {
     HINSTANCE hInstance = GetModuleHandle(NULL);
     if (!hInstance) {
-        return LoadIcon(NULL, IDI_APPLICATION);
+        return CopyIcon(LoadIcon(NULL, IDI_APPLICATION));
     }
 
     const char *hint = SDL_GetHint(SDL_HINT_WINDOWS_INTRESOURCE_ICON_SMALL);
     if (hint && *hint) {
         HICON icon = LoadIcon(hInstance, MAKEINTRESOURCE(SDL_atoi(hint)));
-        return icon ? icon : LoadIcon(NULL, IDI_APPLICATION);
+        return CopyIcon(icon ? icon : LoadIcon(NULL, IDI_APPLICATION));
     }
 
     hint = SDL_GetHint(SDL_HINT_WINDOWS_INTRESOURCE_ICON);
     if (hint && *hint) {
         HICON icon = LoadIcon(hInstance, MAKEINTRESOURCE(SDL_atoi(hint)));
-        return icon ? icon : LoadIcon(NULL, IDI_APPLICATION);
+        return CopyIcon(icon ? icon : LoadIcon(NULL, IDI_APPLICATION));
     }
 
-    return LoadIcon(NULL, IDI_APPLICATION);
+    return CopyIcon(LoadIcon(NULL, IDI_APPLICATION));
 }
 
 void SDL_UpdateTrays(void)
@@ -504,6 +504,7 @@ void SDL_SetTrayIcon(SDL_Tray *tray, SDL_Surface *icon)
 
     new_icon = icon ? WIN_CreateIconFromSurface(icon) : load_default_icon();
     if (!new_icon) {
+        SDL_SetError("Couldn't create tray icon");
         return;
     }
 
