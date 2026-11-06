@@ -873,6 +873,7 @@ bool SDL_GetTrayEntryChecked(SDL_TrayEntry *entry)
     mii.fMask = MIIM_STATE;
 
     if (!GetMenuItemInfoW(entry->parent->hMenu, (UINT) entry->id, FALSE, &mii)) {
+        SDL_SetError("Couldn't query tray entry state");
         return false;
     }
 
@@ -901,6 +902,7 @@ bool SDL_GetTrayEntryEnabled(SDL_TrayEntry *entry)
     mii.fMask = MIIM_STATE;
 
     if (!GetMenuItemInfoW(entry->parent->hMenu, (UINT) entry->id, FALSE, &mii)) {
+        SDL_SetError("Couldn't query tray entry state");
         return false;
     }
 
