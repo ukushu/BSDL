@@ -1442,6 +1442,9 @@ static DBusHandlerResult MenuHandleEvent(SDL_DBusContext *ctx, SDL_ListNode *men
     }
 
     reply = ctx->message_new_method_return(msg);
+    if (!reply) {
+        return DBUS_HANDLER_RESULT_HANDLED;
+    }
     ctx->connection_send(conn, reply, NULL);
     ctx->message_unref(reply);
 
@@ -1475,6 +1478,10 @@ static DBusHandlerResult MenuHandleEventGroup(SDL_DBusContext *ctx, SDL_ListNode
 
     ctx->connection_ref(conn);
     reply = ctx->message_new_method_return(msg);
+    if (!reply) {
+        ctx->connection_unref(conn);
+        return DBUS_HANDLER_RESULT_HANDLED;
+    }
     ctx->message_iter_init_append(reply, &reply_iter);
     ctx->message_iter_open_container(&reply_iter, DBUS_TYPE_ARRAY, "i", &id_errors_iter);
     ctx->message_iter_close_container(&reply_iter, &id_errors_iter);
