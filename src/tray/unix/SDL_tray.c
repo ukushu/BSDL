@@ -293,11 +293,6 @@ void SDL_SetTrayEntryCallback(SDL_TrayEntry *entry, SDL_TrayCallback callback, v
         return;
     }
 
-    CHECK_PARAM (!callback) {
-        SDL_InvalidParamError("callback");
-        return;
-    }
-
     entry->parent->parent_tray->driver->SetTrayEntryCallback(entry, callback, userdata);
 }
 

@@ -608,7 +608,7 @@ extern SDL_DECLSPEC bool SDLCALL SDL_GetTrayEntryEnabled(SDL_TrayEntry *entry);
  * Sets a callback to be invoked when the entry is selected.
  *
  * \param entry the entry to be updated.
- * \param callback a callback to be invoked when the entry is selected.
+ * \param callback a callback to be invoked when the entry is selected, or NULL to remove the callback.
  * \param userdata an optional pointer to pass extra data to the callback when
  *                 it will be invoked.
  *
