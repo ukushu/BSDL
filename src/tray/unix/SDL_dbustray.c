@@ -102,6 +102,19 @@ static DBusHandlerResult TrayHandleGetAllProps(SDL_Tray *tray, SDL_TrayDBus *tra
     }
     driver->dbus->message_iter_init(msg, &iter);
     driver->dbus->message_iter_get_basic(&iter, &interface);
+    if (SDL_strcmp(interface, SNI_INTERFACE)) {
+        DBusMessageIter empty_dict;
+
+        reply = driver->dbus->message_new_method_return(msg);
+        if (reply) {
+            driver->dbus->message_iter_init_append(reply, &iter);
+            driver->dbus->message_iter_open_container(&iter, DBUS_TYPE_ARRAY, "{sv}", &empty_dict);
+            driver->dbus->message_iter_close_container(&iter, &empty_dict);
+            driver->dbus->connection_send(tray_dbus->connection, reply, NULL);
+            driver->dbus->message_unref(reply);
+        }
+        return DBUS_HANDLER_RESULT_HANDLED;
+    }
     reply = driver->dbus->message_new_method_return(msg);
     if (!reply) {
         return DBUS_HANDLER_RESULT_HANDLED;
@@ -229,9 +242,9 @@ static DBusHandlerResult TrayHandleGetAllProps(SDL_Tray *tray, SDL_TrayDBus *tra
         driver->dbus->message_iter_close_container(&variant_iter, &struct_iter);
         driver->dbus->message_iter_close_container(&entry_iter, &variant_iter);
         driver->dbus->message_iter_close_container(&dict_iter, &entry_iter);
-        driver->dbus->message_iter_close_container(&iter, &dict_iter);
     }
 
+    driver->dbus->message_iter_close_container(&iter, &dict_iter);
     driver->dbus->connection_send(tray_dbus->connection, reply, NULL);
     driver->dbus->message_unref(reply);
     return DBUS_HANDLER_RESULT_HANDLED;
@@ -265,6 +278,15 @@ static DBusHandlerResult TrayHandleGetProp(SDL_Tray *tray, SDL_TrayDBus *tray_db
     driver->dbus->message_iter_get_basic(&iter, &interface);
     driver->dbus->message_iter_next(&iter);
     driver->dbus->message_iter_get_basic(&iter, &property);
+
+    if (SDL_strcmp(interface, SNI_INTERFACE)) {
+        reply = driver->dbus->message_new_error(msg, DBUS_ERROR_UNKNOWN_INTERFACE, "Unknown interface");
+        if (reply) {
+            driver->dbus->connection_send(tray_dbus->connection, reply, NULL);
+            driver->dbus->message_unref(reply);
+        }
+        return DBUS_HANDLER_RESULT_HANDLED;
+    }
 
     reply = driver->dbus->message_new_method_return(msg);
     if (!reply) {
