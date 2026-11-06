@@ -5,9 +5,13 @@
 #include <assert.h>
 
 static SDL_ListNode *registered_menu;
-static int replies, calls, refs;
+static int replies, calls, refs, connection_closes;
 static bool connected, destroy;
+static bool destroy_tray_in_click;
+static bool expect_open_connection_reply;
 static bool expect_error;
+static const char *expected_error_name;
+static bool click_show_menu = true;
 static bool expect_getall_reply;
 static bool expect_window_id_reply;
 static bool expect_menu_reply;
@@ -28,7 +32,11 @@ static bool SDLCALL tray_left_click(void *userdata, SDL_Tray *tray)
 {
     assert_tray_click_context(tray);
     expected_click = 1;
-    return true;
+    if (destroy_tray_in_click) {
+        SDL_UnregisterTray(tray);
+        DestroyTray(tray);
+    }
+    return click_show_menu;
 }
 
 static bool SDLCALL tray_right_click(void *userdata, SDL_Tray *tray)
@@ -76,6 +84,9 @@ static void test_tray_entry_without_callback(void)
 }
 static void retain_connection(DBusConnection *conn) { ++refs; }
 static void release_connection(DBusConnection *conn) { --refs; }
+static void close_connection(DBusConnection *conn) { ++connection_closes; }
+static void flush_connection(DBusConnection *conn) {}
+static dbus_bool_t remove_filter(DBusConnection *conn, DBusHandleMessageFunction handler, void *data) { return true; }
 static dbus_bool_t is_connected(DBusConnection *conn) { return connected; }
 static dbus_bool_t get_menu(DBusConnection *conn, const char *path, void **data)
 {
@@ -86,9 +97,13 @@ static dbus_bool_t get_menu(DBusConnection *conn, const char *path, void **data)
 static dbus_bool_t send_reply(DBusConnection *conn, DBusMessage *msg, dbus_uint32_t *serial)
 {
     assert(calls == 0);
+    if (expect_open_connection_reply) {
+        assert(connection_closes == 0 && refs == 2);
+        expect_open_connection_reply = false;
+    }
     assert(dbus_message_get_type(msg) == (expect_error ? DBUS_MESSAGE_TYPE_ERROR : DBUS_MESSAGE_TYPE_METHOD_RETURN));
     if (expect_error) {
-        assert(SDL_strcmp(dbus_message_get_error_name(msg), DBUS_ERROR_INVALID_ARGS) == 0);
+        assert(SDL_strcmp(dbus_message_get_error_name(msg), expected_error_name ? expected_error_name : DBUS_ERROR_INVALID_ARGS) == 0);
     }
     if (expect_getall_reply) {
         DBusMessageIter iter, entries;
@@ -343,6 +358,8 @@ static void test_tray_click_method_routing(SDL_DBusContext *ctx)
     SDL_TrayDriver tray_driver = { 0 };
     SDL_TrayDBus tray_dbus = { 0 };
     SDL_TrayDriverDBus driver_dbus = { 0 };
+    SDL_TrayMenu menu = { 0 };
+    SDL_TrayMenuDBus menu_dbus = { 0 };
     const char *methods[] = { "Activate", "ContextMenu", "SecondaryActivate" };
 
     tray.driver = &tray_driver;
@@ -353,6 +370,9 @@ static void test_tray_click_method_routing(SDL_DBusContext *ctx)
     tray_dbus.m_cb = tray_middle_click;
     tray_dbus.activation_token = SDL_strdup("test-token");
     assert(tray_dbus.activation_token);
+    tray.menu = &menu;
+    menu.internal = &menu_dbus;
+    menu_dbus.menu_path = "/MenuBar";
     driver_dbus.dbus = ctx;
     tray_dbus.connection = (DBusConnection *)ctx;
 
@@ -363,6 +383,9 @@ static void test_tray_click_method_routing(SDL_DBusContext *ctx)
             tray_dbus.activation_token = SDL_strdup("test-token");
             assert(tray_dbus.activation_token);
         }
+        click_show_menu = true;
+        expected_error_name = DBUS_ERROR_FAILED;
+        expect_error = (i == 0);
         DBusMessage *msg = dbus_message_new_method_call("org.test.Tray", SNI_OBJECT_PATH, SNI_INTERFACE, methods[i]);
         dbus_int32_t x = -12, y = 34;
         assert(msg);
@@ -370,12 +393,61 @@ static void test_tray_click_method_routing(SDL_DBusContext *ctx)
         assert(dbus_message_append_args(msg, DBUS_TYPE_INT32, &x, DBUS_TYPE_INT32, &y, DBUS_TYPE_INVALID));
         calls = replies = expected_click = 0;
         assert(TrayMessageHandler((DBusConnection *)ctx, msg, &tray) == DBUS_HANDLER_RESULT_HANDLED);
-        assert(replies == 1 && calls == 0);
+        assert(replies == 1 && calls == 0 && refs == 0);
         assert(expected_click == i + 1);
         dbus_message_unref(msg);
     }
+
+    click_show_menu = false;
+    expect_error = false;
+    tray_dbus.activation_token = SDL_strdup("test-token");
+    assert(tray_dbus.activation_token);
+    DBusMessage *msg = dbus_message_new_method_call("org.test.Tray", SNI_OBJECT_PATH, SNI_INTERFACE, "Activate");
+    dbus_int32_t x = -12, y = 34;
+    assert(msg);
+    dbus_message_set_serial(msg, 1);
+    assert(dbus_message_append_args(msg, DBUS_TYPE_INT32, &x, DBUS_TYPE_INT32, &y, DBUS_TYPE_INVALID));
+    calls = replies = expected_click = 0;
+    assert(TrayMessageHandler((DBusConnection *)ctx, msg, &tray) == DBUS_HANDLER_RESULT_HANDLED);
+    assert(replies == 1 && calls == 0 && refs == 0 && expected_click == 1);
+    dbus_message_unref(msg);
+
     SDL_UnregisterTray(&tray);
     SDL_free(tray_dbus.activation_token);
+    SDL_Tray *destroyed_tray = SDL_calloc(1, sizeof(*destroyed_tray));
+    SDL_TrayDBus *destroyed_tray_dbus = SDL_calloc(1, sizeof(*destroyed_tray_dbus));
+    SDL_TrayMenu *destroyed_menu = SDL_calloc(1, sizeof(*destroyed_menu));
+    SDL_TrayMenuDBus *destroyed_menu_dbus = SDL_calloc(1, sizeof(*destroyed_menu_dbus));
+    assert(destroyed_tray && destroyed_tray_dbus && destroyed_menu && destroyed_menu_dbus);
+    destroyed_tray->driver = &tray_driver;
+    destroyed_tray->internal = destroyed_tray_dbus;
+    destroyed_tray->menu = destroyed_menu;
+    destroyed_tray_dbus->connection = (DBusConnection *)ctx;
+    destroyed_tray_dbus->l_cb = tray_left_click;
+    destroyed_tray_dbus->activation_token = SDL_strdup("test-token");
+    assert(destroyed_tray_dbus->activation_token);
+    destroyed_menu->internal = destroyed_menu_dbus;
+    destroyed_menu_dbus->menu_path = "/MenuBar";
+    expected_tray = destroyed_tray;
+    SDL_RegisterTray(destroyed_tray);
+    click_show_menu = true;
+    destroy_tray_in_click = true;
+    expect_error = true;
+    refs = 1; // The tray owns one connection reference before the callback.
+    connection_closes = 0;
+    expect_open_connection_reply = true;
+    tray_driver.DestroyTray = DestroyTray;
+    driver_dbus.dbus = ctx;
+    msg = dbus_message_new_method_call("org.test.Tray", SNI_OBJECT_PATH, SNI_INTERFACE, "Activate");
+    assert(msg);
+    dbus_message_set_serial(msg, 1);
+    assert(dbus_message_append_args(msg, DBUS_TYPE_INT32, &x, DBUS_TYPE_INT32, &y, DBUS_TYPE_INVALID));
+    calls = replies = expected_click = 0;
+    assert(TrayMessageHandler((DBusConnection *)ctx, msg, destroyed_tray) == DBUS_HANDLER_RESULT_HANDLED);
+    assert(replies == 1 && calls == 0 && refs == 0 && connection_closes == 1 && expected_click == 1);
+    dbus_message_unref(msg);
+    destroy_tray_in_click = false;
+    expected_error_name = NULL;
     expected_tray = NULL;
 }
 
@@ -394,6 +466,9 @@ int main(int argc, char **argv)
 #undef USE
     ctx.connection_ref = retain_connection;
     ctx.connection_unref = release_connection;
+    ctx.connection_close = close_connection;
+    ctx.connection_flush = flush_connection;
+    ctx.connection_remove_filter = remove_filter;
     ctx.connection_send = send_reply;
     ctx.connection_get_is_connected = is_connected;
     ctx.connection_get_object_path_data = get_menu;

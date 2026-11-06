@@ -107,6 +107,8 @@ typedef void (SDLCALL *SDL_TrayCallback)(void *userdata, SDL_TrayEntry *entry);
  * \returns true to show the tray menu after the callback returns, false to
  *          skip showing the menu. This return value is only used for left and
  *          right click callbacks; other mouse events ignore the return value.
+ *          The host controls when it opens a menu, so Linux StatusNotifierItem
+ *          hosts may ignore this value when presenting their exported menu.
  *
  * \since This datatype is available since SDL 3.6.0.
  *

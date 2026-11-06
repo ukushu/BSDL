@@ -52,6 +52,7 @@ typedef struct SDL_TrayDBus
     SDL_TrayClickCallback r_cb;
     SDL_TrayClickCallback m_cb;
     void *udata;
+    DBusConnection **deferred_connection_close;
 
     Uint64 watcher_retry_time;
     bool watcher_needs_register;
@@ -521,14 +522,40 @@ static DBusHandlerResult TrayMessageHandler(DBusConnection *connection, DBusMess
         char *token = tray_dbus->activation_token;
         tray_dbus->activation_token = NULL;
         SDL_Point position = { x, y };
-        // Reply before user code, which may destroy the tray and its connection.
-        reply = driver->dbus->message_new_method_return(msg);
-        if (reply) {
-            driver->dbus->connection_send(connection, reply, NULL);
-            driver->dbus->message_unref(reply);
-        }
-        SDL_InvokeTrayClick(tray, callback, userdata, &position, token);
+        SDL_DBusContext *dbus_context = driver->dbus;
+        DBusConnection *tray_connection = tray_dbus->connection;
+        DBusConnection *deferred_connection_close = NULL;
+        SDL_TrayDBus *tray_dbus_local = tray_dbus;
+        DBusConnection **previous_deferred_connection_close = tray_dbus->deferred_connection_close;
+        bool has_menu = tray->menu && ((SDL_TrayMenuDBus *)tray->menu->internal)->menu_path;
+        bool is_activate = dbus_context->message_is_method_call(msg, SNI_INTERFACE, "Activate");
+
+        // Keep the connection alive because the callback may destroy the tray.
+        dbus_context->connection_ref(tray_connection);
+        tray_dbus->deferred_connection_close = &deferred_connection_close;
+        bool show_menu = SDL_InvokeTrayClick(tray, callback, userdata, &position, token);
         SDL_free(token);
+        if (SDL_ObjectValid(tray, SDL_OBJECT_TYPE_TRAY) && tray->internal == tray_dbus_local) {
+            tray_dbus_local->deferred_connection_close = previous_deferred_connection_close;
+        }
+
+        // shortcut: only hosts such as Plasma open on Activate errors; expand if SNI gains a portable menu-request method.
+        if (show_menu && has_menu && is_activate) {
+            reply = dbus_context->message_new_error(msg, DBUS_ERROR_FAILED, "Tray menu requested");
+        } else {
+            reply = dbus_context->message_new_method_return(msg);
+        }
+        if (reply) {
+            dbus_context->connection_send(tray_connection, reply, NULL);
+            dbus_context->message_unref(reply);
+        }
+        if (deferred_connection_close) {
+            dbus_context->connection_close(deferred_connection_close);
+            dbus_context->connection_unref(deferred_connection_close);
+            dbus_context->connection_unref(deferred_connection_close);
+        } else {
+            dbus_context->connection_unref(tray_connection);
+        }
         return DBUS_HANDLER_RESULT_HANDLED;
     } else if (driver->dbus->message_is_method_call(msg, SNI_INTERFACE, "Scroll")) {
         DBusError err;
@@ -806,11 +833,15 @@ void DestroyTray(SDL_Tray *tray)
 
     driver->dbus->connection_remove_filter(tray_dbus->connection, TrayWatcherOwnerChanged, tray_dbus);
 
-    /* Destroy connection */
+    /* Destroy connection after a click callback's reply, if requested. */
     driver->dbus->connection_flush(tray_dbus->connection);
     tray_dbus->block = true;
-    driver->dbus->connection_close(tray_dbus->connection);
-    driver->dbus->connection_unref(tray_dbus->connection);
+    if (tray_dbus->deferred_connection_close) {
+        *tray_dbus->deferred_connection_close = tray_dbus->connection;
+    } else {
+        driver->dbus->connection_close(tray_dbus->connection);
+        driver->dbus->connection_unref(tray_dbus->connection);
+    }
     tray_dbus->connection = NULL;
 
     /* Destroy icon and tooltip */

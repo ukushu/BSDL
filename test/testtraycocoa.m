@@ -1,4 +1,4 @@
-/* Exercise the production Cocoa image conversion without creating a tray item. */
+/* Exercise Cocoa tray image conversion and geometry. */
 #include "../src/tray/cocoa/SDL_tray.m"
 #undef NDEBUG
 #include <assert.h>
