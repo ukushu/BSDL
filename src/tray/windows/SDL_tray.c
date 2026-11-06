@@ -854,7 +854,9 @@ bool SDL_GetTrayEntryChecked(SDL_TrayEntry *entry)
     mii.cbSize = sizeof(MENUITEMINFOW);
     mii.fMask = MIIM_STATE;
 
-    GetMenuItemInfoW(entry->parent->hMenu, (UINT) entry->id, FALSE, &mii);
+    if (!GetMenuItemInfoW(entry->parent->hMenu, (UINT) entry->id, FALSE, &mii)) {
+        return false;
+    }
 
     return ((mii.fState & MFS_CHECKED) != 0);
 }

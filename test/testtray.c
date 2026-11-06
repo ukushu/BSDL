@@ -152,12 +152,14 @@ static void SDLCALL set_entry_checked(void *ptr, SDL_TrayEntry *entry)
 {
     SDL_TrayEntry *target = (SDL_TrayEntry *)ptr;
     SDL_SetTrayEntryChecked(target, true);
+    SDL_assert(SDL_GetTrayEntryChecked(target));
 }
 
 static void SDLCALL set_entry_unchecked(void *ptr, SDL_TrayEntry *entry)
 {
     SDL_TrayEntry *target = (SDL_TrayEntry *)ptr;
     SDL_SetTrayEntryChecked(target, false);
+    SDL_assert(!SDL_GetTrayEntryChecked(target));
 }
 
 static void SDLCALL remove_entry(void *ptr, SDL_TrayEntry *entry)
