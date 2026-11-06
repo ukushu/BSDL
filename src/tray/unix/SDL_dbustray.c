@@ -1359,22 +1359,11 @@ void EntryCallback(SDL_MenuItem *item, void *udata)
 void SetTrayEntryCallback(SDL_TrayEntry *entry, SDL_TrayCallback callback, void *userdata)
 {
     SDL_TrayEntryDBus *entry_dbus;
-    SDL_Tray *tray;
-    SDL_TrayDriverDBus *driver;
-    SDL_TrayDBus *tray_dbus;
-    SDL_TrayMenuDBus *main_menu_dbus;
 
-    tray = entry->parent->parent_tray;
-    tray_dbus = (SDL_TrayDBus *)tray->internal;
-    driver = (SDL_TrayDriverDBus *)tray->driver->internal;
     entry_dbus = (SDL_TrayEntryDBus *)entry->internal;
-    main_menu_dbus = (SDL_TrayMenuDBus *)tray->menu->internal;
-
-    entry_dbus->item->cb = EntryCallback;
-    entry_dbus->item->cb_data = userdata;
+    entry_dbus->item->cb = callback ? EntryCallback : NULL;
+    entry_dbus->item->cb_data = callback ? userdata : NULL;
     entry_dbus->item->udata2 = callback;
-
-    SDL_DBus_UpdateMenu(driver->dbus, tray_dbus->connection, main_menu_dbus->menu, main_menu_dbus->menu_path, TrayNewMenuOnMenuUpdateCallback, tray, SDL_DBUS_UPDATE_MENU_FLAGS_NONE);
 }
 
 void SetTrayEntryLabel(SDL_TrayEntry *entry, const char *label)
