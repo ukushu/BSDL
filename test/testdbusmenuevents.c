@@ -6,6 +6,7 @@
 static SDL_ListNode *registered_menu;
 static int replies, calls, refs;
 static bool connected, destroy;
+static bool expect_error;
 static void retain_connection(DBusConnection *conn) { ++refs; }
 static void release_connection(DBusConnection *conn) { --refs; }
 static dbus_bool_t is_connected(DBusConnection *conn) { return connected; }
@@ -18,6 +19,10 @@ static dbus_bool_t get_menu(DBusConnection *conn, const char *path, void **data)
 static dbus_bool_t send_reply(DBusConnection *conn, DBusMessage *msg, dbus_uint32_t *serial)
 {
     assert(calls == 0);
+    assert(dbus_message_get_type(msg) == (expect_error ? DBUS_MESSAGE_TYPE_ERROR : DBUS_MESSAGE_TYPE_METHOD_RETURN));
+    if (expect_error) {
+        assert(SDL_strcmp(dbus_message_get_error_name(msg), DBUS_ERROR_INVALID_ARGS) == 0);
+    }
     ++replies;
     return true;
 }
@@ -41,6 +46,7 @@ int main(int argc, char **argv)
     SDL_DBusContext ctx = { 0 };
 #define USE(name) ctx.name = dbus_##name
     USE(message_new_method_return); USE(message_iter_init_append);
+    USE(message_new_error);
     USE(message_iter_open_container); USE(message_iter_close_container);
     USE(message_unref); USE(message_iter_init); USE(message_iter_get_arg_type);
     USE(message_iter_recurse); USE(message_iter_get_basic); USE(message_iter_next);
@@ -50,6 +56,31 @@ int main(int argc, char **argv)
     ctx.connection_send = send_reply;
     ctx.connection_get_is_connected = is_connected;
     ctx.connection_get_object_path_data = get_menu;
+    for (int fields = 0; fields <= 5; ++fields) {
+        DBusMessage *msg = dbus_message_new_method_call("org.test.Menu", DBUS_MENU_OBJECT_PATH, DBUS_MENU_INTERFACE, "Event");
+        assert(msg);
+        dbus_message_set_serial(msg, 1);
+        DBusMessageIter iter, variant;
+        dbus_int32_t id = 1;
+        dbus_uint32_t timestamp = 0;
+        const char *name = "clicked";
+        dbus_message_iter_init_append(msg, &iter);
+        if (fields > 0) { assert(dbus_message_iter_append_basic(&iter, DBUS_TYPE_INT32, &id)); }
+        if (fields > 1) { assert(dbus_message_iter_append_basic(&iter, DBUS_TYPE_STRING, &name)); }
+        if (fields > 2) {
+            assert(dbus_message_iter_open_container(&iter, DBUS_TYPE_VARIANT, "i", &variant));
+            assert(dbus_message_iter_append_basic(&variant, DBUS_TYPE_INT32, &id));
+            assert(dbus_message_iter_close_container(&iter, &variant));
+        }
+        if (fields > 3) { assert(dbus_message_iter_append_basic(&iter, DBUS_TYPE_UINT32, &timestamp)); }
+        if (fields > 4) { assert(dbus_message_iter_append_basic(&iter, DBUS_TYPE_INT32, &id)); }
+        expect_error = fields != 4;
+        calls = replies = 0;
+        assert(MenuHandleEvent(&ctx, NULL, (DBusConnection *)&ctx, msg) == DBUS_HANDLER_RESULT_HANDLED);
+        assert(replies == 1 && calls == 0);
+        dbus_message_unref(msg);
+    }
+    expect_error = false;
     for (int mode = 0; mode < 2; ++mode) {
         destroy = mode == 0;
         calls = replies = refs = 0;

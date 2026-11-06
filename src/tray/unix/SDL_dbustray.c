@@ -603,6 +603,7 @@ void DestroyTray(SDL_Tray *tray)
     driver->dbus->connection_flush(tray_dbus->connection);
     tray_dbus->block = true;
     driver->dbus->connection_close(tray_dbus->connection);
+    driver->dbus->connection_unref(tray_dbus->connection);
     tray_dbus->connection = NULL;
 
     /* Destroy icon and tooltip */

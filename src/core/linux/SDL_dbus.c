@@ -276,7 +276,9 @@ DBusDispatchStatus SDL_DBus_ConnectionDispatch(SDL_DBusContext *ctx, DBusConnect
     DBusDispatchStatus status;
 
     ++dbus_dispatch_depth;
+    ctx->connection_ref(conn);
     status = ctx->connection_dispatch(conn);
+    ctx->connection_unref(conn);
     --dbus_dispatch_depth;
 
     if (dbus_dispatch_depth == 0 && dbus_quit_pending) {
@@ -1398,7 +1400,7 @@ static DBusHandlerResult MenuHandleEvent(SDL_DBusContext *ctx, SDL_ListNode *men
     return DBUS_HANDLER_RESULT_HANDLED;
 
 invalid_args:
-    reply = ctx->message_new_error(msg, DBUS_ERROR_INVALID_ARGS, "Expected item id and event name");
+    reply = ctx->message_new_error(msg, DBUS_ERROR_INVALID_ARGS, "Expected item id, event name, variant data and timestamp");
     if (reply) {
         ctx->connection_send(conn, reply, NULL);
         ctx->message_unref(reply);
