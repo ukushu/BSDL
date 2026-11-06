@@ -148,6 +148,10 @@ SDL_TrayMenu *SDL_CreateTrayMenu(SDL_Tray *tray)
         SDL_InvalidParamError("tray");
         return NULL;
     }
+    if (tray->menu) {
+        SDL_SetError("Tray menu already exists");
+        return NULL;
+    }
 
     return tray->driver->CreateTrayMenu(tray);
 }

@@ -104,6 +104,32 @@ static void test_tray_entries_cache(void)
     SDL_ListClear(&menu_dbus.menu);
 }
 
+static void test_tray_menu_creation_guards(void)
+{
+    SDL_Tray tray = { 0 };
+    SDL_TrayMenu *menu = CreateTrayMenu(&tray);
+    assert(menu && tray.menu == menu);
+    assert(!CreateTrayMenu(&tray));
+    DestroyMenu(menu);
+    tray.menu = NULL;
+
+    SDL_TrayMenu parent_menu = { 0 };
+    SDL_TrayEntry entry = { 0 };
+    SDL_TrayEntryDBus entry_dbus = { 0 };
+    parent_menu.parent_tray = &tray;
+    entry.parent = &parent_menu;
+    entry.internal = &entry_dbus;
+
+    entry_dbus.flags = SDL_TRAYENTRY_BUTTON;
+    assert(!CreateTraySubmenu(&entry));
+    entry_dbus.flags = SDL_TRAYENTRY_SUBMENU;
+    SDL_TrayMenu *submenu = CreateTraySubmenu(&entry);
+    assert(submenu && entry_dbus.sub_menu == submenu);
+    assert(!CreateTraySubmenu(&entry));
+    DestroyMenu(submenu);
+    entry_dbus.sub_menu = NULL;
+}
+
 static void test_tray_insert_rejects_out_of_range_position(void)
 {
     SDL_TrayMenu menu = { 0 };
@@ -516,6 +542,7 @@ int main(int argc, char **argv)
     test_tray_icon_byte_order();
     test_tray_entry_without_callback();
     test_tray_entries_cache();
+    test_tray_menu_creation_guards();
     test_tray_insert_rejects_out_of_range_position();
     test_tray_getall_without_icon_or_tooltip(&ctx);
     test_tray_get_window_id(&ctx);

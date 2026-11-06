@@ -58,8 +58,10 @@ int main(int argc, char **argv)
         int callback_count = 0;
         SDL_TrayMenu *menu = SDL_CreateTrayMenu(tray);
         assert(menu);
+        assert(!SDL_CreateTrayMenu(tray));
         SDL_TrayEntry *checkbox = SDL_InsertTrayEntryAt(menu, -1, "Check", SDL_TRAYENTRY_CHECKBOX);
         assert(checkbox);
+        assert(!SDL_CreateTraySubmenu(checkbox));
         SDL_SetTrayEntryCallback(checkbox, tray_entry_callback, &callback_count);
         assert([NSApp sendAction:checkbox->nsitem.action to:checkbox->nsitem.target from:checkbox->nsitem]);
         assert(callback_count == 1 && SDL_GetTrayEntryChecked(checkbox));
@@ -68,6 +70,7 @@ int main(int argc, char **argv)
         assert(submenu_entry);
         SDL_TrayMenu *submenu = SDL_CreateTraySubmenu(submenu_entry);
         assert(submenu);
+        assert(!SDL_CreateTraySubmenu(submenu_entry));
         SDL_TrayEntry *submenu_item = SDL_InsertTrayEntryAt(submenu, -1, "Run", SDL_TRAYENTRY_BUTTON);
         assert(submenu_item);
         SDL_SetTrayEntryCallback(submenu_item, tray_entry_callback, &callback_count);

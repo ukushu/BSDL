@@ -77,6 +77,7 @@ typedef struct SDL_TrayEntryDBus
 {
     SDL_MenuItem *item;
     SDL_TrayMenu *sub_menu;
+    SDL_TrayEntryFlags flags;
 } SDL_TrayEntryDBus;
 
 #define SNI_INTERFACE         "org.kde.StatusNotifierItem"
@@ -969,6 +970,11 @@ SDL_TrayMenu *CreateTrayMenu(SDL_Tray *tray)
 {
     SDL_TrayMenuDBus *menu_dbus;
 
+    if (tray->menu) {
+        SDL_SetError("Tray menu already exists");
+        return NULL;
+    }
+
     menu_dbus = SDL_malloc(sizeof(SDL_TrayMenuDBus));
     if (!menu_dbus) {
         SDL_SetError("Unable to create tray menu: allocation failure!");
@@ -998,6 +1004,14 @@ SDL_TrayMenu *CreateTraySubmenu(SDL_TrayEntry *entry)
     SDL_TrayEntryDBus *entry_dbus;
 
     entry_dbus = (SDL_TrayEntryDBus *)entry->internal;
+    if (!(entry_dbus->flags & SDL_TRAYENTRY_SUBMENU)) {
+        SDL_SetError("Cannot create submenu for entry not created with SDL_TRAYENTRY_SUBMENU");
+        return NULL;
+    }
+    if (entry_dbus->sub_menu) {
+        SDL_SetError("Tray entry submenu already exists");
+        return NULL;
+    }
     menu_dbus = SDL_malloc(sizeof(SDL_TrayMenuDBus));
     if (!menu_dbus) {
         SDL_SetError("Unable to create tray submenu: allocation failure!");
@@ -1180,6 +1194,7 @@ SDL_TrayEntry *InsertTrayEntryAt(SDL_TrayMenu *menu, int pos, const char *label,
     entry_dbus->item->sub_menu = NULL;
     entry_dbus->item->udata = entry;
     entry_dbus->sub_menu = NULL;
+    entry_dbus->flags = flags;
 
     if (menu_dbus->menu) {
         update = true;

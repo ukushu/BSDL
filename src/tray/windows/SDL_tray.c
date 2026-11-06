@@ -536,18 +536,28 @@ SDL_TrayMenu *SDL_CreateTrayMenu(SDL_Tray *tray)
         SDL_InvalidParamError("tray");
         return NULL;
     }
-
-    tray->menu = (SDL_TrayMenu *)SDL_calloc(1, sizeof(*tray->menu));
-
-    if (!tray->menu) {
+    if (tray->menu) {
+        SDL_SetError("Tray menu already exists");
         return NULL;
     }
 
-    tray->menu->hMenu = CreatePopupMenu();
-    tray->menu->parent_tray = tray;
-    tray->menu->parent_entry = NULL;
+    SDL_TrayMenu *menu = (SDL_TrayMenu *)SDL_calloc(1, sizeof(*menu));
 
-    return tray->menu;
+    if (!menu) {
+        return NULL;
+    }
+
+    menu->hMenu = CreatePopupMenu();
+    if (!menu->hMenu) {
+        SDL_SetError("Couldn't create tray menu");
+        SDL_free(menu);
+        return NULL;
+    }
+    menu->parent_tray = tray;
+    menu->parent_entry = NULL;
+    tray->menu = menu;
+
+    return menu;
 }
 
 SDL_TrayMenu *SDL_GetTrayMenu(SDL_Tray *tray)

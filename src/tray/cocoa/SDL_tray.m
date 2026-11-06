@@ -369,6 +369,10 @@ SDL_TrayMenu *SDL_CreateTrayMenu(SDL_Tray *tray)
         SDL_InvalidParamError("tray");
         return NULL;
     }
+    if (tray->menu) {
+        SDL_SetError("Tray menu already exists");
+        return NULL;
+    }
 
     SDL_TrayMenu *menu = (SDL_TrayMenu *)SDL_calloc(1, sizeof(*menu));
     if (!menu) {
@@ -376,6 +380,11 @@ SDL_TrayMenu *SDL_CreateTrayMenu(SDL_Tray *tray)
     }
 
     NSMenu *nsmenu = [[NSMenu alloc] init];
+    if (!nsmenu) {
+        SDL_SetError("Couldn't create tray menu");
+        SDL_free(menu);
+        return NULL;
+    }
     [nsmenu setAutoenablesItems:FALSE];
 
     /* Don't set menu on statusItem - we handle menu display manually in the click handler */
