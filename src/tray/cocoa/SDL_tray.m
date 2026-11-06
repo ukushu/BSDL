@@ -225,6 +225,11 @@ static NSImage *CreateTrayImage(SDL_Surface *source, NSSize size, bool is_templa
     }
     bitmap.size = size;
     NSImage *image = [[NSImage alloc] initWithSize:size];
+    if (!image) {
+        SDL_DestroySurface(icon);
+        SDL_SetError("Unable to allocate tray icon image");
+        return nil;
+    }
     [image addRepresentation:bitmap];
     image.template = is_template;
     SDL_DestroySurface(icon);
