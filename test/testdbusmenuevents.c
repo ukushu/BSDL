@@ -1,6 +1,7 @@
 /* Regression: callbacks may destroy or replace a menu during EventGroup. */
 #include "../src/core/linux/SDL_dbus.c"
 #include "../src/tray/unix/SDL_dbustray.c"
+#include "../src/events/SDL_keyboard_c.h"
 #undef NDEBUG
 #include <assert.h>
 
@@ -708,10 +709,15 @@ int main(int argc, char **argv)
     test_tray_get_menu_path(&ctx);
     test_item_is_menu_matches_left_click_behavior();
     test_tray_watcher_restart_filter(&ctx);
+    assert(SDL_Init(0));
+    SDL_Keymap *keymap = SDL_CreateKeymap(true);
+    assert(keymap);
+    SDL_SetKeymapEntry(keymap, SDL_SCANCODE_5, SDL_KMOD_NONE, SDLK_LEFTPAREN);
+    SDL_SetKeymapEntry(keymap, SDL_SCANCODE_5, SDL_KMOD_SHIFT, SDLK_5);
+    SDL_SetKeymap(keymap, true);
     test_shortcut_property(&ctx, SDL_SCANCODE_5, "5");
     test_shortcut_property(&ctx, SDL_SCANCODE_KP_1, "KP_1");
     test_shortcut_property(&ctx, SDL_SCANCODE_UNKNOWN, NULL);
-    assert(SDL_Init(0));
     test_disabled_menu_items_ignore_events(&ctx);
     test_about_to_show_only_opens_root_menu(&ctx);
     test_tray_click_method_routing(&ctx);

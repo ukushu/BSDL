@@ -1133,7 +1133,15 @@ static void MenuAppendShortcutValue(SDL_DBusContext *ctx, SDL_MenuItem *item, DB
         case SDL_SCANCODE_KP_PERIOD: key_name = "KP_Decimal"; break;
         case SDL_SCANCODE_KP_EQUALS: key_name = "KP_Equal"; break;
         case SDL_SCANCODE_KP_COMMA: key_name = "KP_Separator"; break;
-        default: key_name = SDL_GetScancodeName(item->shortcut_scancode); break;
+        default: {
+            // D-Bus carries key symbols, so resolve the physical scancode through the active layout.
+            const SDL_Keycode keycode = SDL_GetKeyFromScancode(item->shortcut_scancode, item->shortcut_modifiers, false);
+            key_name = SDL_GetKeyName(keycode);
+            if (!key_name[0]) {
+                key_name = SDL_GetScancodeName(item->shortcut_scancode);
+            }
+            break;
+        }
         }
         ctx->message_iter_append_basic(&keypress_iter, DBUS_TYPE_STRING, &key_name);
         ctx->message_iter_close_container(&shortcut_iter, &keypress_iter);
