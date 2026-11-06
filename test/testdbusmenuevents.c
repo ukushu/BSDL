@@ -10,6 +10,38 @@ static bool connected, destroy;
 static bool expect_error;
 static bool expect_getall_reply;
 static bool expect_window_id_reply;
+static SDL_Tray *expected_tray;
+static int expected_click;
+
+static void assert_tray_click_context(SDL_Tray *tray)
+{
+    int x, y;
+    assert(tray == expected_tray);
+    assert(SDL_GetTrayClickPosition(tray, &x, &y));
+    assert(x == -12 && y == 34);
+    assert(SDL_strcmp(SDL_GetTrayClickActivationToken(tray), "test-token") == 0);
+}
+
+static bool SDLCALL tray_left_click(void *userdata, SDL_Tray *tray)
+{
+    assert_tray_click_context(tray);
+    expected_click = 1;
+    return true;
+}
+
+static bool SDLCALL tray_right_click(void *userdata, SDL_Tray *tray)
+{
+    assert_tray_click_context(tray);
+    expected_click = 2;
+    return true;
+}
+
+static bool SDLCALL tray_middle_click(void *userdata, SDL_Tray *tray)
+{
+    assert_tray_click_context(tray);
+    expected_click = 3;
+    return true;
+}
 
 const char *SDL_GetAppID(void)
 {
@@ -261,10 +293,53 @@ static void test_shortcut_property(SDL_DBusContext *ctx, SDL_Scancode scancode, 
     dbus_message_unref(msg);
 }
 
+static void test_tray_click_method_routing(SDL_DBusContext *ctx)
+{
+    SDL_Tray tray = { 0 };
+    SDL_TrayDriver tray_driver = { 0 };
+    SDL_TrayDBus tray_dbus = { 0 };
+    SDL_TrayDriverDBus driver_dbus = { 0 };
+    const char *methods[] = { "Activate", "ContextMenu", "SecondaryActivate" };
+
+    tray.driver = &tray_driver;
+    tray.internal = &tray_dbus;
+    tray_driver.internal = &driver_dbus;
+    tray_dbus.l_cb = tray_left_click;
+    tray_dbus.r_cb = tray_right_click;
+    tray_dbus.m_cb = tray_middle_click;
+    tray_dbus.activation_token = SDL_strdup("test-token");
+    assert(tray_dbus.activation_token);
+    driver_dbus.dbus = ctx;
+    tray_dbus.connection = (DBusConnection *)ctx;
+
+    SDL_RegisterTray(&tray);
+    expected_tray = &tray;
+    for (int i = 0; i < SDL_arraysize(methods); ++i) {
+        if (i > 0) {
+            tray_dbus.activation_token = SDL_strdup("test-token");
+            assert(tray_dbus.activation_token);
+        }
+        DBusMessage *msg = dbus_message_new_method_call("org.test.Tray", SNI_OBJECT_PATH, SNI_INTERFACE, methods[i]);
+        dbus_int32_t x = -12, y = 34;
+        assert(msg);
+        dbus_message_set_serial(msg, 1);
+        assert(dbus_message_append_args(msg, DBUS_TYPE_INT32, &x, DBUS_TYPE_INT32, &y, DBUS_TYPE_INVALID));
+        calls = replies = expected_click = 0;
+        assert(TrayMessageHandler((DBusConnection *)ctx, msg, &tray) == DBUS_HANDLER_RESULT_HANDLED);
+        assert(replies == 1 && calls == 0);
+        assert(expected_click == i + 1);
+        dbus_message_unref(msg);
+    }
+    SDL_UnregisterTray(&tray);
+    SDL_free(tray_dbus.activation_token);
+    expected_tray = NULL;
+}
+
 int main(int argc, char **argv)
 {
     SDL_DBusContext ctx = { 0 };
 #define USE(name) ctx.name = dbus_##name
+    USE(message_is_method_call);
     USE(message_new_method_return); USE(message_iter_init_append);
     USE(message_new_error);
     USE(message_iter_open_container); USE(message_iter_close_container);
@@ -286,6 +361,8 @@ int main(int argc, char **argv)
     test_tray_watcher_restart_filter(&ctx);
     test_shortcut_property(&ctx, SDL_SCANCODE_5, "5");
     test_shortcut_property(&ctx, SDL_SCANCODE_KP_1, "KP_1");
+    assert(SDL_Init(0));
+    test_tray_click_method_routing(&ctx);
     for (int fields = 0; fields <= 5; ++fields) {
         DBusMessage *msg = dbus_message_new_method_call("org.test.Menu", DBUS_MENU_OBJECT_PATH, DBUS_MENU_INTERFACE, "Event");
         assert(msg);
@@ -348,5 +425,6 @@ int main(int argc, char **argv)
         assert(refs == 0 && !registered_menu);
         dbus_message_unref(msg);
     }
+    SDL_Quit();
     return 0;
 }
