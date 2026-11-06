@@ -385,6 +385,7 @@ static void test_disabled_menu_items_ignore_events(SDL_DBusContext *ctx)
     int callback_count = 0;
     assert(item);
     item->id = 1;
+    item->_parent.type = SDL_MENU_ITEM_TYPE_CHECKBOX;
     item->_parent.flags = SDL_MENU_ITEM_FLAGS_DISABLED;
     item->_parent.cb = count_menu_callback;
     item->_parent.cb_data = &callback_count;
@@ -406,8 +407,10 @@ static void test_disabled_menu_items_ignore_events(SDL_DBusContext *ctx)
     assert(dbus_message_iter_append_basic(&iter, DBUS_TYPE_UINT32, &timestamp));
     replies = calls = 0;
     expect_error = false;
+    ctx->message_new_signal = dbus_message_new_signal;
+    ctx->message_append_args = dbus_message_append_args;
     assert(MenuHandleEvent(ctx, menu, (DBusConnection *)ctx, msg) == DBUS_HANDLER_RESULT_HANDLED);
-    assert(replies == 1 && callback_count == 0);
+    assert(replies == 1 && callback_count == 0 && !(item->_parent.flags & SDL_MENU_ITEM_FLAGS_CHECKED));
     dbus_message_unref(msg);
 
     registered_menu = menu;
@@ -429,7 +432,7 @@ static void test_disabled_menu_items_ignore_events(SDL_DBusContext *ctx)
     assert(dbus_message_iter_close_container(&iter, &array));
     replies = calls = refs = 0;
     assert(MenuHandleEventGroup(ctx, menu, (DBusConnection *)ctx, msg) == DBUS_HANDLER_RESULT_HANDLED);
-    assert(replies == 1 && callback_count == 0 && refs == 0);
+    assert(replies == 1 && callback_count == 0 && refs == 0 && !(item->_parent.flags & SDL_MENU_ITEM_FLAGS_CHECKED));
     dbus_message_unref(msg);
     registered_menu = NULL;
     SDL_ListClear(&menu);
