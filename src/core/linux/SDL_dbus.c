@@ -1107,7 +1107,13 @@ static void MenuAppendShortcutValue(SDL_DBusContext *ctx, SDL_MenuItem *item, DB
             modifier = "Super";
             ctx->message_iter_append_basic(&keypress_iter, DBUS_TYPE_STRING, &modifier);
         }
-        key_name = SDL_GetScancodeName(item->shortcut_scancode);
+        switch (item->shortcut_scancode) {
+        case SDL_SCANCODE_BACKSPACE: key_name = "BackSpace"; break;
+        case SDL_SCANCODE_PRINTSCREEN: key_name = "Print"; break;
+        case SDL_SCANCODE_PAGEUP: key_name = "Page_Up"; break;
+        case SDL_SCANCODE_PAGEDOWN: key_name = "Page_Down"; break;
+        default: key_name = SDL_GetScancodeName(item->shortcut_scancode); break;
+        }
         ctx->message_iter_append_basic(&keypress_iter, DBUS_TYPE_STRING, &key_name);
         ctx->message_iter_close_container(&shortcut_iter, &keypress_iter);
     }

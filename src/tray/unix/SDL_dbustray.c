@@ -1010,6 +1010,10 @@ void RemoveTrayEntry(SDL_TrayEntry *entry)
     driver->dbus->connection_flush(tray_dbus->connection);
     DestroyMenu(entry_dbus->sub_menu);
     SDL_ListRemove(&menu_dbus->menu, entry_dbus->item);
+    if (entry->parent->parent_entry) {
+        SDL_TrayEntryDBus *parent_entry_dbus = (SDL_TrayEntryDBus *)entry->parent->parent_entry->internal;
+        parent_entry_dbus->item->sub_menu = menu_dbus->menu;
+    }
     SDL_free((char *)entry_dbus->item->utf8);
     SDL_free(entry_dbus->item);
     SDL_free(entry_dbus);
