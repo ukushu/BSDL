@@ -1283,6 +1283,9 @@ static DBusHandlerResult MenuHandleGetLayout(SDL_DBusContext *ctx, SDL_ListNode 
     }
 
     reply = ctx->message_new_method_return(msg);
+    if (!reply) {
+        return DBUS_HANDLER_RESULT_HANDLED;
+    }
     ctx->message_iter_init_append(reply, &reply_iter);
 
     revision = 0;
@@ -1570,12 +1573,17 @@ static DBusHandlerResult MenuHandleGetProperty(SDL_DBusContext *ctx, SDL_ListNod
         DBusMessage *error;
 
         error = ctx->message_new_error(msg, "com.canonical.dbusmenu.Error", "Item not found");
-        ctx->connection_send(conn, error, NULL);
-        ctx->message_unref(error);
+        if (error) {
+            ctx->connection_send(conn, error, NULL);
+            ctx->message_unref(error);
+        }
         return DBUS_HANDLER_RESULT_HANDLED;
     }
 
     reply = ctx->message_new_method_return(msg);
+    if (!reply) {
+        return DBUS_HANDLER_RESULT_HANDLED;
+    }
     ctx->message_iter_init_append(reply, &iter);
     if (!SDL_strcmp(property, "label")) {
         val = item->utf8 ? item->utf8 : "";
@@ -1677,6 +1685,9 @@ static DBusHandlerResult MenuHandleGetGroupProperties(SDL_DBusContext *ctx, SDL_
     }
 
     reply = ctx->message_new_method_return(msg);
+    if (!reply) {
+        return DBUS_HANDLER_RESULT_HANDLED;
+    }
     ctx->message_iter_init_append(reply, &iter);
     ctx->message_iter_open_container(&iter, DBUS_TYPE_ARRAY, "(ia{sv})", &reply_array_iter);
 
@@ -1880,6 +1891,9 @@ static DBusHandlerResult MenuMessageHandler(DBusConnection *conn, DBusMessage *m
 
         need_update = FALSE;
         reply = ctx->message_new_method_return(msg);
+        if (!reply) {
+            return DBUS_HANDLER_RESULT_HANDLED;
+        }
         ctx->message_append_args(reply, DBUS_TYPE_BOOLEAN, &need_update, DBUS_TYPE_INVALID);
         ctx->connection_send(conn, reply, NULL);
         ctx->message_unref(reply);
@@ -1893,6 +1907,9 @@ static DBusHandlerResult MenuMessageHandler(DBusConnection *conn, DBusMessage *m
         DBusMessageIter iter, arr_iter;
 
         reply = ctx->message_new_method_return(msg);
+        if (!reply) {
+            return DBUS_HANDLER_RESULT_HANDLED;
+        }
         ctx->message_iter_init_append(reply, &iter);
         ctx->message_iter_open_container(&iter, DBUS_TYPE_ARRAY, "i", &arr_iter);
         ctx->message_iter_close_container(&iter, &arr_iter);
@@ -1926,6 +1943,9 @@ static DBusHandlerResult MenuMessageHandler(DBusConnection *conn, DBusMessage *m
 
         if (!SDL_strcmp(interface_name, DBUS_MENU_INTERFACE)) {
             reply = ctx->message_new_method_return(msg);
+            if (!reply) {
+                return DBUS_HANDLER_RESULT_HANDLED;
+            }
             ctx->message_iter_init_append(reply, &iter);
             if (!SDL_strcmp(property_name, "Version")) {
                 version = 3;
@@ -1977,6 +1997,9 @@ static DBusHandlerResult MenuMessageHandler(DBusConnection *conn, DBusMessage *m
             const char *str_val;
 
             reply = ctx->message_new_method_return(msg);
+            if (!reply) {
+                return DBUS_HANDLER_RESULT_HANDLED;
+            }
             ctx->message_iter_init_append(reply, &iter);
             ctx->message_iter_open_container(&iter, DBUS_TYPE_ARRAY, "{sv}", &dict_iter);
 
@@ -2025,6 +2048,9 @@ static DBusHandlerResult MenuMessageHandler(DBusConnection *conn, DBusMessage *m
         DBusMessage *reply;
 
         reply = ctx->message_new_method_return(msg);
+        if (!reply) {
+            return DBUS_HANDLER_RESULT_HANDLED;
+        }
         ctx->message_append_args(reply, DBUS_TYPE_STRING, &menu_introspect, DBUS_TYPE_INVALID);
         ctx->connection_send(conn, reply, NULL);
         ctx->message_unref(reply);
