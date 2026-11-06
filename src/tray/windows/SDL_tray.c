@@ -521,6 +521,9 @@ void SDL_SetTrayTooltip(SDL_Tray *tray, const char *tooltip)
 
     if (tooltip) {
         wchar_t *tooltipw = WIN_UTF8ToStringW(tooltip);
+        if (!tooltipw) {
+            return;
+        }
         SDL_wcslcpy(tray->nid.szTip, tooltipw, sizeof(tray->nid.szTip) / sizeof(*tray->nid.szTip));
         SDL_free(tooltipw);
     } else {
