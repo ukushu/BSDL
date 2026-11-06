@@ -183,6 +183,24 @@ static bool WIN_AddTrayIcon(SDL_Tray *tray)
     return true;
 }
 
+static void WIN_CopyTrayTooltip(wchar_t *dst, size_t dst_size, const wchar_t *src)
+{
+    if (!dst_size) {
+        return;
+    }
+
+    size_t src_len = SDL_wcslen(src);
+    size_t copy_len = SDL_min(src_len, dst_size - 1);
+    if (copy_len < src_len && copy_len > 0 &&
+        src[copy_len - 1] >= 0xD800 && src[copy_len - 1] <= 0xDBFF &&
+        src[copy_len] >= 0xDC00 && src[copy_len] <= 0xDFFF) {
+        --copy_len;
+    }
+
+    SDL_memcpy(dst, src, copy_len * sizeof(*dst));
+    dst[copy_len] = L'\0';
+}
+
 LRESULT CALLBACK TrayWindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     SDL_Tray *tray = (SDL_Tray *) GetWindowLongPtr(hwnd, GWLP_USERDATA);
     SDL_TrayEntry *entry = NULL;
@@ -465,7 +483,7 @@ SDL_Tray *SDL_CreateTrayWithProperties(SDL_PropertiesID props)
             SDL_OutOfMemory();
             return NULL;
         }
-        SDL_wcslcpy(tray->nid.szTip, tooltipw, sizeof(tray->nid.szTip) / sizeof(*tray->nid.szTip));
+        WIN_CopyTrayTooltip(tray->nid.szTip, SDL_arraysize(tray->nid.szTip), tooltipw);
         SDL_free(tooltipw);
     }
 
@@ -596,19 +614,24 @@ void SDL_SetTrayTooltip(SDL_Tray *tray, const char *tooltip)
         return;
     }
 
+    wchar_t tooltipw_buffer[SDL_arraysize(tray->nid.szTip)] = { 0 };
     if (tooltip) {
         wchar_t *tooltipw = WIN_UTF8ToStringW(tooltip);
         if (!tooltipw) {
             SDL_OutOfMemory();
             return;
         }
-        SDL_wcslcpy(tray->nid.szTip, tooltipw, sizeof(tray->nid.szTip) / sizeof(*tray->nid.szTip));
+        WIN_CopyTrayTooltip(tooltipw_buffer, SDL_arraysize(tooltipw_buffer), tooltipw);
         SDL_free(tooltipw);
     } else {
-        tray->nid.szTip[0] = '\0';
+        tooltipw_buffer[0] = L'\0';
     }
 
+    wchar_t old_tooltip[SDL_arraysize(tray->nid.szTip)];
+    SDL_memcpy(old_tooltip, tray->nid.szTip, sizeof(old_tooltip));
+    SDL_memcpy(tray->nid.szTip, tooltipw_buffer, sizeof(tooltipw_buffer));
     if (!Shell_NotifyIconW(NIM_MODIFY, &tray->nid)) {
+        SDL_memcpy(tray->nid.szTip, old_tooltip, sizeof(old_tooltip));
         SDL_SetError("Couldn't update tray tooltip");
     }
 }
