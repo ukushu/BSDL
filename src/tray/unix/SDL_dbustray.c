@@ -637,7 +637,7 @@ void UpdateTray(SDL_Tray *tray)
     }
 
     driver->dbus->connection_read_write(tray_dbus->connection, 0);
-    while (driver->dbus->connection_dispatch(tray_dbus->connection) == DBUS_DISPATCH_DATA_REMAINS) {
+    while (SDL_DBus_ConnectionDispatch(driver->dbus, tray_dbus->connection) == DBUS_DISPATCH_DATA_REMAINS) {
         if (!SDL_ObjectValid(tray, SDL_OBJECT_TYPE_TRAY)) {
             break;
         }

@@ -174,6 +174,8 @@ static bool LoadDBUSLibrary(void)
 }
 
 static SDL_InitState dbus_init;
+static int dbus_dispatch_depth;
+static bool dbus_quit_pending;
 
 void SDL_DBus_Init(void)
 {
@@ -224,6 +226,12 @@ error:
 
 void SDL_DBus_Quit(void)
 {
+    if (dbus_dispatch_depth > 0) {
+        dbus_quit_pending = true;
+        return;
+    }
+
+    dbus_quit_pending = false;
     if (!SDL_ShouldQuit(&dbus_init)) {
         return;
     }
@@ -257,6 +265,21 @@ void SDL_DBus_Quit(void)
     }
 
     SDL_SetInitialized(&dbus_init, false);
+}
+
+DBusDispatchStatus SDL_DBus_ConnectionDispatch(SDL_DBusContext *ctx, DBusConnection *conn)
+{
+    DBusDispatchStatus status;
+
+    ++dbus_dispatch_depth;
+    status = ctx->connection_dispatch(conn);
+    --dbus_dispatch_depth;
+
+    if (dbus_dispatch_depth == 0 && dbus_quit_pending) {
+        SDL_DBus_Quit();
+    }
+
+    return status;
 }
 
 SDL_DBusContext *SDL_DBus_GetContext(void)
@@ -1739,15 +1762,15 @@ static DBusHandlerResult MenuMessageHandler(DBusConnection *conn, DBusMessage *m
         DBusMessage *reply;
         dbus_bool_t need_update;
 
-        if (item->cb) {
-            item->cb(menu, item->cbdata);
-        }
-
         need_update = FALSE;
         reply = ctx->message_new_method_return(msg);
         ctx->message_append_args(reply, DBUS_TYPE_BOOLEAN, &need_update, DBUS_TYPE_INVALID);
         ctx->connection_send(conn, reply, NULL);
         ctx->message_unref(reply);
+        /* The callback may destroy the last tray and its D-Bus context. */
+        if (item->cb) {
+            item->cb(menu, item->cbdata);
+        }
         return DBUS_HANDLER_RESULT_HANDLED;
     } else if (ctx->message_is_method_call(msg, DBUS_MENU_INTERFACE, "AboutToShowGroup")) {
         DBusMessage *reply;

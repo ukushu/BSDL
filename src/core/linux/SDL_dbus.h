@@ -117,6 +117,7 @@ typedef struct SDL_DBusContext
 
 extern void SDL_DBus_Init(void);
 extern void SDL_DBus_Quit(void);
+extern DBusDispatchStatus SDL_DBus_ConnectionDispatch(SDL_DBusContext *ctx, DBusConnection *conn);
 extern SDL_DBusContext *SDL_DBus_GetContext(void);
 
 // These use the built-in Session connection.
