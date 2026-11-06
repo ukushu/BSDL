@@ -10,6 +10,8 @@ static bool connected, destroy;
 static bool expect_error;
 static bool expect_getall_reply;
 static bool expect_window_id_reply;
+static bool expect_menu_reply;
+static const char *expected_menu_path;
 static SDL_Tray *expected_tray;
 static int expected_click;
 
@@ -127,6 +129,17 @@ static dbus_bool_t send_reply(DBusConnection *conn, DBusMessage *msg, dbus_uint3
         dbus_message_iter_get_basic(&value, &window_id);
         assert(window_id == 0);
     }
+    if (expect_menu_reply) {
+        DBusMessageIter iter, value;
+        const char *menu_path;
+        assert(SDL_strcmp(dbus_message_get_signature(msg), "v") == 0);
+        assert(dbus_message_iter_init(msg, &iter));
+        assert(dbus_message_iter_get_arg_type(&iter) == DBUS_TYPE_VARIANT);
+        dbus_message_iter_recurse(&iter, &value);
+        assert(dbus_message_iter_get_arg_type(&value) == DBUS_TYPE_OBJECT_PATH);
+        dbus_message_iter_get_basic(&value, &menu_path);
+        assert(SDL_strcmp(menu_path, expected_menu_path) == 0);
+    }
     ++replies;
     return true;
 }
@@ -174,6 +187,37 @@ static void test_tray_get_window_id(SDL_DBusContext *ctx)
     expect_window_id_reply = true;
     assert(TrayHandleGetProp(&tray, &tray_dbus, &driver, msg) == DBUS_HANDLER_RESULT_HANDLED);
     expect_window_id_reply = false;
+    assert(replies == 1);
+    dbus_message_unref(msg);
+}
+
+static void test_tray_get_menu_path(SDL_DBusContext *ctx)
+{
+    SDL_Tray tray = { 0 };
+    SDL_TrayDBus tray_dbus = { 0 };
+    SDL_TrayDriverDBus driver = { 0 };
+    SDL_TrayMenu menu = { 0 };
+    SDL_TrayMenuDBus menu_dbus = { 0 };
+    DBusMessage *msg = dbus_message_new_method_call("org.test.Tray", SNI_OBJECT_PATH, "org.freedesktop.DBus.Properties", "Get");
+    const char *interface = SNI_INTERFACE;
+    const char *property = "Menu";
+
+    assert(msg);
+    dbus_message_set_serial(msg, 1);
+    driver.dbus = ctx;
+    tray.internal = &tray_dbus;
+    tray.menu = &menu;
+    tray_dbus.connection = (DBusConnection *)ctx;
+    menu.internal = &menu_dbus;
+    menu_dbus.menu_path = "/com/canonical/dbusmenu";
+    assert(dbus_message_append_args(msg, DBUS_TYPE_STRING, &interface, DBUS_TYPE_STRING, &property, DBUS_TYPE_INVALID));
+    replies = calls = 0;
+    expect_error = false;
+    expect_menu_reply = true;
+    expected_menu_path = menu_dbus.menu_path;
+    assert(TrayHandleGetProp(&tray, &tray_dbus, &driver, msg) == DBUS_HANDLER_RESULT_HANDLED);
+    expect_menu_reply = false;
+    expected_menu_path = NULL;
     assert(replies == 1);
     dbus_message_unref(msg);
 }
@@ -357,6 +401,7 @@ int main(int argc, char **argv)
     test_tray_entry_without_callback();
     test_tray_getall_without_icon_or_tooltip(&ctx);
     test_tray_get_window_id(&ctx);
+    test_tray_get_menu_path(&ctx);
     test_item_is_menu_matches_left_click_behavior();
     test_tray_watcher_restart_filter(&ctx);
     test_shortcut_property(&ctx, SDL_SCANCODE_5, "5");
