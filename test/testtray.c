@@ -653,6 +653,10 @@ int main(int argc, char **argv)
 
     SDL_TrayEntry *entry_quit = SDL_InsertTrayEntryAt(menu, -1, "Quit", SDL_TRAYENTRY_BUTTON);
     CHECK(entry_quit);
+    char label_copy_check[] = "Quit";
+    SDL_SetTrayEntryLabel(entry_quit, label_copy_check);
+    SDL_memset(label_copy_check, 'x', sizeof(label_copy_check) - 1);
+    SDL_assert(SDL_strcmp(SDL_GetTrayEntryLabel(entry_quit), "Quit") == 0);
 
     SDL_TrayEntry *entry_close = SDL_InsertTrayEntryAt(menu, -1, "Destroy trays", SDL_TRAYENTRY_BUTTON);
     CHECK(entry_close);
