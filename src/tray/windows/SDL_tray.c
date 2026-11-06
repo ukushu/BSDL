@@ -51,7 +51,7 @@ struct SDL_TrayEntry {
     SDL_TrayMenu *parent;
     UINT_PTR id;
 
-    char label_cache[4096];
+    char *label_cache;
     bool separator;
     SDL_TrayEntryFlags flags;
     SDL_TrayCallback callback;
@@ -236,6 +236,7 @@ static void DestroySDLMenu(SDL_TrayMenu *menu)
         if (menu->entries[i] && menu->entries[i]->submenu) {
             DestroySDLMenu(menu->entries[i]->submenu);
         }
+        SDL_free(menu->entries[i]->label_cache);
         SDL_free(menu->entries[i]);
     }
     SDL_free(menu->entries);
@@ -605,6 +606,11 @@ void SDL_RemoveTrayEntry(SDL_TrayEntry *entry)
 
     SDL_TrayMenu *menu = entry->parent;
 
+    if (!DeleteMenu(menu->hMenu, (UINT) entry->id, MF_BYCOMMAND)) {
+        SDL_SetError("Couldn't destroy tray entry");
+        return;
+    }
+
     bool found = false;
     for (int i = 0; i < menu->nEntries - 1; i++) {
         if (menu->entries[i] == entry) {
@@ -619,19 +625,16 @@ void SDL_RemoveTrayEntry(SDL_TrayEntry *entry)
     if (entry->submenu) {
         DestroySDLMenu(entry->submenu);
     }
+    SDL_free(entry->label_cache);
 
     menu->nEntries--;
+    menu->entries[menu->nEntries] = NULL;
     SDL_TrayEntry **new_entries = (SDL_TrayEntry **)SDL_realloc(menu->entries, (menu->nEntries + 1) * sizeof(*new_entries));
 
     /* Not sure why shrinking would fail, but even if it does, we can live with a "too big" array */
     if (new_entries) {
         menu->entries = new_entries;
         menu->entries[menu->nEntries] = NULL;
-    }
-
-    if (!DeleteMenu(menu->hMenu, (UINT) entry->id, MF_BYCOMMAND)) {
-        /* This is somewhat useless since we don't return anything, but might help with eventual bugs */
-        SDL_SetError("Couldn't destroy tray entry");
     }
 
     SDL_free(entry);
@@ -672,23 +675,38 @@ SDL_TrayEntry *SDL_InsertTrayEntryAt(SDL_TrayMenu *menu, int pos, const char *la
         return NULL;
     }
 
+    if (label && !(entry->label_cache = SDL_strdup(label))) {
+        SDL_OutOfMemory();
+        SDL_free(label_w);
+        SDL_free(entry);
+        return NULL;
+    }
+
     entry->parent = menu;
     entry->separator = (label == NULL);
     entry->flags = flags;
     entry->callback = NULL;
     entry->userdata = NULL;
     entry->submenu = NULL;
-    SDL_snprintf(entry->label_cache, sizeof(entry->label_cache), "%s", label ? label : "");
 
     if (label != NULL && flags & SDL_TRAYENTRY_SUBMENU) {
         entry->submenu = (SDL_TrayMenu *)SDL_calloc(1, sizeof(*entry->submenu));
         if (!entry->submenu) {
+            SDL_free(entry->label_cache);
             SDL_free(entry);
             SDL_free(label_w);
             return NULL;
         }
 
         entry->submenu->hMenu = CreatePopupMenu();
+        if (!entry->submenu->hMenu) {
+            SDL_SetError("Couldn't create tray submenu");
+            SDL_free(entry->submenu);
+            SDL_free(entry->label_cache);
+            SDL_free(entry);
+            SDL_free(label_w);
+            return NULL;
+        }
         entry->submenu->nEntries = 0;
         entry->submenu->entries = NULL;
         entry->submenu->parent_entry = entry;
@@ -701,6 +719,7 @@ SDL_TrayEntry *SDL_InsertTrayEntryAt(SDL_TrayMenu *menu, int pos, const char *la
 
     SDL_TrayEntry **new_entries = (SDL_TrayEntry **)SDL_realloc(menu->entries, (menu->nEntries + 2) * sizeof(*new_entries));
     if (!new_entries) {
+        SDL_free(entry->label_cache);
         SDL_free(entry);
         SDL_free(label_w);
         if (entry->submenu) {
@@ -711,17 +730,11 @@ SDL_TrayEntry *SDL_InsertTrayEntryAt(SDL_TrayMenu *menu, int pos, const char *la
     }
 
     menu->entries = new_entries;
-    menu->nEntries++;
+    menu->entries[menu->nEntries] = NULL;
 
-    for (int i = menu->nEntries - 1; i > pos; i--) {
-        menu->entries[i] = menu->entries[i - 1];
-    }
-
-    new_entries[pos] = entry;
-    new_entries[menu->nEntries] = NULL;
-
+    BOOL inserted;
     if (label == NULL) {
-        InsertMenuW(menu->hMenu, windows_compatible_pos, MF_SEPARATOR | MF_BYPOSITION, entry->id, NULL);
+        inserted = InsertMenuW(menu->hMenu, windows_compatible_pos, MF_SEPARATOR | MF_BYPOSITION, entry->id, NULL);
     } else {
         UINT mf = MF_STRING | MF_BYPOSITION;
         if (flags & SDL_TRAYENTRY_SUBMENU) {
@@ -736,10 +749,26 @@ SDL_TrayEntry *SDL_InsertTrayEntryAt(SDL_TrayMenu *menu, int pos, const char *la
             mf |= MF_CHECKED;
         }
 
-        InsertMenuW(menu->hMenu, windows_compatible_pos, mf, entry->id, label_w);
-
-        SDL_free(label_w);
+        inserted = InsertMenuW(menu->hMenu, windows_compatible_pos, mf, entry->id, label_w);
     }
+    SDL_free(label_w);
+    if (!inserted) {
+        SDL_SetError("Couldn't insert tray entry");
+        if (entry->submenu) {
+            DestroyMenu(entry->submenu->hMenu);
+            SDL_free(entry->submenu);
+        }
+        SDL_free(entry->label_cache);
+        SDL_free(entry);
+        return NULL;
+    }
+
+    for (int i = menu->nEntries; i > pos; i--) {
+        menu->entries[i] = menu->entries[i - 1];
+    }
+    menu->entries[pos] = entry;
+    menu->nEntries++;
+    menu->entries[menu->nEntries] = NULL;
 
     return entry;
 }
@@ -750,9 +779,16 @@ void SDL_SetTrayEntryLabel(SDL_TrayEntry *entry, const char *label)
         return;
     }
 
+    char *label_copy = SDL_strdup(label);
+    if (!label_copy) {
+        SDL_OutOfMemory();
+        return;
+    }
+
     wchar_t *label_w = escape_label(label);
 
     if (!label_w) {
+        SDL_free(label_copy);
         return;
     }
 
@@ -766,9 +802,12 @@ void SDL_SetTrayEntryLabel(SDL_TrayEntry *entry, const char *label)
     if (!SetMenuItemInfoW(entry->parent->hMenu, (UINT) entry->id, FALSE, &mii)) {
         SDL_SetError("Couldn't update tray entry label");
     } else {
-        SDL_snprintf(entry->label_cache, sizeof(entry->label_cache), "%s", label);
+        SDL_free(entry->label_cache);
+        entry->label_cache = label_copy;
+        label_copy = NULL;
     }
 
+    SDL_free(label_copy);
     SDL_free(label_w);
 }
 
