@@ -34,6 +34,12 @@ static void test_tray_icon_byte_order(void)
     SDL_DestroySurface(wire);
     SDL_DestroySurface(source);
 }
+
+static void test_tray_entry_without_callback(void)
+{
+    SDL_MenuItem item = { 0 };
+    EntryCallback(&item, NULL);
+}
 static void retain_connection(DBusConnection *conn) { ++refs; }
 static void release_connection(DBusConnection *conn) { --refs; }
 static dbus_bool_t is_connected(DBusConnection *conn) { return connected; }
@@ -213,6 +219,7 @@ int main(int argc, char **argv)
     ctx.connection_get_is_connected = is_connected;
     ctx.connection_get_object_path_data = get_menu;
     test_tray_icon_byte_order();
+    test_tray_entry_without_callback();
     test_tray_getall_without_icon_or_tooltip(&ctx);
     test_tray_get_window_id(&ctx);
     test_shortcut_property(&ctx, SDL_SCANCODE_5, "5");

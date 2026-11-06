@@ -586,8 +586,11 @@ SDL_Tray *CreateTray(SDL_TrayDriver *driver, SDL_PropertiesID props)
     SDL_DestroySurface(tray_dbus->surface); \
     SDL_free(tray);                         \
     SDL_free(tray_dbus)
-#define CLEANUP2()                                              \
-    dbus_driver->dbus->connection_close(tray_dbus->connection); \
+#define CLEANUP2()                                                     \
+    if (tray_dbus->connection) {                                       \
+        dbus_driver->dbus->connection_close(tray_dbus->connection);    \
+        dbus_driver->dbus->connection_unref(tray_dbus->connection);    \
+    }                                                                  \
     CLEANUP()
 
     /* Get properties */
@@ -632,7 +635,7 @@ SDL_Tray *CreateTray(SDL_TrayDriver *driver, SDL_PropertiesID props)
     if (dbus_driver->dbus->error_is_set(&err)) {
         SDL_SetError("Unable to create tray: %s", err.message);
         dbus_driver->dbus->error_free(&err);
-        CLEANUP();
+        CLEANUP2();
         return NULL;
     }
     if (!tray_dbus->connection) {
@@ -1196,7 +1199,9 @@ void EntryCallback(SDL_MenuItem *item, void *udata)
     SDL_TrayCallback entry_cb;
 
     entry_cb = item->udata2;
-    entry_cb(udata, item->udata);
+    if (entry_cb) {
+        entry_cb(udata, item->udata);
+    }
 }
 
 void SetTrayEntryCallback(SDL_TrayEntry *entry, SDL_TrayCallback callback, void *userdata)
