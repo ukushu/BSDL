@@ -42,6 +42,18 @@ int main(int argc, char **argv)
         assert(SDL_SetNumberProperty(props, SDL_PROP_TRAY_CREATE_ICON_HEIGHT_NUMBER, -1));
         assert(!SDL_CreateTrayWithProperties(props));
         SDL_DestroyProperties(props);
+
+        assert(SDL_InitSubSystem(SDL_INIT_VIDEO));
+        SDL_Surface *tray_icon = SDL_CreateSurface(16, 16, SDL_PIXELFORMAT_RGBA32);
+        assert(tray_icon);
+        SDL_Tray *tray = SDL_CreateTray(tray_icon, "Tray geometry test");
+        assert(tray);
+        SDL_Rect tray_rect = { 0, 0, 0, 0 };
+        assert(SDL_GetTrayRect(tray, &tray_rect));
+        assert(tray_rect.w > 0 && tray_rect.h > 0);
+        SDL_DestroyTray(tray);
+        SDL_DestroySurface(tray_icon);
+        SDL_QuitSubSystem(SDL_INIT_VIDEO);
         SDL_Quit();
     }
     return 0;
