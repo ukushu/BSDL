@@ -171,6 +171,7 @@ LRESULT CALLBACK TrayWindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
                         break;
 
                     case WM_CONTEXTMENU:
+                    case WM_RBUTTONUP:
                         if (tray->right_click_callback) {
                             show_menu = SDL_InvokeTrayClick(tray, tray->right_click_callback, tray->userdata, click_position, NULL);
                         } else {
