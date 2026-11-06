@@ -1442,10 +1442,14 @@ void SetTrayEntryChecked(SDL_TrayEntry *entry, bool val)
     SDL_TrayDBus *tray_dbus;
     SDL_TrayMenuDBus *main_menu_dbus;
 
+    entry_dbus = (SDL_TrayEntryDBus *)entry->internal;
+    if (entry_dbus->item->type != SDL_MENU_ITEM_TYPE_CHECKBOX) {
+        return;
+    }
+
     tray = entry->parent->parent_tray;
     tray_dbus = (SDL_TrayDBus *)tray->internal;
     driver = (SDL_TrayDriverDBus *)tray->driver->internal;
-    entry_dbus = (SDL_TrayEntryDBus *)entry->internal;
     main_menu_dbus = (SDL_TrayMenuDBus *)tray->menu->internal;
 
     if (val) {
@@ -1459,7 +1463,11 @@ void SetTrayEntryChecked(SDL_TrayEntry *entry, bool val)
 
 bool GetTrayEntryChecked(SDL_TrayEntry *entry)
 {
-    return ((SDL_TrayEntryDBus *)entry->internal)->item->flags & SDL_MENU_ITEM_FLAGS_CHECKED;
+    SDL_TrayEntryDBus *entry_dbus = (SDL_TrayEntryDBus *)entry->internal;
+    if (entry_dbus->item->type != SDL_MENU_ITEM_TYPE_CHECKBOX) {
+        return false;
+    }
+    return (entry_dbus->item->flags & SDL_MENU_ITEM_FLAGS_CHECKED) != 0;
 }
 
 void SetTrayEntryEnabled(SDL_TrayEntry *entry, bool val)

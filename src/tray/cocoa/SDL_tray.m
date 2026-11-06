@@ -610,7 +610,7 @@ const char *SDL_GetTrayEntryLabel(SDL_TrayEntry *entry)
 
 void SDL_SetTrayEntryChecked(SDL_TrayEntry *entry, bool checked)
 {
-    if (!entry) {
+    if (!entry || !(entry->flags & SDL_TRAYENTRY_CHECKBOX)) {
         return;
     }
 
@@ -619,7 +619,7 @@ void SDL_SetTrayEntryChecked(SDL_TrayEntry *entry, bool checked)
 
 bool SDL_GetTrayEntryChecked(SDL_TrayEntry *entry)
 {
-    if (!entry) {
+    if (!entry || !(entry->flags & SDL_TRAYENTRY_CHECKBOX)) {
         return false;
     }
 
