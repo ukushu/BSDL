@@ -46,11 +46,6 @@ struct SDL_DisplayModeData
 
 extern bool WIN_InitModes(SDL_VideoDevice *_this);
 extern bool WIN_GetDisplayBounds(SDL_VideoDevice *_this, SDL_VideoDisplay *display, SDL_Rect *rect);
-extern bool WIN_CaptureDisplay(SDL_VideoDevice *_this, SDL_VideoDisplay *display,
-                               SDL_DisplayCaptureCallback callback, void *userdata);
-extern bool WIN_GetDesktopWindows(SDL_VideoDevice *_this, SDL_DesktopWindow **windows, int *count);
-extern bool WIN_CaptureDesktopWindow(SDL_VideoDevice *_this, Uint64 windowID,
-                                     SDL_DesktopWindowCaptureCallback callback, void *userdata);
 extern bool WIN_GetDisplayUsableBounds(SDL_VideoDevice *_this, SDL_VideoDisplay *display, SDL_Rect *rect);
 extern bool WIN_GetDisplayModes(SDL_VideoDevice *_this, SDL_VideoDisplay *display);
 extern bool WIN_SetDisplayMode(SDL_VideoDevice *_this, SDL_VideoDisplay *display, SDL_DisplayMode *mode);

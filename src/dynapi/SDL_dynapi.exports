@@ -43,7 +43,6 @@ _SDL_BlitSurfaceTiledWithScale
 _SDL_BlitSurfaceUnchecked
 _SDL_BlitSurfaceUncheckedScaled
 _SDL_BroadcastCondition
-_SDL_CaptureDisplay
 _SDL_CaptureMouse
 _SDL_ClaimWindowForGPUDevice
 _SDL_CleanupTLS
@@ -1325,6 +1324,3 @@ _SDL_GetTrayClickPosition
 _SDL_GetTrayClickActivationToken
 _SDL_SetTrayEntryShortcut
 _SDL_GetTrayRect
-_SDL_CaptureDesktopWindow
-_SDL_FreeDesktopWindows
-_SDL_GetDesktopWindows

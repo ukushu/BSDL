@@ -86,9 +86,6 @@ static SDL_VideoDevice *Cocoa_CreateDevice(void)
         device->RegisterGlobalHotKey = Cocoa_RegisterGlobalHotKey;
         device->UnregisterGlobalHotKey = Cocoa_UnregisterGlobalHotKey;
         device->GetDisplayBounds = Cocoa_GetDisplayBounds;
-        device->CaptureDisplay = Cocoa_CaptureDisplay;
-        device->GetDesktopWindows = Cocoa_GetDesktopWindows;
-        device->CaptureDesktopWindow = Cocoa_CaptureDesktopWindow;
         device->GetDisplayUsableBounds = Cocoa_GetDisplayUsableBounds;
         device->GetDisplayModes = Cocoa_GetDisplayModes;
         device->SetDisplayMode = Cocoa_SetDisplayMode;

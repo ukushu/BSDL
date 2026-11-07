@@ -69,7 +69,6 @@
 #define SDL_BlitSurfaceUnchecked SDL_BlitSurfaceUnchecked_REAL
 #define SDL_BlitSurfaceUncheckedScaled SDL_BlitSurfaceUncheckedScaled_REAL
 #define SDL_BroadcastCondition SDL_BroadcastCondition_REAL
-#define SDL_CaptureDisplay SDL_CaptureDisplay_REAL
 #define SDL_CaptureMouse SDL_CaptureMouse_REAL
 #define SDL_ClaimWindowForGPUDevice SDL_ClaimWindowForGPUDevice_REAL
 #define SDL_CleanupTLS SDL_CleanupTLS_REAL
@@ -1352,6 +1351,3 @@
 #define SDL_GetTrayClickActivationToken SDL_GetTrayClickActivationToken_REAL
 #define SDL_SetTrayEntryShortcut SDL_SetTrayEntryShortcut_REAL
 #define SDL_GetTrayRect SDL_GetTrayRect_REAL
-#define SDL_CaptureDesktopWindow SDL_CaptureDesktopWindow_REAL
-#define SDL_FreeDesktopWindows SDL_FreeDesktopWindows_REAL
-#define SDL_GetDesktopWindows SDL_GetDesktopWindows_REAL

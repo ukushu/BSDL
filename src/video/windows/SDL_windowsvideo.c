@@ -331,9 +331,6 @@ static SDL_VideoDevice *WIN_CreateDevice(void)
 #if !defined(SDL_PLATFORM_XBOXONE) && !defined(SDL_PLATFORM_XBOXSERIES)
     device->RefreshDisplays = WIN_RefreshDisplays;
     device->GetDisplayBounds = WIN_GetDisplayBounds;
-    device->CaptureDisplay = WIN_CaptureDisplay;
-    device->GetDesktopWindows = WIN_GetDesktopWindows;
-    device->CaptureDesktopWindow = WIN_CaptureDesktopWindow;
     device->GetDisplayUsableBounds = WIN_GetDisplayUsableBounds;
     device->GetDisplayModes = WIN_GetDisplayModes;
     device->SetDisplayMode = WIN_SetDisplayMode;
