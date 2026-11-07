@@ -228,6 +228,52 @@ bool SDL_CaptureDisplay(SDL_DisplayID displayID, SDL_DisplayCaptureCallback call
     return display->device->CaptureDisplay(display->device, display, callback, userdata);
 }
 
+bool SDL_GetDesktopWindows(SDL_DesktopWindow **windows, int *count)
+{
+    SDL_VideoDevice *_this = SDL_GetVideoDevice();
+    if (!windows || !count) {
+        return SDL_InvalidParamError(!windows ? "windows" : "count");
+    }
+    *windows = NULL;
+    *count = 0;
+    if (!_this) {
+        SDL_UninitializedVideo();
+        return false;
+    }
+    if (!_this->GetDesktopWindows) {
+        return SDL_Unsupported();
+    }
+    return _this->GetDesktopWindows(_this, windows, count);
+}
+
+void SDL_FreeDesktopWindows(SDL_DesktopWindow *windows, int count)
+{
+    if (!windows) {
+        return;
+    }
+    for (int i = 0; i < count; ++i) {
+        SDL_free(windows[i].title);
+    }
+    SDL_free(windows);
+}
+
+bool SDL_CaptureDesktopWindow(Uint64 windowID,
+                              SDL_DesktopWindowCaptureCallback callback, void *userdata)
+{
+    SDL_VideoDevice *_this = SDL_GetVideoDevice();
+    if (!callback) {
+        return SDL_InvalidParamError("callback");
+    }
+    if (!_this) {
+        SDL_UninitializedVideo();
+        return false;
+    }
+    if (!_this->CaptureDesktopWindow) {
+        return SDL_Unsupported();
+    }
+    return _this->CaptureDesktopWindow(_this, windowID, callback, userdata);
+}
+
 SDL_DisplayID SDL_GetPrimaryDisplay(void)
 {
     SDL_VideoDevice *_this = SDL_GetVideoDevice();

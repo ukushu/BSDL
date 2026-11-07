@@ -259,6 +259,11 @@ struct SDL_VideoDevice
     bool (*CaptureDisplay)(SDL_VideoDevice *_this, SDL_VideoDisplay *display,
                           SDL_DisplayCaptureCallback callback, void *userdata);
 
+    /* Enumerate and capture visible windows owned by other desktop applications. */
+    bool (*GetDesktopWindows)(SDL_VideoDevice *_this, SDL_DesktopWindow **windows, int *count);
+    bool (*CaptureDesktopWindow)(SDL_VideoDevice *_this, Uint64 windowID,
+                                 SDL_DesktopWindowCaptureCallback callback, void *userdata);
+
     /*
      * Get the usable bounds of a display (bounds minus menubar or whatever)
      */

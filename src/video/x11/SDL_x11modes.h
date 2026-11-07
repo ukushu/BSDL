@@ -64,6 +64,9 @@ extern SDL_PixelFormat X11_GetPixelFormatFromVisualInfo(Display *display, XVisua
 extern bool X11_GetDisplayBounds(SDL_VideoDevice *_this, SDL_VideoDisplay *sdl_display, SDL_Rect *rect);
 extern bool X11_CaptureDisplay(SDL_VideoDevice *_this, SDL_VideoDisplay *display,
                                SDL_DisplayCaptureCallback callback, void *userdata);
+extern bool X11_GetDesktopWindows(SDL_VideoDevice *_this, SDL_DesktopWindow **windows, int *count);
+extern bool X11_CaptureDesktopWindow(SDL_VideoDevice *_this, Uint64 windowID,
+                                     SDL_DesktopWindowCaptureCallback callback, void *userdata);
 extern bool X11_GetDisplayUsableBounds(SDL_VideoDevice *_this, SDL_VideoDisplay *sdl_display, SDL_Rect *rect);
 
 extern float X11_GetGlobalContentScale(Display *display, XSettingsClient *client);

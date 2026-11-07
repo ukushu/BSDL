@@ -766,6 +766,17 @@ extern SDL_DECLSPEC bool SDLCALL SDL_GetDisplayBounds(SDL_DisplayID displayID, S
  */
 typedef void (SDLCALL *SDL_DisplayCaptureCallback)(void *userdata, SDL_Surface *surface, const char *error);
 
+/** Information about a visible desktop window returned by SDL_GetDesktopWindows(). */
+typedef struct SDL_DesktopWindow
+{
+    Uint64 id;
+    SDL_Rect bounds;
+    char *title;
+} SDL_DesktopWindow;
+
+/** Callback type for SDL_CaptureDesktopWindow(). The surface belongs to the callback. */
+typedef void (SDLCALL *SDL_DesktopWindowCaptureCallback)(void *userdata, SDL_Surface *surface, const char *error);
+
 /**
  * Request a capture of the current contents of a display.
  *
@@ -788,6 +799,27 @@ typedef void (SDLCALL *SDL_DisplayCaptureCallback)(void *userdata, SDL_Surface *
  * \sa SDL_GetDisplays
  */
 extern SDL_DECLSPEC bool SDLCALL SDL_CaptureDisplay(SDL_DisplayID displayID, SDL_DisplayCaptureCallback callback, void *userdata);
+
+/**
+ * List visible windows belonging to other desktop applications.
+ *
+ * On success, `windows` is an allocated array containing `count` entries. Free
+ * it with SDL_FreeDesktopWindows(). Each entry's title is owned by the array.
+ * Window IDs are opaque and valid only for subsequent calls while the window
+ * remains open. Backends that cannot enumerate desktop windows return false.
+ */
+extern SDL_DECLSPEC bool SDLCALL SDL_GetDesktopWindows(SDL_DesktopWindow **windows, int *count);
+extern SDL_DECLSPEC void SDLCALL SDL_FreeDesktopWindows(SDL_DesktopWindow *windows, int count);
+
+/**
+ * Capture one visible desktop window as an RGBA32 surface.
+ *
+ * The callback is called once after the capture attempt. The surface belongs
+ * to the callback and must be freed with SDL_DestroySurface(). Window IDs are
+ * obtained from SDL_GetDesktopWindows().
+ */
+extern SDL_DECLSPEC bool SDLCALL SDL_CaptureDesktopWindow(Uint64 windowID,
+    SDL_DesktopWindowCaptureCallback callback, void *userdata);
 
 /**
  * Get the usable desktop area represented by a display, in screen

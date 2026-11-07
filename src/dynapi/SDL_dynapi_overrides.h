@@ -1352,3 +1352,6 @@
 #define SDL_GetTrayClickActivationToken SDL_GetTrayClickActivationToken_REAL
 #define SDL_SetTrayEntryShortcut SDL_SetTrayEntryShortcut_REAL
 #define SDL_GetTrayRect SDL_GetTrayRect_REAL
+#define SDL_CaptureDesktopWindow SDL_CaptureDesktopWindow_REAL
+#define SDL_FreeDesktopWindows SDL_FreeDesktopWindows_REAL
+#define SDL_GetDesktopWindows SDL_GetDesktopWindows_REAL

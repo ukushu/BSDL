@@ -855,6 +855,173 @@ bool WIN_CaptureDisplay(SDL_VideoDevice *_this, SDL_VideoDisplay *display,
     return true;
 }
 
+typedef struct WIN_DesktopWindowList
+{
+    SDL_DesktopWindow *windows;
+    int count;
+    int capacity;
+    DWORD currentProcess;
+    bool failed;
+} WIN_DesktopWindowList;
+
+static char *WIN_GetDesktopWindowTitle(HWND hwnd)
+{
+    int length = GetWindowTextLengthW(hwnd);
+    if (length > 0 && length < 32768) {
+        WCHAR *wide = (WCHAR *)SDL_malloc(((size_t)length + 1) * sizeof(*wide));
+        if (!wide) {
+            return NULL;
+        }
+        length = GetWindowTextW(hwnd, wide, length + 1);
+        if (length > 0) {
+            int bytes = WideCharToMultiByte(CP_UTF8, 0, wide, length, NULL, 0, NULL, NULL);
+            if (bytes > 0) {
+                char *title = (char *)SDL_malloc((size_t)bytes + 1);
+                if (title) {
+                    WideCharToMultiByte(CP_UTF8, 0, wide, length, title, bytes, NULL, NULL);
+                    title[bytes] = '\0';
+                    SDL_free(wide);
+                    return title;
+                }
+            }
+        }
+        SDL_free(wide);
+    }
+    return SDL_strdup("Window");
+}
+
+static BOOL CALLBACK WIN_CollectDesktopWindow(HWND hwnd, LPARAM parameter)
+{
+    WIN_DesktopWindowList *list = (WIN_DesktopWindowList *)parameter;
+    if (!IsWindowVisible(hwnd) || (GetWindowLongPtrW(hwnd, GWL_EXSTYLE) & WS_EX_TOOLWINDOW) != 0) {
+        return TRUE;
+    }
+    DWORD processID = 0;
+    GetWindowThreadProcessId(hwnd, &processID);
+    if (processID == 0 || processID == list->currentProcess) {
+        return TRUE;
+    }
+    RECT rect;
+    if (!GetWindowRect(hwnd, &rect) || rect.right - rect.left <= 2 || rect.bottom - rect.top <= 2) {
+        return TRUE;
+    }
+    if (list->count == list->capacity) {
+        int capacity = list->capacity ? list->capacity * 2 : 32;
+        if (capacity < list->capacity || (size_t)capacity > SIZE_MAX / sizeof(*list->windows)) {
+            list->failed = true;
+            return FALSE;
+        }
+        SDL_DesktopWindow *windows = (SDL_DesktopWindow *)SDL_realloc(list->windows,
+            (size_t)capacity * sizeof(*windows));
+        if (!windows) {
+            list->failed = true;
+            return FALSE;
+        }
+        SDL_memset(windows + list->capacity, 0, (size_t)(capacity - list->capacity) * sizeof(*windows));
+        list->windows = windows;
+        list->capacity = capacity;
+    }
+
+    SDL_DesktopWindow *window = &list->windows[list->count];
+    window->id = (Uint64)(uintptr_t)hwnd;
+    window->bounds.x = rect.left;
+    window->bounds.y = rect.top;
+    window->bounds.w = rect.right - rect.left;
+    window->bounds.h = rect.bottom - rect.top;
+    window->title = WIN_GetDesktopWindowTitle(hwnd);
+    if (!window->title) {
+        list->failed = true;
+        return FALSE;
+    }
+    ++list->count;
+    return TRUE;
+}
+
+bool WIN_GetDesktopWindows(SDL_VideoDevice *_this, SDL_DesktopWindow **windows, int *count)
+{
+    (void)_this;
+    WIN_DesktopWindowList list;
+    SDL_zero(list);
+    list.currentProcess = GetCurrentProcessId();
+    EnumWindows(WIN_CollectDesktopWindow, (LPARAM)&list);
+    if (list.failed) {
+        SDL_FreeDesktopWindows(list.windows, list.count);
+        return false;
+    }
+    *windows = list.windows;
+    *count = list.count;
+    return true;
+}
+
+bool WIN_CaptureDesktopWindow(SDL_VideoDevice *_this, Uint64 windowID,
+                              SDL_DesktopWindowCaptureCallback callback, void *userdata)
+{
+    (void)_this;
+    HWND hwnd = (HWND)(uintptr_t)windowID;
+    SDL_Surface *surface = NULL;
+    SDL_Surface *rgba = NULL;
+    HDC screen = NULL;
+    HDC memory = NULL;
+    HBITMAP bitmap = NULL;
+    HGDIOBJ oldBitmap = NULL;
+    void *pixels = NULL;
+    const char *error = NULL;
+    RECT rect;
+    if (!IsWindow(hwnd) || !GetWindowRect(hwnd, &rect)) {
+        error = "The requested desktop window is no longer available";
+        goto done;
+    }
+    const int width = rect.right - rect.left;
+    const int height = rect.bottom - rect.top;
+    if (width < 1 || height < 1 || width > INT_MAX / 4 || (size_t)width > SIZE_MAX / 4 / (size_t)height) {
+        error = "Invalid desktop window capture dimensions";
+        goto done;
+    }
+    screen = GetDC(hwnd);
+    memory = screen ? CreateCompatibleDC(screen) : NULL;
+    BITMAPINFO info;
+    SDL_zero(info);
+    info.bmiHeader.biSize = sizeof(info.bmiHeader);
+    info.bmiHeader.biWidth = width;
+    info.bmiHeader.biHeight = -height;
+    info.bmiHeader.biPlanes = 1;
+    info.bmiHeader.biBitCount = 32;
+    info.bmiHeader.biCompression = BI_RGB;
+    bitmap = screen ? CreateDIBSection(screen, &info, DIB_RGB_COLORS, &pixels, NULL, 0) : NULL;
+    if (!memory || !bitmap || !pixels) {
+        error = "Could not allocate desktop window capture pixels";
+        goto done;
+    }
+    oldBitmap = SelectObject(memory, bitmap);
+    if (!PrintWindow(hwnd, memory, PW_RENDERFULLCONTENT)) {
+        error = "The desktop window does not support capture";
+        goto done;
+    }
+    surface = SDL_CreateSurfaceFrom(width, height, SDL_PIXELFORMAT_BGRA32, pixels, width * 4);
+    if (!surface) {
+        error = SDL_GetError();
+        goto done;
+    }
+    rgba = SDL_ConvertSurface(surface, SDL_PIXELFORMAT_RGBA32);
+    if (!rgba) {
+        error = SDL_GetError();
+        goto done;
+    }
+
+done:
+    if (surface) SDL_DestroySurface(surface);
+    if (oldBitmap) SelectObject(memory, oldBitmap);
+    if (bitmap) DeleteObject(bitmap);
+    if (memory) DeleteDC(memory);
+    if (screen) ReleaseDC(hwnd, screen);
+    if (rgba) {
+        callback(userdata, rgba, NULL);
+    } else {
+        callback(userdata, NULL, error ? error : "Could not capture the requested desktop window");
+    }
+    return true;
+}
+
 bool WIN_GetDisplayBounds(SDL_VideoDevice *_this, SDL_VideoDisplay *display, SDL_Rect *rect)
 {
     const SDL_DisplayData *data = display->internal;

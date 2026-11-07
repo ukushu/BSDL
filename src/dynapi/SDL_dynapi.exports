@@ -1325,3 +1325,6 @@ _SDL_GetTrayClickPosition
 _SDL_GetTrayClickActivationToken
 _SDL_SetTrayEntryShortcut
 _SDL_GetTrayRect
+_SDL_CaptureDesktopWindow
+_SDL_FreeDesktopWindows
+_SDL_GetDesktopWindows

@@ -1360,3 +1360,6 @@ SDL_DYNAPI_PROC(bool,SDL_GetTrayClickPosition,(SDL_Tray *a,int *b,int *c),(a,b,c
 SDL_DYNAPI_PROC(const char*,SDL_GetTrayClickActivationToken,(SDL_Tray *a),(a),return)
 SDL_DYNAPI_PROC(void,SDL_SetTrayEntryShortcut,(SDL_TrayEntry *a,SDL_Scancode b,SDL_Keymod c),(a,b,c),)
 SDL_DYNAPI_PROC(bool,SDL_GetTrayRect,(SDL_Tray *a,SDL_Rect *b),(a,b),return)
+SDL_DYNAPI_PROC(bool,SDL_CaptureDesktopWindow,(Uint64 a, SDL_DesktopWindowCaptureCallback b, void *c),(a,b,c),return)
+SDL_DYNAPI_PROC(void,SDL_FreeDesktopWindows,(SDL_DesktopWindow *a, int b),(a,b),)
+SDL_DYNAPI_PROC(bool,SDL_GetDesktopWindows,(SDL_DesktopWindow **a, int *b),(a,b),return)
