@@ -261,6 +261,7 @@ extern SDL_FullscreenResult Wayland_SetWindowFullscreen(SDL_VideoDevice *_this, 
 extern void Wayland_MaximizeWindow(SDL_VideoDevice *_this, SDL_Window *window);
 extern void Wayland_MinimizeWindow(SDL_VideoDevice *_this, SDL_Window *window);
 extern bool Wayland_SetWindowMouseRect(SDL_VideoDevice *_this, SDL_Window *window);
+extern bool Wayland_SetWindowMousePassthrough(SDL_VideoDevice *_this, SDL_Window *window, bool enabled);
 extern bool Wayland_SetWindowMouseGrab(SDL_VideoDevice *_this, SDL_Window *window, bool grabbed);
 extern bool Wayland_SetWindowKeyboardGrab(SDL_VideoDevice *_this, SDL_Window *window, bool grabbed);
 extern void Wayland_RestoreWindow(SDL_VideoDevice *_this, SDL_Window *window);

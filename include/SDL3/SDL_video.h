@@ -2869,6 +2869,21 @@ extern SDL_DECLSPEC bool SDLCALL SDL_SetWindowMouseRect(SDL_Window *window, cons
 extern SDL_DECLSPEC const SDL_Rect * SDLCALL SDL_GetWindowMouseRect(SDL_Window *window);
 
 /**
+ * Set whether mouse input on a window is passed through to windows below it.
+ * The window remains visible and keeps receiving rendered updates.
+ *
+ * \param window the window to update.
+ * \param enabled true to pass mouse input through, false to receive it normally.
+ * \returns true on success or false on failure; call SDL_GetError() for more
+ *          information.
+ *
+ * \threadsafety This function should only be called on the main thread.
+ *
+ * \since This function is available since SDL 3.2.0.
+ */
+extern SDL_DECLSPEC bool SDLCALL SDL_SetWindowMousePassthrough(SDL_Window *window, bool enabled);
+
+/**
  * Set the opacity for a window.
  *
  * The parameter `opacity` will be clamped internally between 0.0f

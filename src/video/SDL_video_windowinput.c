@@ -192,6 +192,25 @@ bool SDL_SetWindowMouseRect(SDL_Window *window, const SDL_Rect *rect)
     return _this->SetWindowMouseRect(_this, window);
 }
 
+bool SDL_SetWindowMousePassthrough(SDL_Window *window, bool enabled)
+{
+    SDL_VideoDevice *_this = SDL_GetVideoDevice();
+
+    CHECK_WINDOW_MAGIC(window, false);
+    if (!_this->SetWindowMousePassthrough) {
+        return SDL_Unsupported();
+    }
+    if (window->mouse_passthrough == enabled) {
+        return true;
+    }
+    window->mouse_passthrough = enabled;
+    if (!_this->SetWindowMousePassthrough(_this, window, enabled)) {
+        window->mouse_passthrough = !enabled;
+        return false;
+    }
+    return true;
+}
+
 const SDL_Rect *SDL_GetWindowMouseRect(SDL_Window *window)
 {
 

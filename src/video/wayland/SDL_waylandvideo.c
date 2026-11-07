@@ -712,6 +712,7 @@ static SDL_VideoDevice *Wayland_CreateDevice(bool require_preferred_protocols)
     device->MaximizeWindow = Wayland_MaximizeWindow;
     device->MinimizeWindow = Wayland_MinimizeWindow;
     device->SetWindowMouseRect = Wayland_SetWindowMouseRect;
+    device->SetWindowMousePassthrough = Wayland_SetWindowMousePassthrough;
     device->SetWindowMouseGrab = Wayland_SetWindowMouseGrab;
     device->SetWindowKeyboardGrab = Wayland_SetWindowKeyboardGrab;
     device->RestoreWindow = Wayland_RestoreWindow;

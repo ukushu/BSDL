@@ -2292,7 +2292,7 @@ LRESULT CALLBACK WIN_WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
     {
         SDL_Window *window = data->window;
 
-        if (window->flags & SDL_WINDOW_TOOLTIP) {
+        if ((window->flags & SDL_WINDOW_TOOLTIP) || window->mouse_passthrough) {
             return HTTRANSPARENT;
         }
 

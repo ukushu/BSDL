@@ -120,6 +120,7 @@ static SDL_VideoDevice *Cocoa_CreateDevice(void)
         device->GetWindowICCProfile = Cocoa_GetWindowICCProfile;
         device->GetDisplayForWindow = Cocoa_GetDisplayForWindow;
         device->SetWindowMouseRect = Cocoa_SetWindowMouseRect;
+        device->SetWindowMousePassthrough = Cocoa_SetWindowMousePassthrough;
         device->SetWindowMouseGrab = Cocoa_SetWindowMouseGrab;
         device->SetWindowKeyboardGrab = Cocoa_SetWindowKeyboardGrab;
         device->DestroyWindow = Cocoa_DestroyWindow;

@@ -122,6 +122,7 @@ struct SDL_Window
     int text_input_cursor;
 
     SDL_Rect mouse_rect;
+    bool mouse_passthrough;
 
     SDL_HitTest hit_test;
     void *hit_test_data;
@@ -313,6 +314,7 @@ struct SDL_VideoDevice
     void *(*GetWindowICCProfile)(SDL_VideoDevice *_this, SDL_Window *window, size_t *size);
     SDL_DisplayID (*GetDisplayForWindow)(SDL_VideoDevice *_this, SDL_Window *window);
     bool (*SetWindowMouseRect)(SDL_VideoDevice *_this, SDL_Window *window);
+    bool (*SetWindowMousePassthrough)(SDL_VideoDevice *_this, SDL_Window *window, bool enabled);
     bool (*SetWindowMouseGrab)(SDL_VideoDevice *_this, SDL_Window *window, bool grabbed);
     bool (*SetWindowKeyboardGrab)(SDL_VideoDevice *_this, SDL_Window *window, bool grabbed);
     void (*DestroyWindow)(SDL_VideoDevice *_this, SDL_Window *window);

@@ -93,6 +93,8 @@ struct SDL_WindowData
     RECT cursor_clipped_rect; // last successfully committed clipping rect for this window
     RECT cursor_ctrlock_rect; // this is Windows-specific, but probably does not need to be per-window
     bool mouse_tracked;
+    LONG_PTR mouse_passthrough_style;
+    bool saved_mouse_passthrough_style;
     bool destroy_parent_with_window;
     WCHAR *ICMFileName;
     SDL_WindowEraseBackgroundMode hint_erase_background_mode;
@@ -128,6 +130,7 @@ extern SDL_FullscreenResult WIN_SetWindowFullscreen(SDL_VideoDevice *_this, SDL_
 extern void WIN_UpdateWindowICCProfile(SDL_Window *window, bool send_event);
 extern void *WIN_GetWindowICCProfile(SDL_VideoDevice *_this, SDL_Window *window, size_t *size);
 extern bool WIN_SetWindowMouseRect(SDL_VideoDevice *_this, SDL_Window *window);
+extern bool WIN_SetWindowMousePassthrough(SDL_VideoDevice *_this, SDL_Window *window, bool enabled);
 extern bool WIN_SetWindowMouseGrab(SDL_VideoDevice *_this, SDL_Window *window, bool grabbed);
 extern bool WIN_SetWindowKeyboardGrab(SDL_VideoDevice *_this, SDL_Window *window, bool grabbed);
 extern void WIN_DestroyWindow(SDL_VideoDevice *_this, SDL_Window *window);

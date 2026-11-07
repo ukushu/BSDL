@@ -1483,6 +1483,30 @@ bool WIN_SetWindowMouseRect(SDL_VideoDevice *_this, SDL_Window *window)
     return true;
 }
 
+bool WIN_SetWindowMousePassthrough(SDL_VideoDevice *_this, SDL_Window *window, bool enabled)
+{
+    SDL_WindowData *data = window->internal;
+    const LONG_PTR style = GetWindowLongPtr(data->hwnd, GWL_EXSTYLE);
+    if (enabled) {
+        data->mouse_passthrough_style = style;
+        data->saved_mouse_passthrough_style = true;
+        if (!SetWindowLongPtr(data->hwnd, GWL_EXSTYLE, style | WS_EX_LAYERED | WS_EX_TRANSPARENT) ||
+            !SetLayeredWindowAttributes(data->hwnd, 0, 255, LWA_ALPHA)) {
+            SetWindowLongPtr(data->hwnd, GWL_EXSTYLE, style);
+            data->saved_mouse_passthrough_style = false;
+            return WIN_SetError("Unable to enable mouse passthrough");
+        }
+    } else if (data->saved_mouse_passthrough_style) {
+        if (!SetWindowLongPtr(data->hwnd, GWL_EXSTYLE, data->mouse_passthrough_style)) {
+            return WIN_SetError("Unable to disable mouse passthrough");
+        }
+        data->saved_mouse_passthrough_style = false;
+    }
+    SetWindowPos(data->hwnd, NULL, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+    return true;
+}
+
 bool WIN_SetWindowMouseGrab(SDL_VideoDevice *_this, SDL_Window *window, bool grabbed)
 {
     WIN_UpdateClipCursor(window);

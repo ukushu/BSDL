@@ -24,5 +24,6 @@
 #define SDL_x11shape_h_
 
 extern bool X11_UpdateWindowShape(SDL_VideoDevice *_this, SDL_Window *window, SDL_Surface *shape);
+extern bool X11_SetWindowMousePassthrough(SDL_VideoDevice *_this, SDL_Window *window, bool enabled);
 
 #endif // SDL_x11shape_h_

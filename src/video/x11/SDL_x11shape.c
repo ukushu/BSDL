@@ -108,4 +108,26 @@ bool X11_UpdateWindowShape(SDL_VideoDevice *_this, SDL_Window *window, SDL_Surfa
     return result;
 }
 
+bool X11_SetWindowMousePassthrough(SDL_VideoDevice *_this, SDL_Window *window, bool enabled)
+{
+#ifdef SDL_VIDEO_DRIVER_X11_XSHAPE
+    SDL_WindowData *windowdata = window->internal;
+    if (enabled) {
+        Region region = X11_XCreateRegion();
+        if (!region) {
+            return SDL_OutOfMemory();
+        }
+        X11_XShapeCombineRegion(windowdata->videodata->display, windowdata->xwindow,
+                                ShapeInput, 0, 0, region, ShapeSet);
+        X11_XDestroyRegion(region);
+        return true;
+    }
+    SDL_Surface *shape = (SDL_Surface *)SDL_GetPointerProperty(SDL_GetWindowProperties(window),
+                                                               SDL_PROP_WINDOW_SHAPE_POINTER, NULL);
+    return X11_UpdateWindowShape(_this, window, shape);
+#else
+    return SDL_Unsupported();
+#endif
+}
+
 #endif // SDL_VIDEO_DRIVER_X11

@@ -29,7 +29,7 @@
 bool Cocoa_UpdateWindowShape(SDL_VideoDevice *_this, SDL_Window *window, SDL_Surface *shape)
 {
     SDL_CocoaWindowData *data = (__bridge SDL_CocoaWindowData *)window->internal;
-    BOOL ignoresMouseEvents = NO;
+    BOOL ignoresMouseEvents = window->mouse_passthrough;
 
     if (shape) {
         SDL_FPoint point;

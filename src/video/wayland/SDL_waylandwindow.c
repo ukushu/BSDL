@@ -3134,6 +3134,27 @@ bool Wayland_SetWindowMouseRect(SDL_VideoDevice *_this, SDL_Window *window)
     return true;
 }
 
+bool Wayland_SetWindowMousePassthrough(SDL_VideoDevice *_this, SDL_Window *window, bool enabled)
+{
+    SDL_WindowData *data = window->internal;
+    if (!data || !data->surface) {
+        return SDL_SetError("Wayland window surface is unavailable");
+    }
+    if (!enabled) {
+        wl_surface_set_input_region(data->surface, NULL);
+    } else {
+        struct wl_region *region = wl_compositor_create_region(data->waylandData->compositor);
+        if (!region) {
+            return SDL_SetError("Wayland input region creation failed");
+        }
+        wl_region_add(region, 0, 0, 0, 0);
+        wl_surface_set_input_region(data->surface, region);
+        wl_region_destroy(region);
+    }
+    wl_display_flush(data->waylandData->display);
+    return true;
+}
+
 bool Wayland_SetWindowMouseGrab(SDL_VideoDevice *_this, SDL_Window *window, bool grabbed)
 {
     SDL_VideoData *data = _this->internal;

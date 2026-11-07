@@ -35,6 +35,7 @@
 #include "SDL_cocoamouse.h"
 #include "SDL_cocoaopengl.h"
 #include "SDL_cocoaopengles.h"
+#include "SDL_cocoashape.h"
 #include "SDL_cocoavideo.h"
 
 #if 0
@@ -1131,7 +1132,7 @@ static NSCursor *Cocoa_GetDesiredCursor(void)
 {
     SDL_Window *window = _data.window;
     SDL_Surface *shape = (SDL_Surface *)SDL_GetPointerProperty(SDL_GetWindowProperties(window), SDL_PROP_WINDOW_SHAPE_POINTER, NULL);
-    BOOL ignoresMouseEvents = NO;
+    BOOL ignoresMouseEvents = window->mouse_passthrough;
 
     if (shape) {
         NSPoint point = [theEvent locationInWindow];
@@ -3357,6 +3358,18 @@ SDL_DisplayID Cocoa_GetDisplayForWindow(SDL_VideoDevice *_this, SDL_Window *wind
 bool Cocoa_SetWindowMouseRect(SDL_VideoDevice *_this, SDL_Window *window)
 {
     Cocoa_UpdateClipCursor(window);
+    return true;
+}
+
+bool Cocoa_SetWindowMousePassthrough(SDL_VideoDevice *_this, SDL_Window *window, bool enabled)
+{
+    SDL_CocoaWindowData *data = (__bridge SDL_CocoaWindowData *)window->internal;
+    SDL_Surface *shape = (SDL_Surface *)SDL_GetPointerProperty(SDL_GetWindowProperties(window),
+                                                               SDL_PROP_WINDOW_SHAPE_POINTER, NULL);
+    if (shape) {
+        return Cocoa_UpdateWindowShape(_this, window, shape);
+    }
+    data.nswindow.ignoresMouseEvents = enabled;
     return true;
 }
 
