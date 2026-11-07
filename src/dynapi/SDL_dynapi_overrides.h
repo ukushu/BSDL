@@ -69,6 +69,7 @@
 #define SDL_BlitSurfaceUnchecked SDL_BlitSurfaceUnchecked_REAL
 #define SDL_BlitSurfaceUncheckedScaled SDL_BlitSurfaceUncheckedScaled_REAL
 #define SDL_BroadcastCondition SDL_BroadcastCondition_REAL
+#define SDL_CaptureDisplay SDL_CaptureDisplay_REAL
 #define SDL_CaptureMouse SDL_CaptureMouse_REAL
 #define SDL_ClaimWindowForGPUDevice SDL_ClaimWindowForGPUDevice_REAL
 #define SDL_CleanupTLS SDL_CleanupTLS_REAL

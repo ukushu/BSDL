@@ -206,6 +206,28 @@ SDL_VideoDisplay *SDL_GetVideoDisplay(SDL_DisplayID displayID)
     return _this->displays[display_index];
 }
 
+bool SDL_CaptureDisplay(SDL_DisplayID displayID, SDL_DisplayCaptureCallback callback, void *userdata)
+{
+    SDL_VideoDevice *_this = SDL_GetVideoDevice();
+    SDL_VideoDisplay *display;
+
+    if (!_this) {
+        SDL_UninitializedVideo();
+        return false;
+    }
+    if (!callback) {
+        return SDL_InvalidParamError("callback");
+    }
+    display = SDL_GetVideoDisplay(displayID);
+    if (!display) {
+        return SDL_InvalidParamError("displayID");
+    }
+    if (!display->device->CaptureDisplay) {
+        return SDL_Unsupported();
+    }
+    return display->device->CaptureDisplay(display->device, display, callback, userdata);
+}
+
 SDL_DisplayID SDL_GetPrimaryDisplay(void)
 {
     SDL_VideoDevice *_this = SDL_GetVideoDevice();

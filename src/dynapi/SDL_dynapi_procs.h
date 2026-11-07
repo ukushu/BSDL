@@ -90,6 +90,7 @@ SDL_DYNAPI_PROC(bool,SDL_BlitSurfaceTiledWithScale,(SDL_Surface *a, const SDL_Re
 SDL_DYNAPI_PROC(bool,SDL_BlitSurfaceUnchecked,(SDL_Surface *a, const SDL_Rect *b, SDL_Surface *c, const SDL_Rect *d),(a,b,c,d),return)
 SDL_DYNAPI_PROC(bool,SDL_BlitSurfaceUncheckedScaled,(SDL_Surface *a, const SDL_Rect *b, SDL_Surface *c, const SDL_Rect *d, SDL_ScaleMode e),(a,b,c,d,e),return)
 SDL_DYNAPI_PROC(void,SDL_BroadcastCondition,(SDL_Condition *a),(a),)
+SDL_DYNAPI_PROC(bool,SDL_CaptureDisplay,(SDL_DisplayID a, SDL_DisplayCaptureCallback b, void *c),(a,b,c),return)
 SDL_DYNAPI_PROC(bool,SDL_CaptureMouse,(bool a),(a),return)
 SDL_DYNAPI_PROC(bool,SDL_ClaimWindowForGPUDevice,(SDL_GPUDevice *a, SDL_Window *b),(a,b),return)
 SDL_DYNAPI_PROC(void,SDL_CleanupTLS,(void),(),)

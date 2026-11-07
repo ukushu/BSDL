@@ -756,6 +756,38 @@ extern SDL_DECLSPEC const char * SDLCALL SDL_GetDisplayName(SDL_DisplayID displa
  */
 extern SDL_DECLSPEC bool SDLCALL SDL_GetDisplayBounds(SDL_DisplayID displayID, SDL_Rect *rect);
 
+/** Callback type for SDL_CaptureDisplay().
+ *
+ * The surface, when non-NULL, is in SDL_PIXELFORMAT_RGBA32 and is owned by
+ * the callback, which must free it with SDL_DestroySurface(). The error text
+ * is valid only until the callback returns.
+ *
+ * \since This function is available since SDL 3.5.0.
+ */
+typedef void (SDLCALL *SDL_DisplayCaptureCallback)(void *userdata, SDL_Surface *surface, const char *error);
+
+/**
+ * Asynchronously capture the current contents of a display.
+ *
+ * Capture support depends on the video backend and may require the user to
+ * grant screen recording permission. The callback is called once the request
+ * completes, including when capture fails.
+ *
+ * \param displayID the instance ID of the display to capture.
+ * \param callback the function to call when capture completes.
+ * \param userdata an app-controlled pointer passed to the callback.
+ * \returns true if the request was accepted or false on immediate failure;
+ *          call SDL_GetError() for more information.
+ *
+ * \threadsafety This function should only be called on the main thread.
+ * The callback may run on a different thread.
+ *
+ * \since This function is available since SDL 3.5.0.
+ *
+ * \sa SDL_GetDisplays
+ */
+extern SDL_DECLSPEC bool SDLCALL SDL_CaptureDisplay(SDL_DisplayID displayID, SDL_DisplayCaptureCallback callback, void *userdata);
+
 /**
  * Get the usable desktop area represented by a display, in screen
  * coordinates.

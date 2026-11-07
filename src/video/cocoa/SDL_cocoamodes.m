@@ -23,6 +23,7 @@
 #ifdef SDL_VIDEO_DRIVER_COCOA
 
 #include "SDL_cocoavideo.h"
+#include <ScreenCaptureKit/ScreenCaptureKit.h>
 #include "../../events/SDL_events_c.h"
 
 // We need this for IODisplayCreateInfoDictionary and kIODisplayOnlyPreferredName
@@ -584,6 +585,75 @@ bool Cocoa_GetDisplayBounds(SDL_VideoDevice *_this, SDL_VideoDisplay *display, S
     rect->y = (int)cgrect.origin.y;
     rect->w = (int)cgrect.size.width;
     rect->h = (int)cgrect.size.height;
+    return true;
+}
+
+static SDL_Surface *Cocoa_CreateCaptureSurface(CGImageRef image)
+{
+    const size_t width = CGImageGetWidth(image);
+    const size_t height = CGImageGetHeight(image);
+    if (width == 0 || height == 0 || width > INT_MAX || height > INT_MAX) {
+        SDL_SetError("Display capture dimensions are invalid");
+        return NULL;
+    }
+    SDL_Surface *surface = SDL_CreateSurface((int)width, (int)height, SDL_PIXELFORMAT_RGBA32);
+    if (!surface) return NULL;
+    CGColorSpaceRef color_space = CGColorSpaceCreateDeviceRGB();
+    CGContextRef context = color_space ? CGBitmapContextCreate(surface->pixels, width, height, 8,
+        surface->pitch, color_space, kCGBitmapByteOrder32Big | kCGImageAlphaPremultipliedLast) : NULL;
+    if (!context) {
+        if (color_space) CGColorSpaceRelease(color_space);
+        SDL_DestroySurface(surface);
+        SDL_SetError("Could not create display capture bitmap context");
+        return NULL;
+    }
+
+    CGContextTranslateCTM(context, 0, (CGFloat)height);
+    CGContextScaleCTM(context, 1, -1);
+    CGContextDrawImage(context, CGRectMake(0, 0, width, height), image);
+    CGContextRelease(context);
+    CGColorSpaceRelease(color_space);
+    return surface;
+}
+
+bool Cocoa_CaptureDisplay(SDL_VideoDevice *_this, SDL_VideoDisplay *display,
+                          SDL_DisplayCaptureCallback callback, void *userdata)
+{
+    (void)_this;
+    SDL_DisplayData *data = (SDL_DisplayData *)display->internal;
+    const CGDirectDisplayID display_id = data->display;
+    SCStreamConfiguration *configuration = [[SCStreamConfiguration alloc] init];
+    configuration.width = (size_t)CGDisplayPixelsWide(display_id);
+    configuration.height = (size_t)CGDisplayPixelsHigh(display_id);
+    configuration.showsCursor = NO;
+
+    [SCShareableContent getShareableContentWithCompletionHandler:^(SCShareableContent *content, NSError *contentError) {
+        if (!content) {
+            callback(userdata, NULL, contentError.localizedDescription.UTF8String ?: "Could not list shareable displays");
+            return;
+        }
+        SCDisplay *target = nil;
+        for (SCDisplay *candidate in content.displays) {
+            if (candidate.displayID == display_id) {
+                target = candidate;
+                break;
+            }
+        }
+        if (!target) {
+            callback(userdata, NULL, "The requested display is no longer available");
+            return;
+        }
+        SCContentFilter *filter = [[SCContentFilter alloc] initWithDisplay:target excludingWindows:@[]];
+        [SCScreenshotManager captureImageWithFilter:filter configuration:configuration
+                                  completionHandler:^(CGImageRef image, NSError *captureError) {
+            SDL_Surface *surface = image ? Cocoa_CreateCaptureSurface(image) : NULL;
+            const char *error = NULL;
+            if (!surface) {
+                error = captureError.localizedDescription.UTF8String ?: "Could not capture display contents";
+            }
+            callback(userdata, surface, error);
+        }];
+    }];
     return true;
 }
 

@@ -255,6 +255,10 @@ struct SDL_VideoDevice
      */
     bool (*GetDisplayBounds)(SDL_VideoDevice *_this, SDL_VideoDisplay *display, SDL_Rect *rect);
 
+    /* Asynchronously capture display contents into a caller-owned surface. */
+    bool (*CaptureDisplay)(SDL_VideoDevice *_this, SDL_VideoDisplay *display,
+                          SDL_DisplayCaptureCallback callback, void *userdata);
+
     /*
      * Get the usable bounds of a display (bounds minus menubar or whatever)
      */

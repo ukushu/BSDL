@@ -43,6 +43,7 @@ _SDL_BlitSurfaceTiledWithScale
 _SDL_BlitSurfaceUnchecked
 _SDL_BlitSurfaceUncheckedScaled
 _SDL_BroadcastCondition
+_SDL_CaptureDisplay
 _SDL_CaptureMouse
 _SDL_ClaimWindowForGPUDevice
 _SDL_CleanupTLS

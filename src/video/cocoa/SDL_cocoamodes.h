@@ -37,6 +37,8 @@ struct SDL_DisplayModeData
 extern void Cocoa_InitModes(SDL_VideoDevice *_this);
 extern void Cocoa_UpdateDisplays(SDL_VideoDevice *_this);
 extern bool Cocoa_GetDisplayBounds(SDL_VideoDevice *_this, SDL_VideoDisplay *display, SDL_Rect *rect);
+extern bool Cocoa_CaptureDisplay(SDL_VideoDevice *_this, SDL_VideoDisplay *display,
+                                 SDL_DisplayCaptureCallback callback, void *userdata);
 extern bool Cocoa_GetDisplayUsableBounds(SDL_VideoDevice *_this, SDL_VideoDisplay *display, SDL_Rect *rect);
 extern bool Cocoa_GetDisplayModes(SDL_VideoDevice *_this, SDL_VideoDisplay *display);
 extern bool Cocoa_SetDisplayMode(SDL_VideoDevice *_this, SDL_VideoDisplay *display, SDL_DisplayMode *mode);
