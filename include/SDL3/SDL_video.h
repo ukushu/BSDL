@@ -762,16 +762,18 @@ extern SDL_DECLSPEC bool SDLCALL SDL_GetDisplayBounds(SDL_DisplayID displayID, S
  * the callback, which must free it with SDL_DestroySurface(). The error text
  * is valid only until the callback returns.
  *
- * \since This function is available since SDL 3.5.0.
+ * \since This datatype is available since SDL 3.5.0.
  */
 typedef void (SDLCALL *SDL_DisplayCaptureCallback)(void *userdata, SDL_Surface *surface, const char *error);
 
 /**
- * Asynchronously capture the current contents of a display.
+ * Request a capture of the current contents of a display.
  *
  * Capture support depends on the video backend and may require the user to
  * grant screen recording permission. The callback is called once the request
- * completes, including when capture fails.
+ * completes, including when capture fails. It may be called before this
+ * function returns or later, and may run on a different thread. Keep userdata
+ * valid until the callback is called.
  *
  * \param displayID the instance ID of the display to capture.
  * \param callback the function to call when capture completes.
@@ -780,7 +782,6 @@ typedef void (SDLCALL *SDL_DisplayCaptureCallback)(void *userdata, SDL_Surface *
  *          call SDL_GetError() for more information.
  *
  * \threadsafety This function should only be called on the main thread.
- * The callback may run on a different thread.
  *
  * \since This function is available since SDL 3.5.0.
  *

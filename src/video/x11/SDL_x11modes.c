@@ -1284,6 +1284,60 @@ bool X11_GetDisplayBounds(SDL_VideoDevice *_this, SDL_VideoDisplay *sdl_display,
     return true;
 }
 
+bool X11_CaptureDisplay(SDL_VideoDevice *_this, SDL_VideoDisplay *display,
+                        SDL_DisplayCaptureCallback callback, void *userdata)
+{
+    SDL_VideoData *video_data = _this->internal;
+    SDL_DisplayData *display_data = display->internal;
+    SDL_Rect bounds;
+    XVisualInfo visual_info;
+    XImage *image = NULL;
+    SDL_Surface *source = NULL;
+    SDL_Surface *surface = NULL;
+    const char *error = NULL;
+
+    if (!X11_GetDisplayBounds(_this, display, &bounds)) {
+        error = SDL_GetError();
+        goto done;
+    }
+    if (bounds.w < 1 || bounds.h < 1) {
+        error = "Invalid X11 display capture dimensions";
+        goto done;
+    }
+    image = X11_XGetImage(video_data->display, RootWindow(video_data->display, display_data->screen),
+                          bounds.x, bounds.y, (unsigned int)bounds.w, (unsigned int)bounds.h,
+                          AllPlanes, ZPixmap);
+    if (!image) {
+        error = "Could not read pixels from the X11 display";
+        goto done;
+    }
+    if (!X11_GetVisualInfoFromVisual(video_data->display, display_data->visual, &visual_info)) {
+        error = "Could not read the X11 display pixel format";
+        goto done;
+    }
+    source = SDL_CreateSurfaceFrom(image->width, image->height,
+                                   X11_GetPixelFormatFromVisualInfo(video_data->display, &visual_info),
+                                   image->data, image->bytes_per_line);
+    if (!source) {
+        error = SDL_GetError();
+        goto done;
+    }
+    surface = SDL_ConvertSurface(source, SDL_PIXELFORMAT_RGBA32);
+    if (!surface) {
+        error = SDL_GetError();
+    }
+
+done:
+    if (source) {
+        SDL_DestroySurface(source);
+    }
+    if (image) {
+        XDestroyImage(image);
+    }
+    callback(userdata, surface, error);
+    return true;
+}
+
 bool X11_GetDisplayUsableBounds(SDL_VideoDevice *_this, SDL_VideoDisplay *sdl_display, SDL_Rect *rect)
 {
     SDL_VideoData *data = _this->internal;

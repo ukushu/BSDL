@@ -738,6 +738,123 @@ bool WIN_InitModes(SDL_VideoDevice *_this)
     return true;
 }
 
+typedef struct WIN_DisplayCaptureRequest
+{
+    SDL_Rect bounds;
+    SDL_DisplayCaptureCallback callback;
+    void *userdata;
+} WIN_DisplayCaptureRequest;
+
+static int SDLCALL WIN_CaptureDisplayThread(void *userdata)
+{
+    WIN_DisplayCaptureRequest *request = (WIN_DisplayCaptureRequest *)userdata;
+    const int width = request->bounds.w;
+    const int height = request->bounds.h;
+    const char *error = NULL;
+    SDL_Surface *surface = NULL;
+    HDC screen_dc = NULL;
+    HDC memory_dc = NULL;
+    HBITMAP bitmap = NULL;
+    HGDIOBJ original_bitmap = NULL;
+    void *pixels = NULL;
+
+    screen_dc = GetDC(NULL);
+    if (!screen_dc) {
+        error = "Could not access the desktop device context";
+        goto done;
+    }
+    memory_dc = CreateCompatibleDC(screen_dc);
+    if (!memory_dc) {
+        error = "Could not create a display capture device context";
+        goto done;
+    }
+
+    BITMAPINFO bitmap_info;
+    SDL_zero(bitmap_info);
+    bitmap_info.bmiHeader.biSize = sizeof(bitmap_info.bmiHeader);
+    bitmap_info.bmiHeader.biWidth = width;
+    bitmap_info.bmiHeader.biHeight = -height;
+    bitmap_info.bmiHeader.biPlanes = 1;
+    bitmap_info.bmiHeader.biBitCount = 32;
+    bitmap_info.bmiHeader.biCompression = BI_RGB;
+    bitmap = CreateDIBSection(screen_dc, &bitmap_info, DIB_RGB_COLORS, &pixels, NULL, 0);
+    if (!bitmap || !pixels) {
+        error = "Could not allocate a display capture bitmap";
+        goto done;
+    }
+    original_bitmap = SelectObject(memory_dc, bitmap);
+    if (!original_bitmap || original_bitmap == HGDI_ERROR) {
+        error = "Could not select the display capture bitmap";
+        goto done;
+    }
+    if (!BitBlt(memory_dc, 0, 0, width, height, screen_dc,
+                request->bounds.x, request->bounds.y, SRCCOPY | CAPTUREBLT)) {
+        error = "Could not copy display pixels";
+        goto done;
+    }
+
+    surface = SDL_CreateSurface(width, height, SDL_PIXELFORMAT_RGBA32);
+    if (!surface) {
+        error = SDL_GetError();
+        goto done;
+    }
+    const Uint8 *source = (const Uint8 *)pixels;
+    for (int y = 0; y < height; ++y) {
+        const Uint8 *source_row = source + (size_t)y * width * 4;
+        Uint8 *destination_row = (Uint8 *)surface->pixels + (size_t)y * surface->pitch;
+        for (int x = 0; x < width; ++x) {
+            destination_row[x * 4 + 0] = source_row[x * 4 + 2];
+            destination_row[x * 4 + 1] = source_row[x * 4 + 1];
+            destination_row[x * 4 + 2] = source_row[x * 4 + 0];
+            destination_row[x * 4 + 3] = 255;
+        }
+    }
+
+done:
+    if (original_bitmap && original_bitmap != HGDI_ERROR) {
+        SelectObject(memory_dc, original_bitmap);
+    }
+    if (bitmap) {
+        DeleteObject(bitmap);
+    }
+    if (memory_dc) {
+        DeleteDC(memory_dc);
+    }
+    if (screen_dc) {
+        ReleaseDC(NULL, screen_dc);
+    }
+    request->callback(request->userdata, surface, error);
+    SDL_free(request);
+    return 0;
+}
+
+bool WIN_CaptureDisplay(SDL_VideoDevice *_this, SDL_VideoDisplay *display,
+                        SDL_DisplayCaptureCallback callback, void *userdata)
+{
+    SDL_Rect bounds;
+    if (!WIN_GetDisplayBounds(_this, display, &bounds)) {
+        return false;
+    }
+    if (bounds.w < 1 || bounds.h < 1 || bounds.w > INT_MAX / 4 ||
+        (size_t)bounds.w > SIZE_MAX / 4 / (size_t)bounds.h) {
+        return SDL_SetError("Invalid display capture dimensions");
+    }
+    WIN_DisplayCaptureRequest *request = (WIN_DisplayCaptureRequest *)SDL_malloc(sizeof(*request));
+    if (!request) {
+        return false;
+    }
+    request->bounds = bounds;
+    request->callback = callback;
+    request->userdata = userdata;
+    SDL_Thread *thread = SDL_CreateThread(WIN_CaptureDisplayThread, "SDL display capture", request);
+    if (!thread) {
+        SDL_free(request);
+        return false;
+    }
+    SDL_DetachThread(thread);
+    return true;
+}
+
 bool WIN_GetDisplayBounds(SDL_VideoDevice *_this, SDL_VideoDisplay *display, SDL_Rect *rect)
 {
     const SDL_DisplayData *data = display->internal;

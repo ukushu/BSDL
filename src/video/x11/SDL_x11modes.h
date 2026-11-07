@@ -62,6 +62,8 @@ extern void X11_QuitModes(SDL_VideoDevice *_this);
 extern bool X11_GetVisualInfoFromVisual(Display *display, Visual *visual, XVisualInfo *vinfo);
 extern SDL_PixelFormat X11_GetPixelFormatFromVisualInfo(Display *display, XVisualInfo *vinfo);
 extern bool X11_GetDisplayBounds(SDL_VideoDevice *_this, SDL_VideoDisplay *sdl_display, SDL_Rect *rect);
+extern bool X11_CaptureDisplay(SDL_VideoDevice *_this, SDL_VideoDisplay *display,
+                               SDL_DisplayCaptureCallback callback, void *userdata);
 extern bool X11_GetDisplayUsableBounds(SDL_VideoDevice *_this, SDL_VideoDisplay *sdl_display, SDL_Rect *rect);
 
 extern float X11_GetGlobalContentScale(Display *display, XSettingsClient *client);

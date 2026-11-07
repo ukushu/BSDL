@@ -172,6 +172,7 @@ static SDL_VideoDevice *X11_CreateDevice(void)
     device->ResetTouch = X11_ResetTouch;
     device->GetDisplayModes = X11_GetDisplayModes;
     device->GetDisplayBounds = X11_GetDisplayBounds;
+    device->CaptureDisplay = X11_CaptureDisplay;
     device->GetDisplayUsableBounds = X11_GetDisplayUsableBounds;
     device->GetWindowICCProfile = X11_GetWindowICCProfile;
     device->SetDisplayMode = X11_SetDisplayMode;
