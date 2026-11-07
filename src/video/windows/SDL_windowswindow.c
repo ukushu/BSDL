@@ -1491,7 +1491,7 @@ bool WIN_SetWindowMousePassthrough(SDL_VideoDevice *_this, SDL_Window *window, b
         data->mouse_passthrough_style = style;
         data->saved_mouse_passthrough_style = true;
         if (!SetWindowLongPtr(data->hwnd, GWL_EXSTYLE, style | WS_EX_LAYERED | WS_EX_TRANSPARENT) ||
-            !SetLayeredWindowAttributes(data->hwnd, 0, 255, LWA_ALPHA)) {
+            (!(style & WS_EX_LAYERED) && !SetLayeredWindowAttributes(data->hwnd, 0, 255, LWA_ALPHA))) {
             SetWindowLongPtr(data->hwnd, GWL_EXSTYLE, style);
             data->saved_mouse_passthrough_style = false;
             return WIN_SetError("Unable to enable mouse passthrough");

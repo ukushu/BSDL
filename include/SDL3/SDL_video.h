@@ -2814,7 +2814,7 @@ extern SDL_DECLSPEC const SDL_Rect * SDLCALL SDL_GetWindowMouseRect(SDL_Window *
  *
  * \threadsafety This function should only be called on the main thread.
  *
- * \since This function is available since SDL 3.2.0.
+ * \since This function is available since SDL 3.6.0.
  */
 extern SDL_DECLSPEC bool SDLCALL SDL_SetWindowMousePassthrough(SDL_Window *window, bool enabled);
 
