@@ -1486,24 +1486,41 @@ bool WIN_SetWindowMouseRect(SDL_VideoDevice *_this, SDL_Window *window)
 bool WIN_SetWindowMousePassthrough(SDL_VideoDevice *_this, SDL_Window *window, bool enabled)
 {
     SDL_WindowData *data = window->internal;
-    const LONG_PTR style = GetWindowLongPtr(data->hwnd, GWL_EXSTYLE);
+    SetLastError(ERROR_SUCCESS);
+    const LONG_PTR current_style = GetWindowLongPtr(data->hwnd, GWL_EXSTYLE);
+    if (!current_style && GetLastError() != ERROR_SUCCESS) {
+        return WIN_SetError("GetWindowLongPtr(GWL_EXSTYLE)");
+    }
+    if (!enabled && !data->saved_mouse_passthrough_style) {
+        return true;
+    }
+
+    const LONG_PTR target_style = enabled ? current_style | WS_EX_LAYERED | WS_EX_TRANSPARENT : data->mouse_passthrough_style;
+    SetLastError(ERROR_SUCCESS);
+    if (!SetWindowLongPtr(data->hwnd, GWL_EXSTYLE, target_style) && GetLastError() != ERROR_SUCCESS) {
+        return WIN_SetError("SetWindowLongPtr(GWL_EXSTYLE)");
+    }
+    if (enabled && !(current_style & WS_EX_LAYERED) && !SetLayeredWindowAttributes(data->hwnd, 0, 255, LWA_ALPHA)) {
+        const DWORD error = GetLastError();
+        SetWindowLongPtr(data->hwnd, GWL_EXSTYLE, current_style);
+        SetLastError(error);
+        return WIN_SetError("SetLayeredWindowAttributes()");
+    }
+    if (!SetWindowPos(data->hwnd, NULL, 0, 0, 0, 0,
+                      SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED)) {
+        const DWORD error = GetLastError();
+        SetWindowLongPtr(data->hwnd, GWL_EXSTYLE, current_style);
+        SetLastError(error);
+        return WIN_SetError("SetWindowPos()");
+    }
     if (enabled) {
-        data->mouse_passthrough_style = style;
-        data->saved_mouse_passthrough_style = true;
-        if (!SetWindowLongPtr(data->hwnd, GWL_EXSTYLE, style | WS_EX_LAYERED | WS_EX_TRANSPARENT) ||
-            (!(style & WS_EX_LAYERED) && !SetLayeredWindowAttributes(data->hwnd, 0, 255, LWA_ALPHA))) {
-            SetWindowLongPtr(data->hwnd, GWL_EXSTYLE, style);
-            data->saved_mouse_passthrough_style = false;
-            return WIN_SetError("Unable to enable mouse passthrough");
+        if (!data->saved_mouse_passthrough_style) {
+            data->mouse_passthrough_style = current_style;
+            data->saved_mouse_passthrough_style = true;
         }
-    } else if (data->saved_mouse_passthrough_style) {
-        if (!SetWindowLongPtr(data->hwnd, GWL_EXSTYLE, data->mouse_passthrough_style)) {
-            return WIN_SetError("Unable to disable mouse passthrough");
-        }
+    } else {
         data->saved_mouse_passthrough_style = false;
     }
-    SetWindowPos(data->hwnd, NULL, 0, 0, 0, 0,
-                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
     return true;
 }
 

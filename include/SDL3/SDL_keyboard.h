@@ -82,9 +82,11 @@ extern SDL_DECLSPEC bool SDLCALL SDL_HasKeyboard(void);
  *
  * The callback is delivered on the video thread while the shortcut remains
  * registered. The caller must unregister the returned ID before releasing
- * `userdata`. Registration fails if the platform cannot reserve the shortcut.
+ * `userdata`. Registration fails if the platform cannot monitor the shortcut.
+ * Some platforms consume matching key presses or reserve the shortcut, so
+ * other applications may not receive it while it is registered.
  *
- * 	hreadsafety This function should only be called on the main thread.
+ * \threadsafety This function should only be called on the main thread.
  *
  * \returns an ID that can be used with SDL_UnregisterGlobalHotKey(), or 0 on failure.
  */

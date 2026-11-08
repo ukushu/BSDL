@@ -298,6 +298,7 @@ bool X11_InitKeyboard(SDL_VideoDevice *_this)
         }
     }
     if (best_index >= 0 && best_distance <= 2) {
+        data->keyboard.has_physical_scancode_mapping = true;
         int table_size;
         const SDL_Scancode *table = SDL_GetScancodeTable(scancode_set[best_index], &table_size);
 
@@ -389,15 +390,18 @@ static unsigned int X11_GetXkbVirtualModifierMask(SDL_VideoDevice *_this, const 
 }
 #endif
 
-static unsigned X11_GetXModifierMask(SDL_VideoDevice *_this, SDL_Scancode scancode)
+unsigned int X11_GetXModifierMask(SDL_VideoDevice *_this, SDL_Scancode scancode)
 {
     SDL_VideoData *videodata = _this->internal;
     Display *display = videodata->display;
     unsigned int mod_mask = 0;
 
     XModifierKeymap *xmods = X11_XGetModifierMapping(display);
+    if (!xmods) {
+        return 0;
+    }
     unsigned int n = xmods->max_keypermod;
-    for (int i = 3; i < 8; i++) {
+    for (int i = 0; i < 8; i++) {
         for (int j = 0; j < n; j++) {
             const KeyCode kc = xmods->modifiermap[i * n + j];
             if (videodata->keyboard.key_layout[kc] == scancode) {
@@ -409,6 +413,154 @@ static unsigned X11_GetXModifierMask(SDL_VideoDevice *_this, SDL_Scancode scanco
     X11_XFreeModifiermap(xmods);
 
     return mod_mask;
+}
+
+static unsigned int X11_GlobalHotKeyModifiers(SDL_VideoDevice *_this, SDL_Keymod modifiers)
+{
+    const unsigned int shift = (modifiers & SDL_KMOD_SHIFT) ? X11_GetXModifierMask(_this, SDL_SCANCODE_LSHIFT) : 0;
+    const unsigned int control = (modifiers & SDL_KMOD_CTRL) ? X11_GetXModifierMask(_this, SDL_SCANCODE_LCTRL) : 0;
+    const unsigned int alt = (modifiers & SDL_KMOD_ALT) ? X11_GetXModifierMask(_this, SDL_SCANCODE_LALT) : 0;
+    const unsigned int gui = (modifiers & SDL_KMOD_GUI) ? X11_GetXModifierMask(_this, SDL_SCANCODE_LGUI) : 0;
+    if (((modifiers & SDL_KMOD_SHIFT) && !shift) || ((modifiers & SDL_KMOD_CTRL) && !control) ||
+        ((modifiers & SDL_KMOD_ALT) && !alt) || ((modifiers & SDL_KMOD_GUI) && !gui) ||
+        (shift & (control | alt | gui)) || (control & (alt | gui)) || (alt & gui)) {
+        return 0;
+    }
+    return shift | control | alt | gui;
+}
+
+static void X11_GrabGlobalHotKey(SDL_VideoDevice *_this, KeyCode keycode,
+                                 unsigned int modifiers, unsigned int ignored, bool grab)
+{
+    SDL_VideoData *data = _this->internal;
+    Display *display = data->display;
+    const Window root = DefaultRootWindow(display);
+    for (unsigned int locks = ignored;; locks = (locks - 1) & ignored) {
+        const unsigned int state = modifiers | locks;
+        if (grab) {
+            X11_XGrabKey(display, keycode, state, root, False, GrabModeAsync, GrabModeAsync);
+        } else {
+            X11_XUngrabKey(display, keycode, state, root);
+        }
+        if (locks == 0) break;
+    }
+}
+
+SDL_GlobalHotKeyID X11_RegisterGlobalHotKey(SDL_VideoDevice *_this, SDL_Scancode scancode,
+                                            SDL_Keymod modifiers, SDL_GlobalHotKeyCallback callback,
+                                            void *userdata)
+{
+    SDL_VideoData *data = _this->internal;
+    Display *display = data->display;
+    const SDL_Keymod supported = SDL_KMOD_SHIFT | SDL_KMOD_CTRL | SDL_KMOD_ALT | SDL_KMOD_GUI;
+    if (data->is_xwayland) {
+        SDL_SetError("Global hotkeys are not supported by XWayland");
+        return 0;
+    }
+    if (!callback || (modifiers & ~supported)) {
+        SDL_SetError("Unsupported global hotkey modifiers");
+        return 0;
+    }
+    if (!data->keyboard.has_physical_scancode_mapping) {
+        SDL_SetError("Physical scancode mapping is unavailable for this X11 keyboard");
+        return 0;
+    }
+
+    KeyCode keycode = 0;
+    for (int i = 8; i < SDL_arraysize(data->keyboard.key_layout); ++i) {
+        if (data->keyboard.key_layout[i] == scancode) {
+            keycode = (KeyCode)i;
+            break;
+        }
+    }
+    if (!keycode) {
+        SDL_SetError("Scancode is not available in the X11 keyboard mapping");
+        return 0;
+    }
+
+    const unsigned int modifier_mask = X11_GlobalHotKeyModifiers(_this, modifiers);
+    if (modifiers && !modifier_mask) {
+        SDL_SetError("Global hotkey modifier is unavailable in the X11 keyboard mapping");
+        return 0;
+    }
+
+    const unsigned int ignored = LockMask | data->keyboard.numlock_mask | data->keyboard.scrolllock_mask;
+    if (modifier_mask & ignored) {
+        SDL_SetError("Global hotkey modifier overlaps a keyboard lock modifier");
+        return 0;
+    }
+    for (X11GlobalHotKey *existing = data->global_hotkeys; existing; existing = existing->next) {
+        if (existing->keycode == keycode && existing->modifiers == modifier_mask) {
+            SDL_SetError("Global hotkey is already registered");
+            return 0;
+        }
+    }
+
+    XErrorEvent xerror;
+    XErrorHandler previous_error_handler = X11_BeginErrorTrap(display, DefaultRootWindow(display), BadAccess);
+    X11_GrabGlobalHotKey(_this, keycode, modifier_mask, ignored, true);
+    const bool failed = X11_EndErrorTrap(previous_error_handler, &xerror);
+    if (failed) {
+        X11_GrabGlobalHotKey(_this, keycode, modifier_mask, ignored, false);
+        SDL_SetError("Couldn't grab global hotkey (X11 error %d)", xerror.error_code);
+        return 0;
+    }
+
+    X11GlobalHotKey *hotkey = SDL_calloc(1, sizeof(*hotkey));
+    if (!hotkey) {
+        X11_GrabGlobalHotKey(_this, keycode, modifier_mask, ignored, false);
+        return 0;
+    }
+    hotkey->id = ++data->next_global_hotkey_id;
+    if (!hotkey->id) hotkey->id = ++data->next_global_hotkey_id;
+    hotkey->keycode = keycode;
+    hotkey->modifiers = modifier_mask;
+    hotkey->ignored_modifiers = ignored;
+    hotkey->callback = callback;
+    hotkey->userdata = userdata;
+    hotkey->next = data->global_hotkeys;
+    data->global_hotkeys = hotkey;
+    return hotkey->id;
+}
+
+bool X11_UnregisterGlobalHotKey(SDL_VideoDevice *_this, SDL_GlobalHotKeyID id)
+{
+    SDL_VideoData *data = _this->internal;
+    X11GlobalHotKey **cursor = &data->global_hotkeys;
+    while (*cursor) {
+        X11GlobalHotKey *hotkey = *cursor;
+        if (hotkey->id == id) {
+            *cursor = hotkey->next;
+            X11_GrabGlobalHotKey(_this, hotkey->keycode, hotkey->modifiers,
+                                 hotkey->ignored_modifiers, false);
+            SDL_free(hotkey);
+            return true;
+        }
+        cursor = &hotkey->next;
+    }
+    return SDL_SetError("Invalid global hotkey");
+}
+
+bool X11_HandleGlobalHotKey(SDL_VideoDevice *_this, XKeyEvent *event)
+{
+    SDL_VideoData *data = _this->internal;
+    const unsigned int modifier_bits = ShiftMask | ControlMask | Mod1Mask | Mod2Mask |
+                                      Mod3Mask | Mod4Mask | Mod5Mask;
+    for (X11GlobalHotKey *hotkey = data->global_hotkeys; hotkey; hotkey = hotkey->next) {
+        if (event->keycode == hotkey->keycode && event->type == KeyRelease) {
+            hotkey->key_down = false;
+            return true;
+        }
+        const unsigned int state = event->state & modifier_bits & ~hotkey->ignored_modifiers;
+        if (event->keycode == hotkey->keycode && state == hotkey->modifiers) {
+            if (!hotkey->key_down) {
+                hotkey->key_down = true;
+                hotkey->callback(hotkey->userdata, hotkey->id);
+            }
+            return true;
+        }
+    }
+    return false;
 }
 
 static void X11_AddKeymapEntry(SDL_Keymap *keymap, Uint32 xkeycode, KeySym xkeysym, SDL_Scancode sdl_scancode, SDL_Keymod sdl_mod_mask)

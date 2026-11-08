@@ -24,6 +24,12 @@
 #define SDL_x11keyboard_h_
 
 extern bool X11_InitKeyboard(SDL_VideoDevice *_this);
+extern unsigned int X11_GetXModifierMask(SDL_VideoDevice *_this, SDL_Scancode scancode);
+extern SDL_GlobalHotKeyID X11_RegisterGlobalHotKey(SDL_VideoDevice *_this, SDL_Scancode scancode,
+                                                    SDL_Keymod modifiers, SDL_GlobalHotKeyCallback callback,
+                                                    void *userdata);
+extern bool X11_UnregisterGlobalHotKey(SDL_VideoDevice *_this, SDL_GlobalHotKeyID id);
+extern bool X11_HandleGlobalHotKey(SDL_VideoDevice *_this, XKeyEvent *event);
 extern void X11_UpdateKeymap(SDL_VideoDevice *_this, bool send_event);
 extern void X11_QuitKeyboard(SDL_VideoDevice *_this);
 extern void X11_CreateInputContext(SDL_WindowData *data);

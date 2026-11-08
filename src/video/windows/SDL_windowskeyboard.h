@@ -37,4 +37,12 @@ extern bool WIN_ClearComposition(SDL_VideoDevice *_this, SDL_Window *window);
 extern bool WIN_HandleIMEMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM *lParam, struct SDL_VideoData *videodata);
 extern void WIN_UpdateIMECandidates(SDL_VideoDevice *_this);
 
+#if !defined(SDL_PLATFORM_XBOXONE) && !defined(SDL_PLATFORM_XBOXSERIES)
+extern SDL_GlobalHotKeyID WIN_RegisterGlobalHotKey(SDL_VideoDevice *_this, SDL_Scancode scancode,
+                                                   SDL_Keymod modifiers, SDL_GlobalHotKeyCallback callback,
+                                                   void *userdata);
+extern bool WIN_UnregisterGlobalHotKey(SDL_VideoDevice *_this, SDL_GlobalHotKeyID id);
+extern void WIN_QuitGlobalHotKeys(SDL_VideoDevice *_this);
+#endif
+
 #endif // SDL_windowskeyboard_h_

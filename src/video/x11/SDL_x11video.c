@@ -169,6 +169,8 @@ static SDL_VideoDevice *X11_CreateDevice(void)
     // Set the function pointers
     device->VideoInit = X11_VideoInit;
     device->VideoQuit = X11_VideoQuit;
+    device->RegisterGlobalHotKey = X11_RegisterGlobalHotKey;
+    device->UnregisterGlobalHotKey = X11_UnregisterGlobalHotKey;
     device->ResetTouch = X11_ResetTouch;
     device->GetDisplayModes = X11_GetDisplayModes;
     device->GetDisplayBounds = X11_GetDisplayBounds;
@@ -496,6 +498,10 @@ static bool X11_VideoInit(SDL_VideoDevice *_this)
 void X11_VideoQuit(SDL_VideoDevice *_this)
 {
     SDL_VideoData *data = _this->internal;
+
+    while (data->global_hotkeys) {
+        X11_UnregisterGlobalHotKey(_this, data->global_hotkeys->id);
+    }
 
     if (data->clipboard_window) {
         X11_XDestroyWindow(data->display, data->clipboard_window);

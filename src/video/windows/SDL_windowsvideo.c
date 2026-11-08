@@ -329,6 +329,8 @@ static SDL_VideoDevice *WIN_CreateDevice(void)
     device->VideoInit = WIN_VideoInit;
     device->VideoQuit = WIN_VideoQuit;
 #if !defined(SDL_PLATFORM_XBOXONE) && !defined(SDL_PLATFORM_XBOXSERIES)
+    device->RegisterGlobalHotKey = WIN_RegisterGlobalHotKey;
+    device->UnregisterGlobalHotKey = WIN_UnregisterGlobalHotKey;
     device->RefreshDisplays = WIN_RefreshDisplays;
     device->GetDisplayBounds = WIN_GetDisplayBounds;
     device->GetDisplayUsableBounds = WIN_GetDisplayUsableBounds;
@@ -687,6 +689,7 @@ void WIN_VideoQuit(SDL_VideoDevice *_this)
 #if !defined(SDL_PLATFORM_XBOXONE) && !defined(SDL_PLATFORM_XBOXSERIES)
     WIN_QuitModes(_this);
     WIN_QuitDeviceNotification();
+    WIN_QuitGlobalHotKeys(_this);
     WIN_QuitKeyboard(_this);
     WIN_QuitMouse(_this);
 

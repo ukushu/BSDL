@@ -465,15 +465,167 @@ static SDL_WindowData *WIN_GetWindowDataFromHWND(HWND hwnd)
 }
 
 #if !defined(SDL_PLATFORM_XBOXONE) && !defined(SDL_PLATFORM_XBOXSERIES)
+static SDL_Keymod WIN_GetGlobalHotKeyModifiers(void)
+{
+    SDL_Keymod modifiers = SDL_KMOD_NONE;
+    if ((GetAsyncKeyState(VK_LSHIFT) | GetAsyncKeyState(VK_RSHIFT)) & 0x8000) modifiers |= SDL_KMOD_SHIFT;
+    if ((GetAsyncKeyState(VK_LCONTROL) | GetAsyncKeyState(VK_RCONTROL)) & 0x8000) modifiers |= SDL_KMOD_CTRL;
+    if ((GetAsyncKeyState(VK_LMENU) | GetAsyncKeyState(VK_RMENU)) & 0x8000) modifiers |= SDL_KMOD_ALT;
+    if ((GetAsyncKeyState(VK_LWIN) | GetAsyncKeyState(VK_RWIN)) & 0x8000) modifiers |= SDL_KMOD_GUI;
+    return modifiers;
+}
+
+static bool WIN_HandleGlobalHotKey(SDL_VideoData *data, WPARAM message, const KBDLLHOOKSTRUCT *event)
+{
+    if (message != WM_KEYDOWN && message != WM_SYSKEYDOWN &&
+        message != WM_KEYUP && message != WM_SYSKEYUP) {
+        return false;
+    }
+
+    unsigned int index = event->scanCode;
+    if (event->vkCode == VK_PAUSE) {
+        index = 0xC6;
+    } else if (event->flags & LLKHF_EXTENDED) {
+        index |= 0x80;
+    }
+    if (index >= SDL_arraysize(windows_scancode_table)) {
+        return false;
+    }
+
+    const SDL_Scancode scancode = windows_scancode_table[index];
+    const bool key_down = message == WM_KEYDOWN || message == WM_SYSKEYDOWN;
+    const SDL_Keymod modifiers = key_down ? WIN_GetGlobalHotKeyModifiers() : SDL_KMOD_NONE;
+    for (WIN_GlobalHotKey *hotkey = data->global_hotkeys; hotkey; hotkey = hotkey->next) {
+        if (hotkey->scancode != scancode) {
+            continue;
+        }
+        if (!key_down && hotkey->key_down) {
+            hotkey->key_down = false;
+            return true;
+        }
+        if (key_down && hotkey->modifiers == modifiers) {
+            if (!hotkey->key_down) {
+                hotkey->key_down = true;
+                if (hotkey->pending_count < SDL_MAX_UINT32) {
+                    ++hotkey->pending_count;
+                }
+            }
+            return true;
+        }
+    }
+    return false;
+}
+
+SDL_GlobalHotKeyID WIN_RegisterGlobalHotKey(SDL_VideoDevice *_this, SDL_Scancode scancode,
+                                            SDL_Keymod modifiers, SDL_GlobalHotKeyCallback callback,
+                                            void *userdata)
+{
+    SDL_VideoData *data = _this->internal;
+    const SDL_Keymod supported = SDL_KMOD_SHIFT | SDL_KMOD_CTRL | SDL_KMOD_ALT | SDL_KMOD_GUI;
+    if (!callback || scancode <= SDL_SCANCODE_UNKNOWN || scancode >= SDL_SCANCODE_COUNT ||
+        (modifiers & ~supported)) {
+        SDL_SetError("Invalid global hotkey");
+        return 0;
+    }
+    bool mapped = false;
+    for (int i = 0; i < SDL_arraysize(windows_scancode_table); ++i) {
+        if (windows_scancode_table[i] == scancode) {
+            mapped = true;
+            break;
+        }
+    }
+    if (!mapped) {
+        SDL_SetError("Scancode is not supported by the Windows keyboard mapping");
+        return 0;
+    }
+    for (WIN_GlobalHotKey *hotkey = data->global_hotkeys; hotkey; hotkey = hotkey->next) {
+        if (hotkey->scancode == scancode && hotkey->modifiers == modifiers) {
+            SDL_SetError("Global hotkey is already registered");
+            return 0;
+        }
+    }
+
+    if (!data->global_hotkey_hook) {
+        HMODULE module;
+        if (!GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT | GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS,
+                               (LPTSTR)WIN_KeyboardHookProc, &module)) {
+            return WIN_SetError("GetModuleHandleEx() for global hotkey");
+        }
+        data->global_hotkey_hook = SetWindowsHookEx(WH_KEYBOARD_LL, WIN_KeyboardHookProc, module, 0);
+        if (!data->global_hotkey_hook) {
+            return WIN_SetError("SetWindowsHookEx() for global hotkey");
+        }
+    }
+
+    WIN_GlobalHotKey *hotkey = SDL_calloc(1, sizeof(*hotkey));
+    if (!hotkey) {
+        if (!data->global_hotkeys && UnhookWindowsHookEx(data->global_hotkey_hook)) {
+            data->global_hotkey_hook = NULL;
+        }
+        return 0;
+    }
+    hotkey->id = ++data->next_global_hotkey_id;
+    if (!hotkey->id) hotkey->id = ++data->next_global_hotkey_id;
+    hotkey->scancode = scancode;
+    hotkey->modifiers = modifiers;
+    hotkey->callback = callback;
+    hotkey->userdata = userdata;
+    hotkey->next = data->global_hotkeys;
+    data->global_hotkeys = hotkey;
+    return hotkey->id;
+}
+
+bool WIN_UnregisterGlobalHotKey(SDL_VideoDevice *_this, SDL_GlobalHotKeyID id)
+{
+    SDL_VideoData *data = _this->internal;
+    WIN_GlobalHotKey **cursor = &data->global_hotkeys;
+    while (*cursor) {
+        WIN_GlobalHotKey *hotkey = *cursor;
+        if (hotkey->id == id) {
+            if (!hotkey->next && cursor == &data->global_hotkeys && data->global_hotkey_hook &&
+                !UnhookWindowsHookEx(data->global_hotkey_hook)) {
+                return WIN_SetError("UnhookWindowsHookEx() for global hotkey");
+            }
+            *cursor = hotkey->next;
+            if (!data->global_hotkeys) data->global_hotkey_hook = NULL;
+            SDL_free(hotkey);
+            return true;
+        }
+        cursor = &hotkey->next;
+    }
+    return SDL_SetError("Invalid global hotkey");
+}
+
+void WIN_QuitGlobalHotKeys(SDL_VideoDevice *_this)
+{
+    SDL_VideoData *data = _this->internal;
+    if (data->global_hotkey_hook) {
+        UnhookWindowsHookEx(data->global_hotkey_hook);
+        data->global_hotkey_hook = NULL;
+    }
+    while (data->global_hotkeys) {
+        WIN_GlobalHotKey *hotkey = data->global_hotkeys;
+        data->global_hotkeys = hotkey->next;
+        SDL_free(hotkey);
+    }
+}
+
 LRESULT CALLBACK
 WIN_KeyboardHookProc(int nCode, WPARAM wParam, LPARAM lParam)
 {
     KBDLLHOOKSTRUCT *hookData = (KBDLLHOOKSTRUCT *)lParam;
-    SDL_VideoData *data = SDL_GetVideoDevice()->internal;
+    SDL_VideoDevice *device = SDL_GetVideoDevice();
+    if (!device) {
+        return CallNextHookEx(NULL, nCode, wParam, lParam);
+    }
+    SDL_VideoData *data = device->internal;
     SDL_Scancode scanCode;
 
     if (nCode < 0 || nCode != HC_ACTION) {
         return CallNextHookEx(NULL, nCode, wParam, lParam);
+    }
+    if (WIN_HandleGlobalHotKey(data, wParam, hookData)) {
+        return 1;
     }
     if (hookData->scanCode == 0x21d) {
         // Skip fake LCtrl when RAlt is pressed
@@ -2749,6 +2901,17 @@ void WIN_PumpEvents(SDL_VideoDevice *_this)
     }
 
     WIN_UpdateIMECandidates(_this);
+
+    for (WIN_GlobalHotKey *hotkey = _this->internal->global_hotkeys; hotkey; hotkey = hotkey->next) {
+        if (hotkey->pending_count > 0) {
+            --hotkey->pending_count;
+            SDL_GlobalHotKeyCallback callback = hotkey->callback;
+            void *userdata = hotkey->userdata;
+            SDL_GlobalHotKeyID id = hotkey->id;
+            callback(userdata, id);
+            return;
+        }
+    }
 
 #endif // !defined(SDL_PLATFORM_XBOXONE) && !defined(SDL_PLATFORM_XBOXSERIES)
 

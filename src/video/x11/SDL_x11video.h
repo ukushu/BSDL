@@ -57,6 +57,8 @@ struct SDL_VideoData
     Window clipboard_window;
     SDLX11_ClipboardData clipboard;
     SDLX11_ClipboardData primary_selection;
+    struct X11GlobalHotKey *global_hotkeys;
+    SDL_GlobalHotKeyID next_global_hotkey_id;
 #ifdef SDL_VIDEO_DRIVER_X11_XFIXES
     SDL_Window *active_cursor_confined_window;
 #endif // SDL_VIDEO_DRIVER_X11_XFIXES
@@ -147,6 +149,7 @@ struct SDL_VideoData
     struct
     {
         bool xkb_enabled;
+        bool has_physical_scancode_mapping;
         SDL_Scancode key_layout[256];
 
         union
@@ -195,6 +198,17 @@ struct SDL_VideoData
 
     bool is_xwayland;
 };
+
+typedef struct X11GlobalHotKey {
+    SDL_GlobalHotKeyID id;
+    KeyCode keycode;
+    unsigned int modifiers;
+    unsigned int ignored_modifiers;
+    bool key_down;
+    SDL_GlobalHotKeyCallback callback;
+    void *userdata;
+    struct X11GlobalHotKey *next;
+} X11GlobalHotKey;
 
 extern bool X11_UseDirectColorVisuals(void);
 

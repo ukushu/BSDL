@@ -512,6 +512,19 @@ typedef struct
 
 // Private display data
 
+#if !defined(SDL_PLATFORM_XBOXONE) && !defined(SDL_PLATFORM_XBOXSERIES)
+typedef struct WIN_GlobalHotKey {
+    SDL_GlobalHotKeyID id;
+    SDL_Scancode scancode;
+    SDL_Keymod modifiers;
+    SDL_GlobalHotKeyCallback callback;
+    void *userdata;
+    bool key_down;
+    Uint32 pending_count;
+    struct WIN_GlobalHotKey *next;
+} WIN_GlobalHotKey;
+#endif
+
 struct SDL_VideoData
 {
     int render;
@@ -653,6 +666,9 @@ struct SDL_VideoData
     UINT _SDL_WAKEUP;
 
 #if !defined(SDL_PLATFORM_XBOXONE) && !defined(SDL_PLATFORM_XBOXSERIES)
+    HHOOK global_hotkey_hook;
+    WIN_GlobalHotKey *global_hotkeys;
+    SDL_GlobalHotKeyID next_global_hotkey_id;
     UINT WM_TASKBAR_BUTTON_CREATED;
     ITaskbarList3 *taskbar_list;
 #endif

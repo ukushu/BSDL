@@ -1298,6 +1298,16 @@ static void X11_DispatchEvent(SDL_VideoDevice *_this, XEvent *xevent)
     SDL_assert(videodata != NULL);
     display = videodata->display;
 
+    if ((xevent->type == KeyPress || xevent->type == KeyRelease) &&
+        xevent->xkey.window == DefaultRootWindow(display)) {
+        if (xevent->type == KeyRelease && X11_KeyRepeat(display, xevent)) {
+            return;
+        }
+        if (X11_HandleGlobalHotKey(_this, &xevent->xkey)) {
+            return;
+        }
+    }
+
     if (xevent->type != GenericEvent) {
         data = X11_FindWindow(videodata, xevent->xany.window);
         if (data && data->window->native_window_destroyed && xevent->type != DestroyNotify) {
