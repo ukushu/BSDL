@@ -910,6 +910,7 @@
 #define SDL_SetWindowMinimumSize SDL_SetWindowMinimumSize_REAL
 #define SDL_SetWindowModal SDL_SetWindowModal_REAL
 #define SDL_SetWindowMouseGrab SDL_SetWindowMouseGrab_REAL
+#define SDL_SetWindowMousePassthrough SDL_SetWindowMousePassthrough_REAL
 #define SDL_SetWindowMouseRect SDL_SetWindowMouseRect_REAL
 #define SDL_SetWindowOpacity SDL_SetWindowOpacity_REAL
 #define SDL_SetWindowParent SDL_SetWindowParent_REAL

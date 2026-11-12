@@ -921,6 +921,7 @@ SDL_DYNAPI_PROC(bool,SDL_SetWindowMinimumSize,(SDL_Window *a, int b, int c),(a,b
 SDL_DYNAPI_PROC(bool,SDL_SetWindowModal,(SDL_Window *a, bool b),(a,b),return)
 SDL_DYNAPI_PROC(bool,SDL_SetWindowMouseGrab,(SDL_Window *a, bool b),(a,b),return)
 SDL_DYNAPI_PROC(bool,SDL_SetWindowMouseRect,(SDL_Window *a, const SDL_Rect *b),(a,b),return)
+SDL_DYNAPI_PROC(bool,SDL_SetWindowMousePassthrough,(SDL_Window *a, bool b),(a,b),return)
 SDL_DYNAPI_PROC(bool,SDL_SetWindowOpacity,(SDL_Window *a, float b),(a,b),return)
 SDL_DYNAPI_PROC(bool,SDL_SetWindowParent,(SDL_Window *a, SDL_Window *b),(a,b),return)
 SDL_DYNAPI_PROC(bool,SDL_SetWindowPosition,(SDL_Window *a, int b, int c),(a,b,c),return)
