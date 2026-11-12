@@ -884,6 +884,7 @@ _SDL_SetWindowMaximumSize
 _SDL_SetWindowMinimumSize
 _SDL_SetWindowModal
 _SDL_SetWindowMouseGrab
+_SDL_SetWindowMousePassthrough
 _SDL_SetWindowMouseRect
 _SDL_SetWindowOpacity
 _SDL_SetWindowParent

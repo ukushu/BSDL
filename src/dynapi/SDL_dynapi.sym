@@ -885,6 +885,7 @@ SDL3_0.0.0 {
     SDL_SetWindowMinimumSize;
     SDL_SetWindowModal;
     SDL_SetWindowMouseGrab;
+    SDL_SetWindowMousePassthrough;
     SDL_SetWindowMouseRect;
     SDL_SetWindowOpacity;
     SDL_SetWindowParent;
