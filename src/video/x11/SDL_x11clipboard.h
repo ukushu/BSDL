@@ -42,5 +42,6 @@ extern char *X11_GetPrimarySelectionText(SDL_VideoDevice *_this);
 extern bool X11_HasPrimarySelectionText(SDL_VideoDevice *_this);
 extern void X11_QuitClipboard(SDL_VideoDevice *_this);
 Window GetWindow(SDL_VideoDevice *_this);
+bool X11_CreateClipboardWindow(SDL_VideoDevice *_this);
 
 #endif // SDL_x11clipboard_h_

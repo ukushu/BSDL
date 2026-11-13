@@ -37,13 +37,9 @@ static const char *const text_mime_types[] = {
     "STRING"
 };
 
-// Get any application owned window handle for clipboard association
-Window GetWindow(SDL_VideoDevice *_this)
+bool X11_CreateClipboardWindow(SDL_VideoDevice *_this)
 {
     SDL_VideoData *data = _this->internal;
-
-    /* The unmapped window owns X11 clipboard selections and carries SDL wakeups.
-       X11_InitVideo creates it before the event loop can wait; other callers reuse it. */
     if (data->clipboard_window == None) {
         Display *dpy = data->display;
         Window parent = RootWindow(dpy, DefaultScreen(dpy));
@@ -55,7 +51,13 @@ Window GetWindow(SDL_VideoDevice *_this)
         X11_XSelectInput(dpy, data->clipboard_window, PropertyChangeMask);
         X11_XFlush(data->display);
     }
+    return data->clipboard_window != None;
+}
 
+// Get the window created during X11_VideoInit for clipboard association and wakeups.
+Window GetWindow(SDL_VideoDevice *_this)
+{
+    SDL_VideoData *data = _this->internal;
     return data->clipboard_window;
 }
 

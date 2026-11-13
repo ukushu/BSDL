@@ -488,7 +488,12 @@ static bool X11_VideoInit(SDL_VideoDevice *_this)
 
     X11_InitPen(_this);
 
-    // Create the shared clipboard/wakeup window before SDL can wait or send a wakeup, then request clipboard MIME types.
+    // Create the shared clipboard/wakeup window before SDL can wait or send a wakeup.
+    if (!X11_CreateClipboardWindow(_this)) {
+        return SDL_SetError("Couldn't create the X11 clipboard window");
+    }
+
+    // Request currently available MIME types in the clipboard.
     X11_XConvertSelection(data->display, data->atoms.CLIPBOARD, data->atoms.TARGETS,
             data->atoms.SDL_FORMATS, GetWindow(_this), CurrentTime);
 
