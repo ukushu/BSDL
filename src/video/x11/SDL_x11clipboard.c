@@ -42,10 +42,8 @@ Window GetWindow(SDL_VideoDevice *_this)
 {
     SDL_VideoData *data = _this->internal;
 
-    /* We create an unmapped window that exists just to manage the clipboard,
-       since X11 selection data is tied to a specific window and dies with it.
-       We create the window on demand, so apps that don't use the clipboard
-       don't have to keep an unnecessary resource around. */
+    /* The unmapped window owns X11 clipboard selections and carries SDL wakeups.
+       X11_InitVideo creates it before the event loop can wait; other callers reuse it. */
     if (data->clipboard_window == None) {
         Display *dpy = data->display;
         Window parent = RootWindow(dpy, DefaultScreen(dpy));

@@ -1384,6 +1384,14 @@ static void X11_DispatchEvent(SDL_VideoDevice *_this, XEvent *xevent)
     }
 #endif // SDL_VIDEO_DRIVER_X11_XFIXES
 
+    // The clipboard window is also the target for SDL's synthetic wakeup
+    // ClientMessage. Consume that message as an event-loop wakeup instead of
+    // routing it through the clipboard protocol handler.
+    if (xevent->type == ClientMessage &&
+        xevent->xclient.message_type == videodata->atoms._SDL_WAKEUP) {
+        return;
+    }
+
     if ((videodata->clipboard_window != None) &&
         (videodata->clipboard_window == xevent->xany.window)) {
         X11_HandleClipboardEvent(_this, xevent);
